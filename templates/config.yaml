@@ -1,0 +1,25 @@
+project:
+  name: my-project
+  description: ""
+
+provider:
+  default: claude-cli
+  models:
+    planner: opus
+    worker: sonnet
+    reviewer: sonnet
+
+sandbox:
+  type: local
+
+execution:
+  max_turns: 40
+  max_retries: 2
+  auto_commit: true
+  parallel: false
+
+context:
+  always_include:
+    - .corvex/context/*.md
+
+agent_routing: {}

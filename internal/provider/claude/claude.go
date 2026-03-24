@@ -1,0 +1,406 @@
+package claude
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/types"
+)
+
+var supportedModels = []string{
+	"opus",
+	"sonnet",
+	"haiku",
+	"claude-sonnet-4-20250514",
+	"claude-opus-4-20250514",
+}
+
+type ClaudeCLI struct {
+	cfg       *config.Config
+	binaryCmd string
+	cmdRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
+}
+
+func New(cfg *config.Config) *ClaudeCLI {
+	bin := os.Getenv("CORVEX_CLAUDE_BIN")
+	if bin == "" {
+		bin = "claude"
+	}
+	return &ClaudeCLI{
+		cfg:       cfg,
+		binaryCmd: bin,
+		cmdRunner: exec.CommandContext,
+	}
+}
+
+func (c *ClaudeCLI) Name() string   { return "claude-cli" }
+func (c *ClaudeCLI) Models() []string { return supportedModels }
+
+func (c *ClaudeCLI) Execute(ctx context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+	if err := validateRequest(req); err != nil {
+		return nil, err
+	}
+
+	args := buildArgs(req)
+	cmd := c.cmdRunner(ctx, c.binaryCmd, args...)
+	configureCmd(cmd, req)
+
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	start := time.Now()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("claude cli stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("claude cli start: %w", err)
+	}
+
+	result := &types.ExecuteResult{}
+	var outputParts []string
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		events, parseErr := parseNDJSONLine(line)
+		if parseErr != nil {
+			continue
+		}
+
+		for _, ev := range events {
+			switch ev.Type {
+			case types.EventText:
+				outputParts = append(outputParts, ev.Content)
+			case types.EventDone:
+				// final content already captured
+			}
+		}
+
+		var raw rawLine
+		if json.Unmarshal(line, &raw) == nil && raw.Type == "result" {
+			var res resultLine
+			if json.Unmarshal(line, &res) == nil {
+				result.TokensIn = res.TotalInputTokens
+				result.TokensOut = res.TotalOutputTokens
+				result.CostUSD = res.TotalCostUSD
+				if res.DurationMs > 0 {
+					result.DurationMs = res.DurationMs
+				}
+			}
+		}
+	}
+
+	waitErr := cmd.Wait()
+	elapsed := time.Since(start)
+	if result.DurationMs == 0 {
+		result.DurationMs = elapsed.Milliseconds()
+	}
+
+	result.Output = strings.Join(outputParts, "")
+
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		}
+		return result, fmt.Errorf("claude cli exited with error: %w (stderr: %s)", waitErr, strings.TrimSpace(stderr.String()))
+	}
+
+	return result, nil
+}
+
+func (c *ClaudeCLI) Stream(ctx context.Context, req types.ExecuteRequest) (<-chan types.StreamEvent, error) {
+	if err := validateRequest(req); err != nil {
+		return nil, err
+	}
+
+	args := buildArgs(req)
+	cmd := c.cmdRunner(ctx, c.binaryCmd, args...)
+	configureCmd(cmd, req)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("claude cli stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("claude cli start: %w", err)
+	}
+
+	ch := make(chan types.StreamEvent, 32)
+
+	go func() {
+		defer close(ch)
+
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+
+			events, parseErr := parseNDJSONLine(line)
+			if parseErr != nil {
+				select {
+				case ch <- types.StreamEvent{Type: types.EventError, Content: parseErr.Error()}:
+				case <-ctx.Done():
+					return
+				}
+				continue
+			}
+
+			for _, ev := range events {
+				select {
+				case ch <- ev:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+
+		if err := cmd.Wait(); err != nil {
+			select {
+			case ch <- types.StreamEvent{Type: types.EventError, Content: err.Error()}:
+			case <-ctx.Done():
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+func validateRequest(req types.ExecuteRequest) error {
+	if req.Model == "" {
+		return fmt.Errorf("claude cli: model is required")
+	}
+	if req.Prompt == "" {
+		return fmt.Errorf("claude cli: prompt is required")
+	}
+	return nil
+}
+
+func buildArgs(req types.ExecuteRequest) []string {
+	args := []string{
+		"-p", req.Prompt,
+		"--model", req.Model,
+		"--output-format", "stream-json",
+		"--verbose",
+	}
+
+	if req.MaxTurns > 0 {
+		args = append(args, "--max-turns", strconv.Itoa(req.MaxTurns))
+	}
+
+	for _, tool := range req.AllowedTools {
+		args = append(args, "--allowedTools", tool)
+	}
+
+	for _, tool := range req.DisallowedTools {
+		args = append(args, "--disallowedTools", tool)
+	}
+
+	return args
+}
+
+func configureCmd(cmd *exec.Cmd, req types.ExecuteRequest) {
+	if req.WorkDir != "" {
+		cmd.Dir = req.WorkDir
+	}
+	if len(req.Env) > 0 {
+		cmd.Env = mergeEnv(os.Environ(), req.Env)
+	}
+}
+
+func mergeEnv(base []string, extra map[string]string) []string {
+	env := make([]string, len(base), len(base)+len(extra))
+	copy(env, base)
+	for k, v := range extra {
+		env = append(env, k+"="+v)
+	}
+	return env
+}
+
+type rawLine struct {
+	Type string `json:"type"`
+}
+
+type messageContent struct {
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
+type messageBody struct {
+	Role    string           `json:"role"`
+	Content []messageContent `json:"content"`
+}
+
+type assistantLine struct {
+	Type    string      `json:"type"`
+	Message messageBody `json:"message"`
+}
+
+type toolResultLine struct {
+	Type      string `json:"type"`
+	ToolUseID string `json:"tool_use_id"`
+	Content   string `json:"content"`
+}
+
+type resultLine struct {
+	Type             string  `json:"type"`
+	Subtype          string  `json:"subtype"`
+	Result           string  `json:"result"`
+	TotalCostUSD     float64 `json:"total_cost_usd"`
+	TotalInputTokens int     `json:"total_input_tokens"`
+	TotalOutputTokens int    `json:"total_output_tokens"`
+	DurationMs       int64   `json:"duration_ms"`
+}
+
+type toolInput struct {
+	FilePath string `json:"file_path,omitempty"`
+}
+
+func parseNDJSONLine(line []byte) ([]types.StreamEvent, error) {
+	var raw rawLine
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return nil, fmt.Errorf("invalid json line: %w", err)
+	}
+
+	switch raw.Type {
+	case "assistant":
+		return parseAssistant(line)
+	case "tool_result":
+		return parseToolResult(line)
+	case "result":
+		return parseResult(line)
+	case "system":
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
+
+func parseAssistant(line []byte) ([]types.StreamEvent, error) {
+	var al assistantLine
+	if err := json.Unmarshal(line, &al); err != nil {
+		return nil, fmt.Errorf("parsing assistant line: %w", err)
+	}
+
+	var events []types.StreamEvent
+	for _, c := range al.Message.Content {
+		switch c.Type {
+		case "text":
+			events = append(events, types.StreamEvent{
+				Type:    types.EventText,
+				Content: c.Text,
+			})
+		case "tool_use":
+			ev := types.StreamEvent{
+				Type: types.EventToolUse,
+				Tool: c.Name,
+			}
+			var ti toolInput
+			if json.Unmarshal(c.Input, &ti) == nil && ti.FilePath != "" {
+				ev.File = ti.FilePath
+			}
+			events = append(events, ev)
+		}
+	}
+
+	return events, nil
+}
+
+func parseToolResult(line []byte) ([]types.StreamEvent, error) {
+	var tr toolResultLine
+	if err := json.Unmarshal(line, &tr); err != nil {
+		return nil, fmt.Errorf("parsing tool_result line: %w", err)
+	}
+
+	return []types.StreamEvent{{
+		Type:    types.EventToolResult,
+		Content: tr.Content,
+	}}, nil
+}
+
+// BuildCommand implements provider.CommandBuilder.
+func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, map[string]string) {
+	args := buildArgs(req)
+	args = append(args, c.cfg.Sandbox.WorkerExtraArgs...)
+
+	env := make(map[string]string)
+	for k, v := range req.Env {
+		env[k] = v
+	}
+	return c.binaryCmd, args, env
+}
+
+// ParseFullOutput implements provider.CommandBuilder.
+func (c *ClaudeCLI) ParseFullOutput(stdout string, exitCode int, elapsed time.Duration) (*types.ExecuteResult, error) {
+	result := &types.ExecuteResult{
+		ExitCode:   exitCode,
+		DurationMs: elapsed.Milliseconds(),
+	}
+	var outputParts []string
+
+	for _, line := range strings.Split(stdout, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		events, err := parseNDJSONLine([]byte(trimmed))
+		if err != nil {
+			continue
+		}
+		for _, ev := range events {
+			if ev.Type == types.EventText {
+				outputParts = append(outputParts, ev.Content)
+			}
+		}
+		var raw rawLine
+		if json.Unmarshal([]byte(trimmed), &raw) == nil && raw.Type == "result" {
+			var res resultLine
+			if json.Unmarshal([]byte(trimmed), &res) == nil {
+				result.TokensIn = res.TotalInputTokens
+				result.TokensOut = res.TotalOutputTokens
+				result.CostUSD = res.TotalCostUSD
+				if res.DurationMs > 0 {
+					result.DurationMs = res.DurationMs
+				}
+			}
+		}
+	}
+
+	result.Output = strings.Join(outputParts, "")
+	return result, nil
+}
+
+func parseResult(line []byte) ([]types.StreamEvent, error) {
+	var rl resultLine
+	if err := json.Unmarshal(line, &rl); err != nil {
+		return nil, fmt.Errorf("parsing result line: %w", err)
+	}
+
+	return []types.StreamEvent{{
+		Type:    types.EventDone,
+		Content: rl.Result,
+	}}, nil
+}

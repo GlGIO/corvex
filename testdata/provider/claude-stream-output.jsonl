@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"sess_abc123","tools":["Read","Write","Bash"],"model":"claude-sonnet-4-20250514"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll analyze the project structure first."}]},"session_id":"sess_abc123"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool_01","name":"Read","input":{"file_path":"main.go"}}]},"session_id":"sess_abc123"}
+{"type":"tool_result","tool_use_id":"tool_01","content":"package main\n\nfunc main() {\n\tfmt.Println(\"hello\")\n}","session_id":"sess_abc123"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool_02","name":"Write","input":{"file_path":"main.go","content":"package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}"}}]},"session_id":"sess_abc123"}
+{"type":"tool_result","tool_use_id":"tool_02","content":"File written successfully","session_id":"sess_abc123"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done! I've updated main.go with the import and greeting."}]},"session_id":"sess_abc123"}
+{"type":"result","subtype":"success","session_id":"sess_abc123","result":"Done! I've updated main.go with the import and greeting.","total_cost_usd":0.0042,"total_input_tokens":1250,"total_output_tokens":380,"duration_ms":4500}

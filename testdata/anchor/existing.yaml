@@ -1,0 +1,25 @@
+project: smartcare
+updated_at: "2026-03-22T16:30:00Z"
+spec_hash: "a3f8c2e1b9d4f0a7c8e3b2d1f9a4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0"
+
+intent: "Implementar multitenancy no SmartCare CRM"
+
+completed:
+  - id: S01
+    title: "Foundation Tables"
+    summary: "Criadas tabelas tenants e usuario_tenants com 5 migrations e 2 models"
+    files_created:
+      - backend/src/models/tenant.model.js
+    files_modified:
+      - backend/src/models/index.js
+    decisions:
+      - "slug UNIQUE, modulos JSONB array"
+
+current_state:
+  total_tasks: 18
+  completed_tasks: 1
+
+next_task: S02
+next_task_context: >
+  Tabelas tenants e usuario_tenants existem.
+  Próximo passo: criar AsyncLocalStorage e tenant middleware.
