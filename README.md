@@ -114,7 +114,6 @@ sandbox:
     - "--dangerously-skip-permissions"
 
 execution:
-  max_turns: 40          # Max AI turns per task
   max_retries: 2         # Retry failed tasks
   auto_commit: true      # Git commit after each task
   parallel: true         # Run independent tasks in parallel

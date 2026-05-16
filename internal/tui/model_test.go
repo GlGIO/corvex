@@ -904,7 +904,6 @@ func TestStatusBarView(t *testing.T) {
 	s = s.SetSize(80)
 	s = s.AddTokens(1500, 800, 0.25)
 	s = s.IncrTurns()
-	s = s.SetMaxTurns(10)
 
 	view := s.View()
 	if view == "" {

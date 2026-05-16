@@ -285,7 +285,7 @@ dag:
 
 ## S01 — Setup Foundation ⬜ PENDING
 
-` + "```yaml\ntype: general\nmax_turns: 5\n```" + `
+` + "```yaml\ntype: general\n```" + `
 
 ### O que fazer
 1. Create base structure
@@ -300,7 +300,7 @@ dag:
 
 ## S02 — Add Feature ⬜ PENDING
 
-` + "```yaml\ntype: general\ndepends_on: [S01]\nmax_turns: 5\n```" + `
+` + "```yaml\ntype: general\ndepends_on: [S01]\n```" + `
 
 ### O que fazer
 1. Add the feature

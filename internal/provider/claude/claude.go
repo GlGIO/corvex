@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -202,10 +201,7 @@ func buildArgs(req types.ExecuteRequest) []string {
 		"--model", req.Model,
 		"--output-format", "stream-json",
 		"--verbose",
-	}
-
-	if req.MaxTurns > 0 {
-		args = append(args, "--max-turns", strconv.Itoa(req.MaxTurns))
+		"--permission-mode", "bypassPermissions",
 	}
 
 	for _, tool := range req.AllowedTools {

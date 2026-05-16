@@ -13,8 +13,6 @@ import (
 	"github.com/giovannialves/corvex/internal/types"
 )
 
-const defaultMaxTurns = 40
-
 // Worker executes a single task using the AI provider with full tool access.
 type Worker struct {
 	provider provider.Provider
@@ -39,16 +37,10 @@ func (w *Worker) Execute(
 ) (*types.ExecuteResult, error) {
 	prompt := buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis)
 
-	maxTurns := t.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = defaultMaxTurns
-	}
-
 	req := types.ExecuteRequest{
-		Prompt:   prompt,
-		Model:    w.model,
-		MaxTurns: maxTurns,
-		WorkDir:  w.workDir,
+		Prompt:  prompt,
+		Model:   w.model,
+		WorkDir: w.workDir,
 	}
 
 	if cb, ok := w.provider.(provider.CommandBuilder); ok && w.sandbox != nil {
