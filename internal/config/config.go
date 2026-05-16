@@ -41,7 +41,6 @@ type SandboxConfig struct {
 }
 
 type ExecutionConfig struct {
-	MaxTurns   int  `yaml:"max_turns"`
 	MaxRetries int  `yaml:"max_retries"`
 	AutoCommit bool `yaml:"auto_commit"`
 	Parallel   bool `yaml:"parallel"`
@@ -84,7 +83,6 @@ func Default() *Config {
 			Type: "local",
 		},
 		Execution: ExecutionConfig{
-			MaxTurns:   40,
 			MaxRetries: 2,
 			AutoCommit: true,
 		},
@@ -107,9 +105,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Sandbox.Type == "" {
 		cfg.Sandbox.Type = d.Sandbox.Type
-	}
-	if cfg.Execution.MaxTurns == 0 {
-		cfg.Execution.MaxTurns = d.Execution.MaxTurns
 	}
 	if cfg.Execution.MaxRetries == 0 {
 		cfg.Execution.MaxRetries = d.Execution.MaxRetries

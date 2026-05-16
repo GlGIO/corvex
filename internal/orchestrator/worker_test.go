@@ -225,7 +225,7 @@ func TestExecute_NoAllowedTools(t *testing.T) {
 		},
 	}
 	w := NewWorker(mock, "test-model", "/tmp", nil)
-	task := &types.Task{ID: "S01", Title: "Task", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -236,44 +236,6 @@ func TestExecute_NoAllowedTools(t *testing.T) {
 	}
 	if len(mock.calls[0].AllowedTools) != 0 {
 		t.Errorf("AllowedTools = %v, want empty (no restrictions)", mock.calls[0].AllowedTools)
-	}
-}
-
-func TestExecute_MaxTurns_TaskSpecific(t *testing.T) {
-	t.Parallel()
-	mock := &mockProvider{
-		executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
-			return &types.ExecuteResult{Output: "done"}, nil
-		},
-	}
-	w := NewWorker(mock, "test-model", "/tmp", nil)
-	task := &types.Task{ID: "S01", Title: "Task", Description: "desc", MaxTurns: 15}
-
-	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-
-	if mock.calls[0].MaxTurns != 15 {
-		t.Errorf("MaxTurns = %d, want 15", mock.calls[0].MaxTurns)
-	}
-}
-
-func TestExecute_MaxTurns_Default(t *testing.T) {
-	t.Parallel()
-	mock := &mockProvider{
-		executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
-			return &types.ExecuteResult{Output: "done"}, nil
-		},
-	}
-	w := NewWorker(mock, "test-model", "/tmp", nil)
-	task := &types.Task{ID: "S01", Title: "Task", Description: "desc", MaxTurns: 0}
-
-	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-
-	if mock.calls[0].MaxTurns != defaultMaxTurns {
-		t.Errorf("MaxTurns = %d, want %d (default)", mock.calls[0].MaxTurns, defaultMaxTurns)
 	}
 }
 
@@ -395,7 +357,7 @@ func TestExecute_ModelAndWorkDir(t *testing.T) {
 		},
 	}
 	w := NewWorker(mock, "sonnet", "/my/workdir", nil)
-	task := &types.Task{ID: "S01", Title: "Task", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
 		t.Fatal(err)
@@ -435,7 +397,7 @@ func TestWorkerExecute_ViaSandbox(t *testing.T) {
 	}
 
 	w := NewWorker(prov, "sonnet", "/tmp", sb)
-	task := &types.Task{ID: "S01", Title: "Test", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
 	if err != nil {
@@ -465,7 +427,7 @@ func TestWorkerExecute_FallbackDirect(t *testing.T) {
 	}
 
 	w := NewWorker(prov, "sonnet", "/tmp", sb)
-	task := &types.Task{ID: "S01", Title: "Test", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
 	if err != nil {
@@ -498,7 +460,7 @@ func TestWorkerExecute_NilSandbox(t *testing.T) {
 	}
 
 	w := NewWorker(prov, "sonnet", "/tmp", nil)
-	task := &types.Task{ID: "S01", Title: "Test", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
 	if err != nil {
@@ -577,7 +539,7 @@ func TestWorkerExecute_SandboxError(t *testing.T) {
 	prov := &mockCommandProvider{}
 
 	w := NewWorker(prov, "sonnet", "/tmp", sb)
-	task := &types.Task{ID: "S01", Title: "Test", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	_, err := w.Execute(context.Background(), task, "", nil, "", "")
 	if err == nil {
@@ -611,7 +573,7 @@ func TestWorkerExecute_NonZeroExitCode(t *testing.T) {
 	}
 
 	w := NewWorker(prov, "sonnet", "/tmp", sb)
-	task := &types.Task{ID: "S01", Title: "Test", Description: "desc", MaxTurns: 10}
+	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
 	if err == nil {

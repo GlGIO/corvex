@@ -99,7 +99,7 @@ Each task should have:
 - A unique ID (S01, S02, ...)
 - A descriptive title
 - Status (⬜ PENDING for new tasks)
-- YAML block with type, depends_on, max_turns
+- YAML block with type and depends_on
 - "O que fazer" section
 - "Critérios de sucesso" section
 - "Arquivos" section

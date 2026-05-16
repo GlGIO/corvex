@@ -12,7 +12,6 @@ type StatusBar struct {
 	tokensOut int
 	totalCost float64
 	turns     int
-	maxTurns  int
 	startedAt time.Time
 	elapsed   time.Duration
 	paused    bool
@@ -44,7 +43,7 @@ func (s StatusBar) View() string {
 		"tokens: %s in / %s out    turns: %s    elapsed: %s    %s%s",
 		CounterStyle.Render(FormatTokens(s.tokensIn)),
 		CounterStyle.Render(FormatTokens(s.tokensOut)),
-		CounterStyle.Render(fmt.Sprintf("%d/%d", s.turns, s.maxTurns)),
+		CounterStyle.Render(fmt.Sprintf("%d", s.turns)),
 		CounterStyle.Render(FormatDuration(s.elapsed)),
 		CostStyle.Render(FormatCost(s.totalCost)),
 		pauseIndicator,
@@ -79,12 +78,6 @@ func (s StatusBar) AddTokens(in, out int, cost float64) StatusBar {
 // IncrTurns increments the turn counter.
 func (s StatusBar) IncrTurns() StatusBar {
 	s.turns++
-	return s
-}
-
-// SetMaxTurns sets the maximum turns counter.
-func (s StatusBar) SetMaxTurns(max int) StatusBar {
-	s.maxTurns = max
 	return s
 }
 

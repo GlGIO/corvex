@@ -19,8 +19,12 @@ const (
 
 // ReviewResult carries the reviewer's verdict and analysis summary.
 type ReviewResult struct {
-	Verdict ReviewVerdict
-	Summary string
+	Verdict    ReviewVerdict
+	Summary    string
+	CostUSD    float64
+	TokensIn   int
+	TokensOut  int
+	DurationMs int64
 }
 
 // Reviewer independently verifies that a task was completed correctly.
@@ -49,7 +53,12 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		return nil, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
 	}
 
-	return parseVerdict(result.Output), nil
+	rr := parseVerdict(result.Output)
+	rr.CostUSD = result.CostUSD
+	rr.TokensIn = result.TokensIn
+	rr.TokensOut = result.TokensOut
+	rr.DurationMs = result.DurationMs
+	return rr, nil
 }
 
 func buildReviewerPrompt(t *types.Task) string {

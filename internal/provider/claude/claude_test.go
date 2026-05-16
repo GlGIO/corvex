@@ -31,21 +31,7 @@ func TestBuildArgs(t *testing.T) {
 				"--model", "sonnet",
 				"--output-format", "stream-json",
 				"--verbose",
-			},
-		},
-		{
-			name: "with max turns",
-			req: types.ExecuteRequest{
-				Prompt:   "hello",
-				Model:    "opus",
-				MaxTurns: 30,
-			},
-			expected: []string{
-				"-p", "hello",
-				"--model", "opus",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--max-turns", "30",
+				"--permission-mode", "bypassPermissions",
 			},
 		},
 		{
@@ -60,6 +46,7 @@ func TestBuildArgs(t *testing.T) {
 				"--model", "sonnet",
 				"--output-format", "stream-json",
 				"--verbose",
+				"--permission-mode", "bypassPermissions",
 				"--allowedTools", "Read",
 				"--allowedTools", "Glob",
 				"--allowedTools", "Grep",
@@ -77,22 +64,9 @@ func TestBuildArgs(t *testing.T) {
 				"--model", "sonnet",
 				"--output-format", "stream-json",
 				"--verbose",
+				"--permission-mode", "bypassPermissions",
 				"--disallowedTools", "Write",
 				"--disallowedTools", "Bash",
-			},
-		},
-		{
-			name: "zero max turns omitted",
-			req: types.ExecuteRequest{
-				Prompt:   "hello",
-				Model:    "haiku",
-				MaxTurns: 0,
-			},
-			expected: []string{
-				"-p", "hello",
-				"--model", "haiku",
-				"--output-format", "stream-json",
-				"--verbose",
 			},
 		},
 	}
@@ -581,7 +555,7 @@ func TestBuildCommand_BasicArgs(t *testing.T) {
 		t.Errorf("bin = %q, want %q", bin, cli.binaryCmd)
 	}
 
-	want := []string{"-p", "do work", "--model", "sonnet", "--output-format", "stream-json", "--verbose"}
+	want := []string{"-p", "do work", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
 	if len(args) != len(want) {
 		t.Fatalf("args length: got %d, want %d\ngot:  %v\nwant: %v", len(args), len(want), args, want)
 	}
@@ -609,7 +583,7 @@ func TestBuildCommand_WithExtraArgs(t *testing.T) {
 
 	_, args, _ := cli.BuildCommand(req)
 
-	baseLen := 7 // -p, prompt, --model, sonnet, --output-format, stream-json, --verbose
+	baseLen := 9 // -p, prompt, --model, sonnet, --output-format, stream-json, --verbose, --permission-mode, bypassPermissions
 	if len(args) != baseLen+1 {
 		t.Fatalf("args length: got %d, want %d\nargs: %v", len(args), baseLen+1, args)
 	}
@@ -636,6 +610,7 @@ func TestBuildCommand_WithAllowedTools(t *testing.T) {
 		"--model", "sonnet",
 		"--output-format", "stream-json",
 		"--verbose",
+		"--permission-mode", "bypassPermissions",
 		"--allowedTools", "Read",
 		"--allowedTools", "Write",
 	}

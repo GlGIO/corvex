@@ -12,7 +12,6 @@ dag:
 
 ```yaml
 type: database
-max_turns: 30
 ```
 
 ### O que fazer
@@ -35,7 +34,6 @@ max_turns: 30
 ```yaml
 type: backend
 depends_on: [S01]
-max_turns: 25
 ```
 
 ### O que fazer
@@ -57,7 +55,6 @@ max_turns: 25
 ```yaml
 type: database
 depends_on: [S01]
-max_turns: 40
 ```
 
 ### O que fazer
@@ -76,7 +73,6 @@ max_turns: 40
 ```yaml
 type: review
 depends_on: [S02, S03]
-max_turns: 20
 ```
 
 ### O que fazer

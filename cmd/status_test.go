@@ -20,12 +20,12 @@ func setupStatusTestProject(t *testing.T) (tmpDir string, cleanup func()) {
 
 	tasksContent := "---\ngenerated_by: test\ndag:\n  S01: []\n  S02: [S01]\n---\n\n" +
 		"## S01 — Setup Project ✅ PASSED\n\n" +
-		"```yaml\ntype: general\nmax_turns: 30\n```\n\n" +
+		"```yaml\ntype: general\n```\n\n" +
 		"### O que fazer\nInitialize project\n\n" +
 		"### Critérios de sucesso\n- [ ] Project compiles\n\n" +
 		"---\n\n" +
 		"## S02 — Add Features ⬜ PENDING\n\n" +
-		"```yaml\ntype: backend\ndepends_on: [S01]\nmax_turns: 30\n```\n\n" +
+		"```yaml\ntype: backend\ndepends_on: [S01]\n```\n\n" +
 		"### O que fazer\nAdd features\n\n" +
 		"### Critérios de sucesso\n- [ ] Features work\n"
 

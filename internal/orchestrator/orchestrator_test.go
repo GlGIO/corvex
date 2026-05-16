@@ -71,7 +71,6 @@ dag:
 ` + "```yaml\n" +
 	`type: general
 depends_on: []
-max_turns: 10
 ` + "```\n" + `
 ### O que fazer
 Do the first thing.
@@ -89,7 +88,6 @@ Do the first thing.
 ` + "```yaml\n" +
 	`type: general
 depends_on: [S01]
-max_turns: 10
 ` + "```\n" + `
 ### O que fazer
 Do the second thing.
@@ -114,7 +112,6 @@ dag:
 ` + "```yaml\n" +
 	`type: general
 depends_on: []
-max_turns: 10
 ` + "```\n" + `
 ### O que fazer
 Do the first thing.
@@ -129,7 +126,6 @@ Do the first thing.
 ` + "```yaml\n" +
 	`type: general
 depends_on: [S01]
-max_turns: 10
 ` + "```\n" + `
 ### O que fazer
 Do the second thing.

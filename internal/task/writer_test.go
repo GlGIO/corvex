@@ -28,9 +28,6 @@ func assertTasksEqual(t *testing.T, got, want []types.Task) {
 		if g.Type != w.Type {
 			t.Errorf("task[%d].Type = %q, want %q", i, g.Type, w.Type)
 		}
-		if g.MaxTurns != w.MaxTurns {
-			t.Errorf("task[%d].MaxTurns = %d, want %d", i, g.MaxTurns, w.MaxTurns)
-		}
 		if g.Description != w.Description {
 			t.Errorf("task[%d].Description = %q, want %q", i, g.Description, w.Description)
 		}

@@ -13,7 +13,6 @@ sandbox:
   type: local
 
 execution:
-  max_turns: 40
   max_retries: 2
   auto_commit: true
   parallel: false

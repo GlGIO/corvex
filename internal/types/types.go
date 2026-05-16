@@ -75,7 +75,6 @@ type Task struct {
 	Status      TaskStatus
 	Type        TaskType
 	DependsOn   []string
-	MaxTurns    int
 	Description string
 	Criteria    []string
 	Files       TaskFiles
@@ -120,7 +119,6 @@ type AnchorState struct {
 type ExecuteRequest struct {
 	Prompt          string
 	Model           string
-	MaxTurns        int
 	WorkDir         string
 	Env             map[string]string
 	AllowedTools    []string

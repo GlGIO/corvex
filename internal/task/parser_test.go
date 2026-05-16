@@ -78,9 +78,6 @@ func TestParseTasksFile_FullFile(t *testing.T) {
 	if s01.Type != types.TypeDatabase {
 		t.Errorf("tasks[0].Type = %q, want %q", s01.Type, types.TypeDatabase)
 	}
-	if s01.MaxTurns != 30 {
-		t.Errorf("tasks[0].MaxTurns = %d, want 30", s01.MaxTurns)
-	}
 	if s01.Description == "" {
 		t.Error("tasks[0].Description is empty")
 	}
@@ -109,9 +106,6 @@ func TestParseTasksFile_FullFile(t *testing.T) {
 	if s02.Type != types.TypeBackend {
 		t.Errorf("tasks[1].Type = %q, want %q", s02.Type, types.TypeBackend)
 	}
-	if s02.MaxTurns != 25 {
-		t.Errorf("tasks[1].MaxTurns = %d, want 25", s02.MaxTurns)
-	}
 	assertSliceEqual(t, "tasks[1].DependsOn", s02.DependsOn, []string{"S01"})
 
 	// S03
@@ -121,9 +115,6 @@ func TestParseTasksFile_FullFile(t *testing.T) {
 	}
 	if s03.Type != types.TypeDatabase {
 		t.Errorf("tasks[2].Type = %q, want %q", s03.Type, types.TypeDatabase)
-	}
-	if s03.MaxTurns != 40 {
-		t.Errorf("tasks[2].MaxTurns = %d, want 40", s03.MaxTurns)
 	}
 
 	// S04
@@ -163,9 +154,6 @@ func TestParseTasksFile_Minimal(t *testing.T) {
 	}
 	if tk.Type != "" {
 		t.Errorf("Type = %q, want empty", tk.Type)
-	}
-	if tk.MaxTurns != 0 {
-		t.Errorf("MaxTurns = %d, want 0", tk.MaxTurns)
 	}
 	if tk.DependsOn != nil {
 		t.Errorf("DependsOn = %v, want nil", tk.DependsOn)

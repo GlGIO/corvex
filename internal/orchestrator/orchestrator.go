@@ -312,10 +312,10 @@ func (o *Orchestrator) executeTask(
 				Type:       EventTaskComplete,
 				TaskID:     t.ID,
 				Status:     types.StatusPassed,
-				CostUSD:    result.CostUSD,
-				TokensIn:   result.TokensIn,
-				TokensOut:  result.TokensOut,
-				DurationMs: result.DurationMs,
+				CostUSD:    result.CostUSD + reviewResult.CostUSD,
+				TokensIn:   result.TokensIn + reviewResult.TokensIn,
+				TokensOut:  result.TokensOut + reviewResult.TokensOut,
+				DurationMs: result.DurationMs + reviewResult.DurationMs,
 			})
 			return nil
 		}

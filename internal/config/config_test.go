@@ -27,7 +27,6 @@ sandbox:
   workdir: /app
 
 execution:
-  max_turns: 40
   max_retries: 2
   auto_commit: true
   parallel: true
@@ -69,9 +68,6 @@ func TestLoad_ValidConfig(t *testing.T) {
 	if cfg.Sandbox.Type != "docker" {
 		t.Errorf("Sandbox.Type = %q, want %q", cfg.Sandbox.Type, "docker")
 	}
-	if cfg.Execution.MaxTurns != 40 {
-		t.Errorf("Execution.MaxTurns = %d, want %d", cfg.Execution.MaxTurns, 40)
-	}
 	if !cfg.Execution.Parallel {
 		t.Error("Execution.Parallel = false, want true")
 	}
@@ -98,9 +94,6 @@ func TestLoad_MinimalConfig(t *testing.T) {
 	}
 	if cfg.Provider.Models.Planner != "opus" {
 		t.Errorf("Provider.Models.Planner = %q, want default %q", cfg.Provider.Models.Planner, "opus")
-	}
-	if cfg.Execution.MaxTurns != 40 {
-		t.Errorf("Execution.MaxTurns = %d, want default %d", cfg.Execution.MaxTurns, 40)
 	}
 	if cfg.Execution.MaxRetries != 2 {
 		t.Errorf("Execution.MaxRetries = %d, want default %d", cfg.Execution.MaxRetries, 2)
@@ -134,9 +127,6 @@ func TestLoad_EmptyFile(t *testing.T) {
 	if cfg.Provider.Default != "claude-cli" {
 		t.Errorf("Provider.Default = %q, want default %q", cfg.Provider.Default, "claude-cli")
 	}
-	if cfg.Execution.MaxTurns != 40 {
-		t.Errorf("Execution.MaxTurns = %d, want default %d", cfg.Execution.MaxTurns, 40)
-	}
 }
 
 func TestDefault(t *testing.T) {
@@ -156,9 +146,6 @@ func TestDefault(t *testing.T) {
 	}
 	if cfg.Sandbox.Type != "local" {
 		t.Errorf("Sandbox.Type = %q, want %q", cfg.Sandbox.Type, "local")
-	}
-	if cfg.Execution.MaxTurns != 40 {
-		t.Errorf("Execution.MaxTurns = %d, want %d", cfg.Execution.MaxTurns, 40)
 	}
 	if cfg.Execution.MaxRetries != 2 {
 		t.Errorf("Execution.MaxRetries = %d, want %d", cfg.Execution.MaxRetries, 2)
