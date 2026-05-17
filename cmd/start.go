@@ -133,6 +133,7 @@ func brainstormPath(ctx context.Context, p provider.Provider, model, workDir, pr
 	br := orchestrator.NewBrainstormer(p, model, workDir)
 	br.SetProgressWriter(os.Stdout) // surface tool calls live so the model never looks hung
 	griller := orchestrator.NewGriller(p, model, workDir)
+	griller.SetProgressWriter(os.Stdout)
 
 	fmt.Println()
 	fmt.Printf("Brainstorming %s — Ctrl+C to stop, /done to finish early\n", project)
@@ -215,12 +216,14 @@ func grillPath(ctx context.Context, p provider.Provider, model, workDir, project
 	fmt.Printf("✓ spec.md written to %s\n\n", specPath)
 
 	griller := orchestrator.NewGriller(p, model, workDir)
+	griller.SetProgressWriter(os.Stdout)
 	return runGrillLoop(ctx, griller, reader, project, specPath, decisionsPath)
 }
 
 // planPath runs the grill loop on an existing spec.md.
 func planPath(ctx context.Context, p provider.Provider, model, workDir, project, specPath, decisionsPath string, reader *bufio.Reader) error {
 	griller := orchestrator.NewGriller(p, model, workDir)
+	griller.SetProgressWriter(os.Stdout)
 	return runGrillLoop(ctx, griller, reader, project, specPath, decisionsPath)
 }
 

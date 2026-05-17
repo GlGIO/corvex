@@ -77,6 +77,7 @@ func validateProject(ctx context.Context, cfg *config.Config, workDir, project s
 	}
 
 	validator := orchestrator.NewValidator(p, cfg.Provider.Models.Worker, workDir)
+	validator.SetProgressWriter(os.Stdout)
 
 	log.Info("running validator agent", "project", project)
 	result, err := validator.Validate(ctx, specPath, tasksPath, cfg.Validate)
@@ -135,6 +136,7 @@ func inferValidateConfig(ctx context.Context, cfg *config.Config, workDir string
 		return nil, fmt.Errorf("creating provider: %w", err)
 	}
 	c := orchestrator.NewConfigurer(p, cfg.Provider.Models.Planner, workDir)
+	c.SetProgressWriter(os.Stdout)
 	return c.InferValidate(ctx)
 }
 

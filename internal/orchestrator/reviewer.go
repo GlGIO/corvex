@@ -34,6 +34,7 @@ type ReviewResult struct {
 
 // Reviewer independently verifies that a task was completed correctly.
 type Reviewer struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -48,7 +49,7 @@ func NewReviewer(p provider.Provider, model, workDir string) *Reviewer {
 func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, error) {
 	prompt := buildReviewerPrompt(t)
 
-	result, err := r.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := r.runStep(ctx, r.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        r.model,
 		WorkDir:      r.workDir,

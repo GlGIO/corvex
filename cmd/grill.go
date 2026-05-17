@@ -57,6 +57,7 @@ func runGrill(cmd *cobra.Command, args []string) error {
 	}
 
 	griller := orchestrator.NewGriller(p, cfg.Provider.Models.Planner, workDir)
+	griller.SetProgressWriter(os.Stdout)
 	reader := bufio.NewReader(os.Stdin)
 	return runGrillLoop(cmd.Context(), griller, reader, project, specPath, decisionsPath)
 }

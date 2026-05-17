@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,63 +29,15 @@ type BrainstormStep struct {
 // Brainstormer conducts an AI-driven Q&A to explore a vague feature idea,
 // then synthesises the answers into a spec.md.
 type Brainstormer struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
-	progress io.Writer // when non-nil, tool-use events are printed as they arrive
 }
 
 // NewBrainstormer creates a Brainstormer bound to the given provider and model.
 func NewBrainstormer(p provider.Provider, model, workDir string) *Brainstormer {
 	return &Brainstormer{provider: p, model: model, workDir: workDir}
-}
-
-// SetProgressWriter wires a destination for live tool-call indicators. When
-// set, each Read/Glob/Grep the model issues during Interview/GenerateSpec is
-// printed as a faint single line so the user can see the model working
-// instead of staring at silence.
-func (b *Brainstormer) SetProgressWriter(w io.Writer) {
-	b.progress = w
-}
-
-// streamEventHandler returns an onEvent callback compatible with
-// provider.ProgressExecutor, or nil when no progress writer is set. The
-// callback prints a one-line summary of each tool call to the writer.
-func (b *Brainstormer) streamEventHandler() func(types.StreamEvent) {
-	if b.progress == nil {
-		return nil
-	}
-	return func(ev types.StreamEvent) {
-		if ev.Type != types.EventToolUse {
-			return
-		}
-		target := ev.File
-		if target == "" {
-			target = ev.Content
-		}
-		target = strings.TrimSpace(target)
-		if len(target) > 80 {
-			target = target[:79] + "…"
-		}
-		if target == "" {
-			fmt.Fprintf(b.progress, "  · %s\n", ev.Tool)
-		} else {
-			fmt.Fprintf(b.progress, "  · %s %s\n", ev.Tool, target)
-		}
-	}
-}
-
-// executeStep runs one provider call, preferring ProgressExecutor when the
-// provider supports it and a progress writer is set. Falls back to plain
-// Execute otherwise — preserving behaviour for tests and providers without
-// streaming hooks.
-func (b *Brainstormer) executeStep(ctx context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
-	if cb := b.streamEventHandler(); cb != nil {
-		if pe, ok := b.provider.(provider.ProgressExecutor); ok {
-			return pe.ExecuteWithProgress(ctx, req, cb)
-		}
-	}
-	return b.provider.Execute(ctx, req)
 }
 
 // Interview performs one Q&A step: reads the feature description and accumulated Q&A,
@@ -100,7 +51,7 @@ func (b *Brainstormer) Interview(ctx context.Context, description, qaPath string
 
 	prompt := buildBrainstormerPrompt(description, string(qaContent))
 
-	result, err := b.executeStep(ctx, types.ExecuteRequest{
+	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,
@@ -130,7 +81,7 @@ func (b *Brainstormer) GenerateSpec(ctx context.Context, description, qaPath, sp
 
 	prompt := buildSpecGenPrompt(description, string(qaContent))
 
-	result, err := b.executeStep(ctx, types.ExecuteRequest{
+	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,

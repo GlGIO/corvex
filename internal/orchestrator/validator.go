@@ -23,6 +23,7 @@ type ValidationResult struct {
 
 // Validator runs an integration check against the live stack at the end of a feature run.
 type Validator struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -47,7 +48,7 @@ func (v *Validator) Validate(ctx context.Context, specPath, tasksPath string, cf
 
 	prompt := buildValidatorPrompt(string(spec), string(tasks), cfg)
 
-	result, err := v.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := v.runStep(ctx, v.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        v.model,
 		WorkDir:      v.workDir,

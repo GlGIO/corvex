@@ -39,6 +39,7 @@ type UncertainField struct {
 
 // Configurer inspects the codebase and produces a draft validate config.
 type Configurer struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -54,7 +55,7 @@ func NewConfigurer(p provider.Provider, model, workDir string) *Configurer {
 func (c *Configurer) InferValidate(ctx context.Context) (*ConfigDraft, error) {
 	prompt := buildConfigurerPrompt()
 
-	result, err := c.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := c.runStep(ctx, c.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        c.model,
 		WorkDir:      c.workDir,

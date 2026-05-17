@@ -28,6 +28,7 @@ type GrillStep struct {
 
 // Griller runs the AI provider with read-only tools to surface unresolved ambiguities in a spec.
 type Griller struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -54,7 +55,7 @@ func (g *Griller) Grill(ctx context.Context, specPath, decisionsPath string) (*G
 
 	prompt := buildGrillerPrompt(string(specContent), string(decisionsContent))
 
-	result, err := g.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := g.runStep(ctx, g.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        g.model,
 		WorkDir:      g.workDir,

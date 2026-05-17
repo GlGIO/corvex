@@ -16,6 +16,7 @@ const defaultInsightThreshold = 3
 
 // Advisor analyses completed tasks and suggests new agent files for recurring patterns.
 type Advisor struct {
+	progressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -87,7 +88,7 @@ func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[s
 func (a *Advisor) generateAgentSuggestion(ctx context.Context, taskType string, tasks []types.Task) (string, error) {
 	prompt := buildAdvisorPrompt(taskType, tasks)
 
-	result, err := a.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := a.runStep(ctx, a.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        a.model,
 		WorkDir:      a.workDir,

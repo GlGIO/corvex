@@ -14,6 +14,7 @@ import (
 
 // Planner runs the AI provider with read-only tools to generate or update a tasks.md file.
 type Planner struct {
+	progressBase
 	provider     provider.Provider
 	model        string
 	workDir      string
@@ -55,7 +56,7 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 
 	prompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting)
 
-	result, err := p.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := p.runStep(ctx, p.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        p.model,
 		WorkDir:      p.workDir,

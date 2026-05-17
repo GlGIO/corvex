@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/charmbracelet/log"
@@ -40,6 +41,7 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	planner := orchestrator.NewPlanner(p, cfg.Provider.Models.Planner, workDir, cfg.AgentRouting)
+	planner.SetProgressWriter(os.Stdout)
 
 	pDir := projectDir(workDir, project)
 	specPath := filepath.Join(pDir, "spec.md")
