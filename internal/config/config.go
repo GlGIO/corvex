@@ -1,9 +1,13 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/charmbracelet/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -129,7 +133,65 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyDefaults(cfg)
+
+	// Auto-source `.corvex/*.env` files (symlinks supported) into the process
+	// environment so `${VAR}` placeholders in this config — most notably
+	// `mcp_servers[].env` — can be expanded at runtime without committing
+	// secrets to the YAML. Host env wins, so an explicit `export` in the
+	// shell still overrides the file.
+	loadDotEnvFiles(filepath.Dir(path))
+
 	return cfg, nil
+}
+
+// loadDotEnvFiles parses every `*.env` file in dir (following symlinks) and
+// merges KEY=VAL pairs into the process env. Best-effort: per-file failures
+// are logged as warnings and do not abort startup. Variables already present
+// in the host env are preserved (host wins).
+func loadDotEnvFiles(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.env"))
+	if err != nil {
+		log.Warn("globbing .env files", "dir", dir, "err", err)
+		return
+	}
+	for _, path := range matches {
+		f, err := os.Open(path) // follows symlinks
+		if err != nil {
+			log.Warn("skipping unreadable .env file", "path", path, "err", err)
+			continue
+		}
+		loaded := 0
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			line = strings.TrimPrefix(line, "export ")
+			key, val, ok := strings.Cut(line, "=")
+			if !ok {
+				continue
+			}
+			key = strings.TrimSpace(key)
+			val = strings.Trim(strings.TrimSpace(val), `"'`)
+			if key == "" {
+				continue
+			}
+			if _, exists := os.LookupEnv(key); exists {
+				continue
+			}
+			if err := os.Setenv(key, val); err != nil {
+				log.Warn("setting env var", "key", key, "err", err)
+				continue
+			}
+			loaded++
+		}
+		if err := scanner.Err(); err != nil {
+			log.Warn("reading .env file", "path", path, "err", err)
+		}
+		_ = f.Close()
+		log.Debug("loaded .env", "path", path, "keys", loaded)
+	}
 }
 
 func Default() *Config {

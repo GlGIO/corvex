@@ -8,6 +8,112 @@ import (
 	"github.com/giovannialves/corvex/internal/config"
 )
 
+// dotenvWriteConfig writes a minimal config.yaml and returns its path so the
+// dot-env auto-source tests can drive Load() the same way the real CLI does.
+func dotenvWriteConfig(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "config.yaml")
+	body := "project:\n  name: dotenv-test\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
+}
+
+func TestLoad_DotEnv_PopulatesProcessEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dotenvWriteConfig(t, dir)
+
+	envBody := []byte("# comment\n\nMIDIA_USER=app\nexport MIDIA_PASSWORD=\"s3cret!\"\nQUOTED='single quoted'\n")
+	if err := os.WriteFile(filepath.Join(dir, "midiaproqa.env"), envBody, 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	t.Setenv("MIDIA_USER", "")
+	t.Setenv("MIDIA_PASSWORD", "")
+	t.Setenv("QUOTED", "")
+	_ = os.Unsetenv("MIDIA_USER")
+	_ = os.Unsetenv("MIDIA_PASSWORD")
+	_ = os.Unsetenv("QUOTED")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("MIDIA_USER"); got != "app" {
+		t.Errorf("MIDIA_USER = %q, want %q", got, "app")
+	}
+	if got := os.Getenv("MIDIA_PASSWORD"); got != "s3cret!" {
+		t.Errorf("MIDIA_PASSWORD = %q, want %q", got, "s3cret!")
+	}
+	if got := os.Getenv("QUOTED"); got != "single quoted" {
+		t.Errorf("QUOTED = %q, want %q", got, "single quoted")
+	}
+}
+
+func TestLoad_DotEnv_HostEnvWins(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dotenvWriteConfig(t, dir)
+
+	if err := os.WriteFile(filepath.Join(dir, "secrets.env"), []byte("OVERRIDE_ME=from-file\n"), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	t.Setenv("OVERRIDE_ME", "from-host")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("OVERRIDE_ME"); got != "from-host" {
+		t.Errorf("OVERRIDE_ME = %q, want %q (host should win)", got, "from-host")
+	}
+}
+
+func TestLoad_DotEnv_FollowsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dotenvWriteConfig(t, dir)
+
+	// Target lives outside the config dir; symlink points to it.
+	target := filepath.Join(t.TempDir(), "secrets.env")
+	if err := os.WriteFile(target, []byte("LINKED_VAR=via-symlink\n"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "midiaproqa.env")); err != nil {
+		t.Skipf("symlink not supported on this filesystem: %v", err)
+	}
+
+	_ = os.Unsetenv("LINKED_VAR")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("LINKED_VAR"); got != "via-symlink" {
+		t.Errorf("LINKED_VAR = %q, want %q (symlink should be followed)", got, "via-symlink")
+	}
+}
+
+func TestLoad_DotEnv_MalformedLinesIgnored(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dotenvWriteConfig(t, dir)
+
+	envBody := []byte("nothing-but-text\n=missing-key\nGOOD_KEY=ok\n")
+	if err := os.WriteFile(filepath.Join(dir, "junk.env"), envBody, 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	_ = os.Unsetenv("GOOD_KEY")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("GOOD_KEY"); got != "ok" {
+		t.Errorf("GOOD_KEY = %q, want %q; malformed lines should not block valid ones", got, "ok")
+	}
+}
+
 const fullConfig = `
 project:
   name: smartcare
