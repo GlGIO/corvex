@@ -91,6 +91,53 @@ func TestParseVerdict_MultipleLines(t *testing.T) {
 	}
 }
 
+func TestParseVerdict_Category(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		input    string
+		verdict  ReviewVerdict
+		category string
+	}{
+		{
+			name:     "fail with category",
+			input:    "Analysis says X is wrong.\nCATEGORY: wrong-approach\nVERDICT: FAIL",
+			verdict:  VerdictFail,
+			category: "wrong-approach",
+		},
+		{
+			name:     "fail with mixed-case category",
+			input:    "...\nCategory: Missing-Edge-Case\nVERDICT: FAIL",
+			verdict:  VerdictFail,
+			category: "missing-edge-case",
+		},
+		{
+			name:     "fail without category",
+			input:    "...\nVERDICT: FAIL",
+			verdict:  VerdictFail,
+			category: "",
+		},
+		{
+			name:     "pass ignores category line",
+			input:    "...\nCATEGORY: wrong-approach\nVERDICT: PASS",
+			verdict:  VerdictPass,
+			category: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := parseVerdict(tt.input)
+			if got.Verdict != tt.verdict {
+				t.Errorf("Verdict = %q, want %q", got.Verdict, tt.verdict)
+			}
+			if got.Category != tt.category {
+				t.Errorf("Category = %q, want %q", got.Category, tt.category)
+			}
+		})
+	}
+}
+
 func TestParseVerdict_SummaryExtraction(t *testing.T) {
 	t.Parallel()
 	output := "Check 1 ok\nCheck 2 ok\nVERDICT: PASS"

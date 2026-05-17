@@ -12,6 +12,7 @@ type Config struct {
 	Provider     ProviderConfig    `yaml:"provider"`
 	Sandbox      SandboxConfig     `yaml:"sandbox"`
 	Execution    ExecutionConfig   `yaml:"execution"`
+	Review       ReviewConfig      `yaml:"review"`
 	Context      ContextConfig     `yaml:"context"`
 	AgentRouting map[string]string `yaml:"agent_routing"`
 	Validate     ValidateConfig    `yaml:"validate"`
@@ -63,6 +64,27 @@ type ExecutionConfig struct {
 
 type ContextConfig struct {
 	AlwaysInclude []string `yaml:"always_include"`
+}
+
+// ReviewConfig configures Reviewer behaviour beyond the binary PASS/FAIL
+// verdict, in particular how repeated rejections of the same category
+// escalate.
+type ReviewConfig struct {
+	Escalation map[string]EscalationPolicy `yaml:"escalation"`
+}
+
+// EscalationPolicy describes what to do after N consecutive rejections share
+// the same category. Categories are free-form strings emitted by the
+// Reviewer (e.g. "wrong-approach", "flaky-test", "missing-edge-case").
+type EscalationPolicy struct {
+	// After is the number of rejections of this category that triggers the
+	// action. A value of 0 disables the policy.
+	After int `yaml:"after"`
+	// Action is one of "upgrade-model", "spawn-investigation",
+	// "human-prompt". Unknown values are ignored at runtime.
+	Action string `yaml:"action"`
+	// To is the model to upgrade to when Action == "upgrade-model".
+	To string `yaml:"to"`
 }
 
 type ValidateConfig struct {

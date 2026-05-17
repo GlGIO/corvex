@@ -215,6 +215,9 @@ func (o *Orchestrator) executeTask(
 	}
 
 	diagnosis := ""
+	categoryCounts := make(map[string]int)
+	originalWorkerModel := o.worker.model
+	defer func() { o.worker.model = originalWorkerModel }()
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
@@ -342,6 +345,38 @@ func (o *Orchestrator) executeTask(
 			Status:  types.StatusFailed,
 			Message: diagnosis,
 		})
+
+		if cat := reviewResult.Category; cat != "" {
+			categoryCounts[cat]++
+			decision := resolveEscalation(o.cfg.Review, cat, categoryCounts[cat])
+			switch decision.Action {
+			case ActionUpgradeModel:
+				if decision.UpgradeTo != "" && decision.UpgradeTo != o.worker.model {
+					charmbraceletlog.Info("escalation: upgrading worker model",
+						"task", t.ID, "category", cat, "from", o.worker.model, "to", decision.UpgradeTo)
+					o.worker.model = decision.UpgradeTo
+				}
+			case ActionHumanPrompt:
+				path, err := writeHumanEscalation(o.workDir, o.cfg.Project.Name, t.ID, cat, reviewResult.Summary)
+				if err != nil {
+					charmbraceletlog.Warn("writing human escalation", "task", t.ID, "err", err)
+				} else {
+					charmbraceletlog.Warn("escalation: human review requested",
+						"task", t.ID, "category", cat, "file", path)
+				}
+				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+					charmbraceletlog.Warn("updating task status to failed after escalation", "task", t.ID, "err", statusErr)
+				}
+				return fmt.Errorf("task %s escalated to human review (category %s); see %s", t.ID, cat, path)
+			case ActionSpawnInvestigation:
+				// Not yet implemented: emits a warning and falls through to
+				// the standard retry. The diagnosis already carries the
+				// reviewer summary so the next attempt has the context it
+				// needs.
+				charmbraceletlog.Warn("escalation: spawn-investigation is not yet implemented; falling back to retry",
+					"task", t.ID, "category", cat)
+			}
+		}
 	}
 
 	if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {

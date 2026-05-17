@@ -19,7 +19,12 @@ const (
 
 // ReviewResult carries the reviewer's verdict and analysis summary.
 type ReviewResult struct {
-	Verdict    ReviewVerdict
+	Verdict ReviewVerdict
+	// Category, when non-empty, classifies a failed verdict (e.g.
+	// "wrong-approach", "missing-edge-case", "flaky-test"). Used by the
+	// escalation engine. Empty for PASS verdicts or when the Reviewer
+	// did not emit a CATEGORY: line.
+	Category   string
 	Summary    string
 	CostUSD    float64
 	TokensIn   int
@@ -102,7 +107,19 @@ End your response with EXACTLY one of these lines:
 VERDICT: PASS
 VERDICT: FAIL
 
-Before the verdict, provide your analysis.
+When the verdict is FAIL, also include a CATEGORY: line right before the
+verdict, choosing exactly one of:
+- wrong-approach     — the implementation took the wrong design or direction
+- missing-edge-case  — works for the happy path but misses important edge cases
+- incomplete         — one or more success criteria are not fully addressed
+- flaky-test         — failing tests appear flaky or environment-dependent
+- style              — only style / convention issues
+
+Example:
+CATEGORY: missing-edge-case
+VERDICT: FAIL
+
+Before those lines, provide your analysis.
 `)
 
 	return b.String()
@@ -128,13 +145,37 @@ func parseVerdict(output string) *ReviewResult {
 		}
 	}
 
+	// Category is only meaningful on FAIL. Search the last few lines for a
+	// CATEGORY: marker; tolerate whitespace and casing.
+	category := ""
+	if verdict == VerdictFail {
+		start := verdictIdx - 5
+		if start < 0 {
+			start = 0
+		}
+		end := verdictIdx
+		if end < 0 {
+			end = len(lines)
+		}
+		for i := end - 1; i >= start; i-- {
+			line := strings.TrimSpace(lines[i])
+			upper := strings.ToUpper(line)
+			if strings.HasPrefix(upper, "CATEGORY:") {
+				category = strings.TrimSpace(line[len("CATEGORY:"):])
+				category = strings.ToLower(category)
+				break
+			}
+		}
+	}
+
 	summary := strings.TrimSpace(output)
 	if verdictIdx > 0 {
 		summary = strings.TrimSpace(strings.Join(lines[:verdictIdx], "\n"))
 	}
 
 	return &ReviewResult{
-		Verdict: verdict,
-		Summary: summary,
+		Verdict:  verdict,
+		Category: category,
+		Summary:  summary,
 	}
 }

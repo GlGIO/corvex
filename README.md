@@ -107,6 +107,7 @@ corvex grill my-feature
 | `corvex status <project>` | Display DAG with task statuses |
 | `corvex logs <project> [task]` | Show logs for a task |
 | `corvex reset <project> <task>` | Mark a task as PENDING |
+| `corvex review [project]` | List pending escalations awaiting human review |
 | `corvex list` | List all projects |
 
 ## Configuration
@@ -137,6 +138,15 @@ execution:
   max_retries: 2         # Retry failed tasks
   auto_commit: true      # Git commit after each task
   parallel: true         # Run independent tasks in parallel
+
+review:
+  # Escalate after repeated rejections of the same category (Reviewer emits
+  # `CATEGORY:` alongside `VERDICT: FAIL`). Actions: upgrade-model,
+  # spawn-investigation, human-prompt.
+  escalation:
+    wrong-approach:    { after: 2, action: upgrade-model, to: opus }
+    flaky-test:        { after: 3, action: human-prompt }
+    missing-edge-case: { after: 2, action: spawn-investigation }
 
 context:
   always_include:
