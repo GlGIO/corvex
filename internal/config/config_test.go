@@ -8,30 +8,33 @@ import (
 	"github.com/giovannialves/corvex/internal/config"
 )
 
-// dotenvWriteConfig writes a minimal config.yaml and returns its path so the
-// dot-env auto-source tests can drive Load() the same way the real CLI does.
-func dotenvWriteConfig(t *testing.T, dir string) string {
+// dotenvWriteConfig sets up the directory layout the CLI assumes: a repo
+// root containing a `.corvex/` subdirectory with `config.yaml`. It returns
+// (configPath, corvexDir, repoRoot) so callers can drop .env files at any
+// level. Root-level `.env` and `.env.local` are auto-sourced; `.corvex/*.env`
+// takes precedence over both.
+func dotenvWriteConfig(t *testing.T, repoRoot string) (cfgPath, corvexDir, root string) {
 	t.Helper()
-	path := filepath.Join(dir, "config.yaml")
+	corvexDir = filepath.Join(repoRoot, ".corvex")
+	if err := os.MkdirAll(corvexDir, 0o755); err != nil {
+		t.Fatalf("mkdir .corvex: %v", err)
+	}
+	cfgPath = filepath.Join(corvexDir, "config.yaml")
 	body := "project:\n  name: dotenv-test\n"
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(body), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	return path
+	return cfgPath, corvexDir, repoRoot
 }
 
 func TestLoad_DotEnv_PopulatesProcessEnv(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := dotenvWriteConfig(t, dir)
+	cfgPath, corvexDir, _ := dotenvWriteConfig(t, t.TempDir())
 
 	envBody := []byte("# comment\n\nMIDIA_USER=app\nexport MIDIA_PASSWORD=\"s3cret!\"\nQUOTED='single quoted'\n")
-	if err := os.WriteFile(filepath.Join(dir, "midiaproqa.env"), envBody, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(corvexDir, "midiaproqa.env"), envBody, 0o644); err != nil {
 		t.Fatalf("write .env: %v", err)
 	}
 
-	t.Setenv("MIDIA_USER", "")
-	t.Setenv("MIDIA_PASSWORD", "")
-	t.Setenv("QUOTED", "")
 	_ = os.Unsetenv("MIDIA_USER")
 	_ = os.Unsetenv("MIDIA_PASSWORD")
 	_ = os.Unsetenv("QUOTED")
@@ -52,10 +55,9 @@ func TestLoad_DotEnv_PopulatesProcessEnv(t *testing.T) {
 }
 
 func TestLoad_DotEnv_HostEnvWins(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := dotenvWriteConfig(t, dir)
+	cfgPath, corvexDir, _ := dotenvWriteConfig(t, t.TempDir())
 
-	if err := os.WriteFile(filepath.Join(dir, "secrets.env"), []byte("OVERRIDE_ME=from-file\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(corvexDir, "secrets.env"), []byte("OVERRIDE_ME=from-file\n"), 0o644); err != nil {
 		t.Fatalf("write .env: %v", err)
 	}
 
@@ -71,15 +73,14 @@ func TestLoad_DotEnv_HostEnvWins(t *testing.T) {
 }
 
 func TestLoad_DotEnv_FollowsSymlink(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := dotenvWriteConfig(t, dir)
+	cfgPath, corvexDir, _ := dotenvWriteConfig(t, t.TempDir())
 
 	// Target lives outside the config dir; symlink points to it.
 	target := filepath.Join(t.TempDir(), "secrets.env")
 	if err := os.WriteFile(target, []byte("LINKED_VAR=via-symlink\n"), 0o644); err != nil {
 		t.Fatalf("write target: %v", err)
 	}
-	if err := os.Symlink(target, filepath.Join(dir, "midiaproqa.env")); err != nil {
+	if err := os.Symlink(target, filepath.Join(corvexDir, "midiaproqa.env")); err != nil {
 		t.Skipf("symlink not supported on this filesystem: %v", err)
 	}
 
@@ -95,11 +96,10 @@ func TestLoad_DotEnv_FollowsSymlink(t *testing.T) {
 }
 
 func TestLoad_DotEnv_MalformedLinesIgnored(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := dotenvWriteConfig(t, dir)
+	cfgPath, corvexDir, _ := dotenvWriteConfig(t, t.TempDir())
 
 	envBody := []byte("nothing-but-text\n=missing-key\nGOOD_KEY=ok\n")
-	if err := os.WriteFile(filepath.Join(dir, "junk.env"), envBody, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(corvexDir, "junk.env"), envBody, 0o644); err != nil {
 		t.Fatalf("write .env: %v", err)
 	}
 
@@ -111,6 +111,81 @@ func TestLoad_DotEnv_MalformedLinesIgnored(t *testing.T) {
 
 	if got := os.Getenv("GOOD_KEY"); got != "ok" {
 		t.Errorf("GOOD_KEY = %q, want %q; malformed lines should not block valid ones", got, "ok")
+	}
+}
+
+func TestLoad_DotEnv_AutoSourcesRepoDotEnv(t *testing.T) {
+	cfgPath, _, repoRoot := dotenvWriteConfig(t, t.TempDir())
+
+	// The project already maintains a root-level `.env` for its app code.
+	// Corvex should pick those values up without any `.corvex/*.env`.
+	envBody := []byte("NUXT_PUBLIC_API=https://api.example.com\nAPP_SECRET=root-value\n")
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), envBody, 0o644); err != nil {
+		t.Fatalf("write root .env: %v", err)
+	}
+
+	_ = os.Unsetenv("NUXT_PUBLIC_API")
+	_ = os.Unsetenv("APP_SECRET")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("NUXT_PUBLIC_API"); got != "https://api.example.com" {
+		t.Errorf("NUXT_PUBLIC_API = %q, want auto-sourced value", got)
+	}
+	if got := os.Getenv("APP_SECRET"); got != "root-value" {
+		t.Errorf("APP_SECRET = %q, want %q", got, "root-value")
+	}
+}
+
+func TestLoad_DotEnv_AutoSourcesRepoEnvLocal(t *testing.T) {
+	cfgPath, _, repoRoot := dotenvWriteConfig(t, t.TempDir())
+
+	// `.env.local` is the gitignored "real values" file in Nuxt/Next/Vite.
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env.local"), []byte("LOCAL_KEY=local-value\n"), 0o644); err != nil {
+		t.Fatalf("write .env.local: %v", err)
+	}
+
+	_ = os.Unsetenv("LOCAL_KEY")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("LOCAL_KEY"); got != "local-value" {
+		t.Errorf("LOCAL_KEY = %q, want %q from .env.local", got, "local-value")
+	}
+}
+
+func TestLoad_DotEnv_CorvexOverridesRoot(t *testing.T) {
+	cfgPath, corvexDir, repoRoot := dotenvWriteConfig(t, t.TempDir())
+
+	// Same key in both locations — `.corvex/*.env` should win because it is
+	// loaded first and the parser refuses to overwrite an already-set value.
+	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte("SHARED=from-root\n"), 0o644); err != nil {
+		t.Fatalf("write root .env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(corvexDir, "override.env"), []byte("SHARED=from-corvex\n"), 0o644); err != nil {
+		t.Fatalf("write .corvex .env: %v", err)
+	}
+
+	_ = os.Unsetenv("SHARED")
+
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := os.Getenv("SHARED"); got != "from-corvex" {
+		t.Errorf("SHARED = %q, want %q (.corvex/*.env should beat root .env)", got, "from-corvex")
+	}
+}
+
+func TestLoad_DotEnv_MissingRootEnvIsSilent(t *testing.T) {
+	// No `.env` at the repo root — Load() must not warn or error.
+	cfgPath, _, _ := dotenvWriteConfig(t, t.TempDir())
+	if _, err := config.Load(cfgPath); err != nil {
+		t.Fatalf("Load: %v", err)
 	}
 }
 

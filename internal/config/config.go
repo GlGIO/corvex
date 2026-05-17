@@ -134,64 +134,88 @@ func Load(path string) (*Config, error) {
 
 	applyDefaults(cfg)
 
-	// Auto-source `.corvex/*.env` files (symlinks supported) into the process
-	// environment so `${VAR}` placeholders in this config — most notably
-	// `mcp_servers[].env` — can be expanded at runtime without committing
-	// secrets to the YAML. Host env wins, so an explicit `export` in the
-	// shell still overrides the file.
-	loadDotEnvFiles(filepath.Dir(path))
+	// Auto-source dotenv files into the process environment so `${VAR}`
+	// placeholders in this config — most notably `mcp_servers[].env` — can
+	// be expanded at runtime without committing secrets to the YAML.
+	//
+	// Sources, in precedence order (first one to set a var wins; the host
+	// env always wins over any file):
+	//
+	//   1. `.corvex/*.env`             — Corvex-specific overrides (symlink-friendly)
+	//   2. `<repo>/.env`               — the project's own dotenv (Nuxt/Next/Vite convention)
+	//   3. `<repo>/.env.local`         — gitignored real values, when present
+	//
+	// "repo" here is the directory that contains `.corvex/`, so the lookup
+	// works transparently for projects that already maintain a root-level
+	// `.env`.
+	corvexDir := filepath.Dir(path)
+	loadDotEnvDir(corvexDir)
+
+	repoRoot := filepath.Dir(corvexDir)
+	for _, name := range []string{".env", ".env.local"} {
+		loadOneEnvFile(filepath.Join(repoRoot, name))
+	}
 
 	return cfg, nil
 }
 
-// loadDotEnvFiles parses every `*.env` file in dir (following symlinks) and
-// merges KEY=VAL pairs into the process env. Best-effort: per-file failures
-// are logged as warnings and do not abort startup. Variables already present
-// in the host env are preserved (host wins).
-func loadDotEnvFiles(dir string) {
+// loadDotEnvDir parses every `*.env` file in dir (following symlinks). Best-
+// effort: per-file failures are logged as warnings and do not abort startup.
+func loadDotEnvDir(dir string) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*.env"))
 	if err != nil {
 		log.Warn("globbing .env files", "dir", dir, "err", err)
 		return
 	}
 	for _, path := range matches {
-		f, err := os.Open(path) // follows symlinks
-		if err != nil {
+		loadOneEnvFile(path)
+	}
+}
+
+// loadOneEnvFile merges KEY=VAL pairs from a single dotenv file into the
+// process env. Variables already present in the host env are preserved
+// (host wins). Missing files are silently skipped — only real read errors
+// produce a warning. Symlinks are followed by os.Open.
+func loadOneEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
 			log.Warn("skipping unreadable .env file", "path", path, "err", err)
+		}
+		return
+	}
+	defer f.Close()
+
+	loaded := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		loaded := 0
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			line = strings.TrimPrefix(line, "export ")
-			key, val, ok := strings.Cut(line, "=")
-			if !ok {
-				continue
-			}
-			key = strings.TrimSpace(key)
-			val = strings.Trim(strings.TrimSpace(val), `"'`)
-			if key == "" {
-				continue
-			}
-			if _, exists := os.LookupEnv(key); exists {
-				continue
-			}
-			if err := os.Setenv(key, val); err != nil {
-				log.Warn("setting env var", "key", key, "err", err)
-				continue
-			}
-			loaded++
+		line = strings.TrimPrefix(line, "export ")
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
 		}
-		if err := scanner.Err(); err != nil {
-			log.Warn("reading .env file", "path", path, "err", err)
+		key = strings.TrimSpace(key)
+		val = strings.Trim(strings.TrimSpace(val), `"'`)
+		if key == "" {
+			continue
 		}
-		_ = f.Close()
-		log.Debug("loaded .env", "path", path, "keys", loaded)
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, val); err != nil {
+			log.Warn("setting env var", "key", key, "err", err)
+			continue
+		}
+		loaded++
 	}
+	if err := scanner.Err(); err != nil {
+		log.Warn("reading .env file", "path", path, "err", err)
+	}
+	log.Debug("loaded .env", "path", path, "keys", loaded)
 }
 
 func Default() *Config {
