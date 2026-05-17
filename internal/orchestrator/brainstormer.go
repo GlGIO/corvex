@@ -16,7 +16,11 @@ import (
 // BrainstormStep is one iteration of the requirements interview loop.
 // When Done is true, enough information has been gathered to write spec.md.
 type BrainstormStep struct {
-	Done        bool
+	Done bool
+	// Reflection is a one-sentence acknowledgement of the user's previous
+	// answer. The model emits this from the second turn onwards so the
+	// conversation feels stitched together instead of like a form.
+	Reflection  string
 	Question    string
 	Recommended string
 	Rationale   string
@@ -70,6 +74,32 @@ func (b *Brainstormer) Interview(ctx context.Context, description, qaPath string
 	step.TokensOut = result.TokensOut
 	step.DurationMs = result.DurationMs
 	return step, nil
+}
+
+// AskFollowup answers a freeform user question mid-interview WITHOUT
+// advancing the Q&A loop. The model receives the feature description, the
+// accumulated Q&A, and the user's question, and returns a plain-text reply
+// (no JSON envelope) that the CLI prints back. Streaming events still flow
+// through `progressBase`, so the user sees Read/Glob calls if the model
+// looks things up to answer.
+func (b *Brainstormer) AskFollowup(ctx context.Context, description, qaPath, question string) (string, error) {
+	qaContent, err := os.ReadFile(qaPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("reading Q&A file %s: %w", qaPath, err)
+	}
+
+	prompt := buildAskFollowupPrompt(description, string(qaContent), question)
+
+	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
+		Prompt:       prompt,
+		Model:        b.model,
+		WorkDir:      b.workDir,
+		AllowedTools: []string{"Read", "Glob", "Grep"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("ask followup execution: %w", err)
+	}
+	return strings.TrimSpace(result.Output), nil
 }
 
 // GenerateSpec synthesises the feature description and accumulated Q&A into a spec.md file.
@@ -127,6 +157,7 @@ func buildBrainstormerPrompt(description, qaContent string) string {
 ## Hard rules
 
 - The description above IS the feature idea, even if it is vague. Treat it as ground truth. **Never** ask "what is the feature?", "describe the problem", "who uses it?", or any other variant that re-elicits the description. Those are forbidden.
+- **Conversational glue.** If ` + "`Q&A so far`" + ` is non-empty, you MUST include a ` + "`reflection`" + ` field in the JSON: ONE sentence that paraphrases the most recent answer and frames the next decision. The reflection is shown to the user above your next question — it is what makes the conversation feel stitched together instead of robotic. On the very first turn (no prior Q&A), omit the field.
 - ` + "`recommended`" + ` MUST be a concrete, opinionated default answer the user can accept with one Enter — never empty, never a placeholder like "Ex.:" or "TBD". If you can't form a recommendation, you don't have a useful question.
 - Each question must NARROW one specific decision. Examples of useful questions for an analytics feature like the one above:
   • "Track scan events at the QR endpoint or at the redirect target? The first gives reliable counts; the second confirms intent."
@@ -140,7 +171,7 @@ End your response with exactly one fenced code block tagged ` + "`brainstorm`" +
 
 For a question (recommended must be a real answer, not a request to be more specific):
 
-` + "```brainstorm\n" + `{"type":"question","text":"<narrow question>","recommended":"<concrete default answer>","rationale":"<why this decision matters>"}
+` + "```brainstorm\n" + `{"type":"question","reflection":"<one-sentence ack of previous answer, only when Q&A so far is non-empty>","text":"<narrow question>","recommended":"<concrete default answer>","rationale":"<why this decision matters>"}
 ` + "```" + `
 
 When done:
@@ -148,6 +179,30 @@ When done:
 ` + "```brainstorm\n" + `{"type":"done"}
 ` + "```" + `
 `)
+
+	return b.String()
+}
+
+func buildAskFollowupPrompt(description, qaContent, question string) string {
+	var b strings.Builder
+
+	b.WriteString(`The user is in the middle of a brainstorm interview for a software feature. They have paused to ask you a clarifying question. Answer their question plainly and concisely — no JSON envelope, no markdown headings, just the helpful explanation. Use Read/Glob/Grep if and only if the answer truly requires looking at code; cap at 3 tool calls.
+
+## Feature description
+
+`)
+	b.WriteString(description)
+
+	b.WriteString("\n\n## Q&A so far\n\n")
+	if strings.TrimSpace(qaContent) != "" {
+		b.WriteString(qaContent)
+	} else {
+		b.WriteString("None yet.")
+	}
+
+	b.WriteString("\n\n## User question\n\n")
+	b.WriteString(question)
+	b.WriteString("\n\n## Output\n\nRespond directly to the user's question. Keep it under 4 sentences when possible. Do not pose a new design question; the interview loop will resume after.\n")
 
 	return b.String()
 }
@@ -198,6 +253,7 @@ var specBlockRe = regexp.MustCompile("(?s)```spec\\s*\\n(.*?)\\n```")
 
 type brainstormPayload struct {
 	Type        string `json:"type"`
+	Reflection  string `json:"reflection,omitempty"`
 	Text        string `json:"text"`
 	Recommended string `json:"recommended"`
 	Rationale   string `json:"rationale"`
@@ -221,6 +277,7 @@ func parseBrainstormStep(output string) (*BrainstormStep, error) {
 			return nil, fmt.Errorf("question type missing text")
 		}
 		return &BrainstormStep{
+			Reflection:  strings.TrimSpace(p.Reflection),
 			Question:    p.Text,
 			Recommended: p.Recommended,
 			Rationale:   p.Rationale,

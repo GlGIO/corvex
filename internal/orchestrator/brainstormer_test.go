@@ -90,6 +90,38 @@ func TestParseBrainstormStep_UnknownType(t *testing.T) {
 	}
 }
 
+func TestParseBrainstormStep_Reflection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first turn omits reflection", func(t *testing.T) {
+		t.Parallel()
+		out := "```brainstorm\n" +
+			`{"type":"question","text":"Track scans where?","recommended":"At the QR endpoint","rationale":"Reliable counts"}` +
+			"\n```"
+		step, err := parseBrainstormStep(out)
+		if err != nil {
+			t.Fatalf("parseBrainstormStep: %v", err)
+		}
+		if step.Reflection != "" {
+			t.Errorf("Reflection = %q, want empty on first turn", step.Reflection)
+		}
+	})
+
+	t.Run("subsequent turns include reflection", func(t *testing.T) {
+		t.Parallel()
+		out := "```brainstorm\n" +
+			`{"type":"question","reflection":"Got it — scan tracking at the QR endpoint.","text":"What events?","recommended":"scan_started","rationale":"Minimum signal"}` +
+			"\n```"
+		step, err := parseBrainstormStep(out)
+		if err != nil {
+			t.Fatalf("parseBrainstormStep: %v", err)
+		}
+		if step.Reflection != "Got it — scan tracking at the QR endpoint." {
+			t.Errorf("Reflection = %q, want the acknowledgement sentence", step.Reflection)
+		}
+	})
+}
+
 func TestParseBrainstormStep_QuestionMissingText(t *testing.T) {
 	t.Parallel()
 	output := "```brainstorm\n{\"type\":\"question\",\"text\":\"\"}\n```"
@@ -142,6 +174,35 @@ func TestBrainstormer_StreamsToolUsesWhenWriterSet(t *testing.T) {
 	}
 	if strings.Contains(out, "thinking") {
 		t.Errorf("progress should not echo plain text events; got:\n%s", out)
+	}
+}
+
+func TestBrainstormer_AskFollowupReturnsPlainText(t *testing.T) {
+	t.Parallel()
+
+	mp := &mockProgressProvider{
+		mockProvider: mockProvider{
+			executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+				if !strings.Contains(req.Prompt, "User question") {
+					t.Errorf("prompt missing User question header; got:\n%s", req.Prompt)
+				}
+				if !strings.Contains(req.Prompt, "o que é CTR?") {
+					t.Errorf("prompt did not pass the user's question through")
+				}
+				return &types.ExecuteResult{Output: "CTR (click-through rate) is clicks divided by impressions."}, nil
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	br := NewBrainstormer(mp, "sonnet", dir)
+
+	ans, err := br.AskFollowup(context.Background(), "build analytics", filepath.Join(dir, "qa.md"), "o que é CTR?")
+	if err != nil {
+		t.Fatalf("AskFollowup error = %v", err)
+	}
+	if !strings.Contains(ans, "click-through rate") {
+		t.Errorf("answer = %q, want explanation containing click-through rate", ans)
 	}
 }
 

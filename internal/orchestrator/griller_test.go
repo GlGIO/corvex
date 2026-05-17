@@ -1,8 +1,13 @@
 package orchestrator
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/giovannialves/corvex/internal/types"
 )
 
 func TestParseGrillStep_Question(t *testing.T) {
@@ -26,6 +31,68 @@ func TestParseGrillStep_Question(t *testing.T) {
 	}
 	if step.Rationale != "matches existing tools" {
 		t.Errorf("Rationale = %q", step.Rationale)
+	}
+}
+
+func TestParseGrillStep_Reflection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first turn omits reflection", func(t *testing.T) {
+		t.Parallel()
+		out := "```grill\n" +
+			`{"type":"question","text":"Storage?","recommended":"JSON","rationale":"matches tools"}` +
+			"\n```"
+		step, err := parseGrillStep(out)
+		if err != nil {
+			t.Fatalf("parseGrillStep: %v", err)
+		}
+		if step.Reflection != "" {
+			t.Errorf("Reflection = %q, want empty on first turn", step.Reflection)
+		}
+	})
+
+	t.Run("subsequent turns include reflection", func(t *testing.T) {
+		t.Parallel()
+		out := "```grill\n" +
+			`{"type":"question","reflection":"OK — JSON it is.","text":"Pretty-print?","recommended":"Yes","rationale":"diffable"}` +
+			"\n```"
+		step, err := parseGrillStep(out)
+		if err != nil {
+			t.Fatalf("parseGrillStep: %v", err)
+		}
+		if step.Reflection != "OK — JSON it is." {
+			t.Errorf("Reflection = %q", step.Reflection)
+		}
+	})
+}
+
+func TestGriller_AskFollowupReturnsPlainText(t *testing.T) {
+	t.Parallel()
+
+	mp := &mockProgressProvider{
+		mockProvider: mockProvider{
+			executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+				if !strings.Contains(req.Prompt, "User question") {
+					t.Errorf("prompt missing User question header")
+				}
+				return &types.ExecuteResult{Output: "Indexes typically speed reads at write cost."}, nil
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	specPath := filepath.Join(dir, "spec.md")
+	if err := os.WriteFile(specPath, []byte("# spec\n"), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	g := NewGriller(mp, "sonnet", dir)
+	ans, err := g.AskFollowup(context.Background(), specPath, filepath.Join(dir, "decisions.md"), "do I need an index?")
+	if err != nil {
+		t.Fatalf("AskFollowup error = %v", err)
+	}
+	if !strings.Contains(ans, "Indexes") {
+		t.Errorf("answer = %q", ans)
 	}
 }
 

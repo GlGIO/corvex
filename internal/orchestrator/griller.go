@@ -16,7 +16,11 @@ import (
 // When Done is true, no further questions remain. Otherwise Question/Recommended/Rationale describe
 // the next ambiguity the Griller wants the user to resolve.
 type GrillStep struct {
-	Done        bool
+	Done bool
+	// Reflection is a one-sentence acknowledgement of the user's previous
+	// decision. The model emits this from the second turn onwards so the
+	// interview reads as a conversation, not a sequence of unrelated forms.
+	Reflection  string
 	Question    string
 	Recommended string
 	Rationale   string
@@ -76,6 +80,57 @@ func (g *Griller) Grill(ctx context.Context, specPath, decisionsPath string) (*G
 	return step, nil
 }
 
+// AskFollowup answers a freeform user question mid-interview WITHOUT
+// advancing the grill loop. Same shape and intent as
+// Brainstormer.AskFollowup — see that doc for details.
+func (g *Griller) AskFollowup(ctx context.Context, specPath, decisionsPath, question string) (string, error) {
+	specContent, err := os.ReadFile(specPath)
+	if err != nil {
+		return "", fmt.Errorf("reading spec %s: %w", specPath, err)
+	}
+	decisionsContent, err := os.ReadFile(decisionsPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("reading decisions %s: %w", decisionsPath, err)
+	}
+
+	prompt := buildGrillerAskFollowupPrompt(string(specContent), string(decisionsContent), question)
+
+	result, err := g.runStep(ctx, g.provider, types.ExecuteRequest{
+		Prompt:       prompt,
+		Model:        g.model,
+		WorkDir:      g.workDir,
+		AllowedTools: []string{"Read", "Glob", "Grep"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("griller ask followup execution: %w", err)
+	}
+	return strings.TrimSpace(result.Output), nil
+}
+
+func buildGrillerAskFollowupPrompt(specContent, decisionsContent, question string) string {
+	var b strings.Builder
+
+	b.WriteString(`The user is in the middle of a design grill interview. They have paused to ask you a clarifying question. Answer plainly and concisely — no JSON envelope, no markdown headings. Use Read/Glob/Grep only if the answer requires looking at code; cap at 3 tool calls.
+
+## Project specification
+
+`)
+	b.WriteString(specContent)
+
+	b.WriteString("\n\n## Decisions already resolved\n\n")
+	if strings.TrimSpace(decisionsContent) != "" {
+		b.WriteString(decisionsContent)
+	} else {
+		b.WriteString("None yet.")
+	}
+
+	b.WriteString("\n\n## User question\n\n")
+	b.WriteString(question)
+	b.WriteString("\n\n## Output\n\nRespond directly to the user's question. Keep it under 4 sentences when possible. Do not pose a new design question; the interview loop will resume after.\n")
+
+	return b.String()
+}
+
 func buildGrillerPrompt(specContent, decisionsContent string) string {
 	var b strings.Builder
 
@@ -104,7 +159,9 @@ accepted best practice.
 ## How to work
 
 - Before asking, explore the workdir with Read/Glob/Grep to ground your recommendation. Existing
-  conventions beat fresh opinions.
+  conventions beat fresh opinions. Cap at 4 tool calls per turn.
+- **Conversational glue.** If ` + "`Decisions already resolved`" + ` is non-empty, you MUST include a ` + "`reflection`" + ` field: ONE sentence that paraphrases the most recent decision and frames the next ambiguity. The reflection is shown to the user above your next question — it is what makes the interview feel like a conversation. On the very first turn (no prior decisions), omit the field.
+- ` + "`recommended`" + ` MUST be a concrete default answer, never empty and never a placeholder. If you can't form a recommendation, you don't have a useful question.
 - Pick ONE high-impact question that, once answered, unlocks several downstream decisions.
 - Skip cosmetic or trivially defaultable details. Ask only about choices that materially change
   what gets built or how it's structured.
@@ -118,7 +175,7 @@ object. No other text after the block.
 
 For a question:
 
-` + "```grill\n" + `{"type":"question","text":"<question>","recommended":"<answer>","rationale":"<short reason>"}
+` + "```grill\n" + `{"type":"question","reflection":"<one-sentence ack of previous decision, only when Decisions already resolved is non-empty>","text":"<question>","recommended":"<concrete default answer>","rationale":"<short reason>"}
 ` + "```" + `
 
 When done:
@@ -134,6 +191,7 @@ var grillBlockRe = regexp.MustCompile("(?s)```grill\\s*\\n(.*?)\\n```")
 
 type grillPayload struct {
 	Type        string `json:"type"`
+	Reflection  string `json:"reflection,omitempty"`
 	Text        string `json:"text"`
 	Recommended string `json:"recommended"`
 	Rationale   string `json:"rationale"`
@@ -158,6 +216,7 @@ func parseGrillStep(output string) (*GrillStep, error) {
 			return nil, fmt.Errorf("question type missing text")
 		}
 		return &GrillStep{
+			Reflection:  strings.TrimSpace(p.Reflection),
 			Question:    p.Text,
 			Recommended: p.Recommended,
 			Rationale:   p.Rationale,
