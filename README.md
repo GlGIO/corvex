@@ -104,6 +104,7 @@ corvex grill my-feature
 | `corvex run <project> --single` | Execute only the next pending task |
 | `corvex run <project> --dry-run` | Show execution plan without running |
 | `corvex run <project> --plain` | Disable TUI, use plain log output |
+| `corvex run <project> --task S03 --ab sonnet,opus` | A/B-compare two models on one task |
 | `corvex status <project>` | Display DAG with task statuses |
 | `corvex logs <project> [task]` | Show logs for a task |
 | `corvex reset <project> <task>` | Mark a task as PENDING |
@@ -199,6 +200,16 @@ sandbox:
 ```
 
 Only the Worker receives MCP servers. The Planner (read-only) and Reviewer (read+test) run without them. Add `.corvex/mcp.json` to `.gitignore` — it is regenerated on each run.
+
+#### A/B run
+
+Pit two models against the same task to learn which serves it better:
+
+```bash
+corvex run my-feature --task S03 --ab sonnet,opus
+```
+
+Each model executes in its own git worktree under `.corvex/worktrees/`. The Reviewer judges each side independently; the winner's branch is merged back into HEAD with a `corvex: merge a/b winner <branch>` commit, the loser worktree is removed. Outcomes accumulate in `.corvex/ab-stats.json` (per task type), which is the basis for future automatic model routing. A/B currently bypasses container sandboxes — each side runs directly in the host's filesystem inside its worktree.
 
 ## Architecture
 

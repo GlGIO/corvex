@@ -29,6 +29,11 @@ type Options struct {
 	TargetTask string
 	SingleTask bool
 	Sandbox    sandbox.Sandbox
+	// ABModels, when set, enables A/B comparison for the targeted task:
+	// each model in the slice runs in its own worktree, the Reviewer judges
+	// both, and the winner is merged back into HEAD. Requires TargetTask or
+	// SingleTask. Exactly 2 distinct models are expected.
+	ABModels []string
 }
 
 // Orchestrator coordinates task planning, execution, review, and recovery.
@@ -46,6 +51,7 @@ type Orchestrator struct {
 	workDir    string
 	targetTask string
 	singleTask bool
+	abModels   []string
 }
 
 // New creates an Orchestrator from the given options.
@@ -64,6 +70,7 @@ func New(opts Options) *Orchestrator {
 		workDir:    opts.WorkDir,
 		targetTask: opts.TargetTask,
 		singleTask: opts.SingleTask,
+		abModels:   opts.ABModels,
 	}
 }
 
@@ -177,7 +184,15 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 				return fmt.Errorf("task %s not found in parsed tasks", taskID)
 			}
 
-			if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d); err != nil {
+			if len(o.abModels) == 2 {
+				if err := o.runAB(ctx, t, o.abModels); err != nil {
+					return err
+				}
+				completed[t.ID] = true
+				if err := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); err != nil {
+					charmbraceletlog.Warn("updating task status to passed after a/b", "task", t.ID, "err", err)
+				}
+			} else if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d); err != nil {
 				return err
 			}
 		}

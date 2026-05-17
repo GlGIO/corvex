@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,7 @@ var (
 	runDryRun   bool
 	runPlain    bool
 	flagValidate bool
+	runAB       string
 )
 
 var runCmd = &cobra.Command{
@@ -42,6 +44,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "show execution plan without running")
 	runCmd.Flags().BoolVar(&runPlain, "plain", false, "disable TUI, use plain log output")
 	runCmd.Flags().BoolVar(&flagValidate, "validate", false, "run integration validation after all tasks complete")
+	runCmd.Flags().StringVar(&runAB, "ab", "", "A/B run two models against one task (e.g. --ab sonnet,opus); requires --task")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -75,6 +78,14 @@ func runRun(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	abModels, err := parseABModels(runAB)
+	if err != nil {
+		return err
+	}
+	if len(abModels) > 0 && runTask == "" && !runSingle {
+		return fmt.Errorf("--ab requires --task <id> or --single to scope the comparison")
+	}
+
 	orc := orchestrator.New(orchestrator.Options{
 		Config:     cfg,
 		Provider:   p,
@@ -83,6 +94,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		TargetTask: runTask,
 		SingleTask: runSingle,
 		Sandbox:    sb,
+		ABModels:   abModels,
 	})
 
 	if !runPlain && isInteractive() {
@@ -105,6 +117,31 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return validateProject(cmd.Context(), cfg, workDir, project)
 	}
 	return nil
+}
+
+// parseABModels splits a comma-separated flag value like "sonnet,opus" into
+// a 2-element slice, trimming whitespace. Returns nil when the flag is empty.
+// Errors when fewer than 2 distinct models are provided.
+func parseABModels(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	models := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			models = append(models, p)
+		}
+	}
+	if len(models) != 2 {
+		return nil, fmt.Errorf("--ab needs exactly 2 models separated by a comma (got %d: %q)", len(models), raw)
+	}
+	if models[0] == models[1] {
+		return nil, fmt.Errorf("--ab models must differ (got %q twice)", models[0])
+	}
+	return models, nil
 }
 
 func isInteractive() bool {
