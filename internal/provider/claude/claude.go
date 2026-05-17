@@ -7,12 +7,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/log"
 
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/types"
 )
+
+// mcpConfigRelPath is where Corvex materialises the MCP config for the Worker
+// before each Claude CLI invocation. Path is relative to the project root so
+// it resolves identically for local and Docker (the project root is bind-
+// mounted at the container workdir).
+const mcpConfigRelPath = ".corvex/mcp.json"
 
 var supportedModels = []string{
 	"opus",
@@ -340,6 +349,15 @@ func parseToolResult(line []byte) ([]types.StreamEvent, error) {
 // BuildCommand implements provider.CommandBuilder.
 func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, map[string]string) {
 	args := buildArgs(req)
+
+	if len(c.cfg.Sandbox.MCPServers) > 0 {
+		if err := writeMCPConfig(c.cfg.Sandbox.MCPServers); err != nil {
+			log.Warn("failed to write MCP config, continuing without MCP servers", "err", err)
+		} else {
+			args = append(args, "--mcp-config", mcpConfigRelPath)
+		}
+	}
+
 	args = append(args, c.cfg.Sandbox.WorkerExtraArgs...)
 
 	env := make(map[string]string)
@@ -347,6 +365,44 @@ func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, ma
 		env[k] = v
 	}
 	return c.binaryCmd, args, env
+}
+
+// writeMCPConfig materialises the Claude CLI `--mcp-config` JSON next to the
+// project root so it is reachable from both local execution and the Docker
+// sandbox (the project root is bind-mounted at the container workdir).
+func writeMCPConfig(servers []config.MCPServerConfig) error {
+	type serverEntry struct {
+		Command string            `json:"command"`
+		Args    []string          `json:"args,omitempty"`
+		Env     map[string]string `json:"env,omitempty"`
+	}
+	payload := struct {
+		MCPServers map[string]serverEntry `json:"mcpServers"`
+	}{MCPServers: make(map[string]serverEntry, len(servers))}
+
+	for _, s := range servers {
+		if s.Name == "" || s.Command == "" {
+			return fmt.Errorf("invalid MCP server: name and command are required (got name=%q command=%q)", s.Name, s.Command)
+		}
+		payload.MCPServers[s.Name] = serverEntry{
+			Command: s.Command,
+			Args:    s.Args,
+			Env:     s.Env,
+		}
+	}
+
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal mcp config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(mcpConfigRelPath), 0o755); err != nil {
+		return fmt.Errorf("create %s dir: %w", filepath.Dir(mcpConfigRelPath), err)
+	}
+	if err := os.WriteFile(mcpConfigRelPath, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", mcpConfigRelPath, err)
+	}
+	return nil
 }
 
 // ParseFullOutput implements provider.CommandBuilder.

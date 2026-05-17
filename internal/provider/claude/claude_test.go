@@ -624,6 +624,106 @@ func TestBuildCommand_WithAllowedTools(t *testing.T) {
 	}
 }
 
+func TestBuildCommand_WithMCPServers(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{
+			Name:    "postgres",
+			Command: "npx",
+			Args:    []string{"-y", "@modelcontextprotocol/server-postgres", "postgres://localhost/db"},
+		},
+		{
+			Name:    "playwright",
+			Command: "npx",
+			Args:    []string{"-y", "@modelcontextprotocol/server-playwright"},
+			Env:     map[string]string{"DEBUG": "1"},
+		},
+	}
+	cli := New(cfg)
+
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+
+	// args should contain --mcp-config .corvex/mcp.json
+	var found bool
+	for i, a := range args {
+		if a == "--mcp-config" && i+1 < len(args) && args[i+1] == ".corvex/mcp.json" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected --mcp-config .corvex/mcp.json in args, got %v", args)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".corvex", "mcp.json"))
+	if err != nil {
+		t.Fatalf("read mcp.json: %v", err)
+	}
+
+	var got struct {
+		MCPServers map[string]struct {
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal mcp.json: %v\nraw: %s", err, data)
+	}
+
+	pg, ok := got.MCPServers["postgres"]
+	if !ok {
+		t.Fatalf("missing postgres entry, got %+v", got.MCPServers)
+	}
+	if pg.Command != "npx" || len(pg.Args) != 3 {
+		t.Errorf("postgres entry wrong: %+v", pg)
+	}
+
+	pw, ok := got.MCPServers["playwright"]
+	if !ok {
+		t.Fatalf("missing playwright entry")
+	}
+	if pw.Env["DEBUG"] != "1" {
+		t.Errorf("playwright env = %v, want DEBUG=1", pw.Env)
+	}
+}
+
+func TestBuildCommand_NoMCPServers_NoFlag(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cli := New(cfg)
+
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+
+	for _, a := range args {
+		if a == "--mcp-config" {
+			t.Errorf("--mcp-config should not appear when MCPServers is empty; args = %v", args)
+		}
+	}
+}
+
+func TestBuildCommand_InvalidMCPServer_SkipsFlag(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{Name: "missing-command"}, // Command empty → invalid
+	}
+	cli := New(cfg)
+
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+
+	for _, a := range args {
+		if a == "--mcp-config" {
+			t.Errorf("--mcp-config should not appear when MCP write fails; args = %v", args)
+		}
+	}
+}
+
 func TestBuildCommand_EnvForwarding(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()

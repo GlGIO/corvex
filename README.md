@@ -169,6 +169,25 @@ Planner (read-only) and Reviewer (read+test) always run on the host since they p
 
 **Worker extra args** (`sandbox.worker_extra_args`) allow flags like `--dangerously-skip-permissions` that skip interactive tool confirmations. These are only safe inside Docker isolation — using them with `type: local` is at your own risk.
 
+#### MCP servers (Worker only)
+
+Declare MCP servers in `config.yaml` to expose extra tools to the Worker — databases, browsers, GitHub APIs, etc. Corvex materialises the config as `.corvex/mcp.json` before each Worker invocation and passes it through `claude --mcp-config`:
+
+```yaml
+sandbox:
+  mcp_servers:
+    - name: postgres
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-postgres", "postgres://localhost/db"]
+    - name: playwright
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-playwright"]
+      env:
+        DEBUG: "1"
+```
+
+Only the Worker receives MCP servers. The Planner (read-only) and Reviewer (read+test) run without them. Add `.corvex/mcp.json` to `.gitignore` — it is regenerated on each run.
+
 ## Architecture
 
 ```

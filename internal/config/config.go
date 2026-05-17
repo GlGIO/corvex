@@ -34,12 +34,24 @@ type ModelsConfig struct {
 }
 
 type SandboxConfig struct {
-	Type            string   `yaml:"type"`
-	Profile         string   `yaml:"profile"` // "" | "nix" | "devcontainer" — overrides Type when set
-	Image           string   `yaml:"image"`
-	Mount           string   `yaml:"mount"`
-	WorkDir         string   `yaml:"workdir"`
-	WorkerExtraArgs []string `yaml:"worker_extra_args"`
+	Type            string            `yaml:"type"`
+	Profile         string            `yaml:"profile"` // "" | "nix" | "devcontainer" — overrides Type when set
+	Image           string            `yaml:"image"`
+	Mount           string            `yaml:"mount"`
+	WorkDir         string            `yaml:"workdir"`
+	WorkerExtraArgs []string          `yaml:"worker_extra_args"`
+	MCPServers      []MCPServerConfig `yaml:"mcp_servers"`
+}
+
+// MCPServerConfig declares an MCP server exposed to the Worker. Servers are
+// materialised into a JSON file passed via the provider CLI (e.g.
+// `claude --mcp-config`). Only the Worker receives MCP servers; the Planner
+// (read-only) and Reviewer (read+test) run without them.
+type MCPServerConfig struct {
+	Name    string            `yaml:"name"`
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Env     map[string]string `yaml:"env"`
 }
 
 type ExecutionConfig struct {
