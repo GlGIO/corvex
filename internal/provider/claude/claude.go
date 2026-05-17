@@ -384,10 +384,18 @@ func writeMCPConfig(servers []config.MCPServerConfig) error {
 		if s.Name == "" || s.Command == "" {
 			return fmt.Errorf("invalid MCP server: name and command are required (got name=%q command=%q)", s.Name, s.Command)
 		}
+		expandedArgs := make([]string, len(s.Args))
+		for i, a := range s.Args {
+			expandedArgs[i] = os.ExpandEnv(a)
+		}
+		expandedEnv := make(map[string]string, len(s.Env))
+		for k, v := range s.Env {
+			expandedEnv[k] = os.ExpandEnv(v)
+		}
 		payload.MCPServers[s.Name] = serverEntry{
-			Command: s.Command,
-			Args:    s.Args,
-			Env:     s.Env,
+			Command: os.ExpandEnv(s.Command),
+			Args:    expandedArgs,
+			Env:     expandedEnv,
 		}
 	}
 

@@ -705,6 +705,46 @@ func TestBuildCommand_NoMCPServers_NoFlag(t *testing.T) {
 	}
 }
 
+func TestBuildCommand_MCPExpandsEnvVars(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("CORVEX_TEST_DB_PASSWORD", "s3cret!")
+	t.Setenv("CORVEX_TEST_DB_HOST", "db.internal")
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{
+			Name:    "postgres",
+			Command: "${CORVEX_TEST_BIN:-npx}",
+			Args:    []string{"-y", "@modelcontextprotocol/server-postgres", "postgres://app:${CORVEX_TEST_DB_PASSWORD}@${CORVEX_TEST_DB_HOST}/app"},
+			Env:     map[string]string{"DB_PASSWORD": "${CORVEX_TEST_DB_PASSWORD}"},
+		},
+	}
+	cli := New(cfg)
+
+	cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+
+	data, err := os.ReadFile(filepath.Join(dir, ".corvex", "mcp.json"))
+	if err != nil {
+		t.Fatalf("read mcp.json: %v", err)
+	}
+	got := string(data)
+
+	if !strings.Contains(got, "s3cret!") {
+		t.Errorf("expected expanded password in args; got:\n%s", got)
+	}
+	if !strings.Contains(got, "db.internal") {
+		t.Errorf("expected expanded host in args; got:\n%s", got)
+	}
+	if !strings.Contains(got, `"DB_PASSWORD": "s3cret!"`) {
+		t.Errorf("expected expanded env value; got:\n%s", got)
+	}
+	// The literal `${...}` form must not survive into the materialised config.
+	if strings.Contains(got, "${CORVEX_TEST_DB_PASSWORD}") {
+		t.Errorf("unexpanded ${...} leaked into mcp.json:\n%s", got)
+	}
+}
+
 func TestBuildCommand_InvalidMCPServer_SkipsFlag(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
