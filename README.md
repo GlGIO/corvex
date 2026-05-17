@@ -169,9 +169,11 @@ For repos that already declare their dev environment, set `sandbox.profile` to i
 ```yaml
 sandbox:
   profile: nix          # reads flake.nix at the repo root
+  # profile: devcontainer  # reads .devcontainer/devcontainer.json
 ```
 
-When `profile: nix` is set, the Worker command is wrapped with `nix develop --command <cmd>`, so it runs inside the flake's devShell. The Claude CLI must be reachable from the resolved PATH (either declared in the flake or kept on the host PATH, which is appended after the Nix shell environment). Corvex falls back to local execution if `nix` is not installed.
+- `profile: nix` — the Worker command is wrapped with `nix develop --command <cmd>`, so it runs inside the flake's devShell. The Claude CLI must be reachable from the resolved PATH (either declared in the flake or kept on the host PATH, which is appended after the Nix shell environment). Corvex falls back to local execution if `nix` is not installed.
+- `profile: devcontainer` — Corvex delegates lifecycle to the official `devcontainer` CLI (`devcontainer up` then `devcontainer exec`). Requires [`@devcontainers/cli`](https://github.com/devcontainers/cli) on the host PATH. Corvex falls back to local execution if it is not installed.
 
 Planner (read-only) and Reviewer (read+test) always run on the host since they present low risk.
 

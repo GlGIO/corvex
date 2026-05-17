@@ -43,6 +43,11 @@ func TestNewSandbox(t *testing.T) {
 			wantType: "*sandbox.NixSandbox|*sandbox.LocalSandbox",
 		},
 		{
+			name:     "devcontainer profile returns DevcontainerSandbox or LocalSandbox",
+			cfg:      config.SandboxConfig{Profile: "devcontainer"},
+			wantType: "*sandbox.DevcontainerSandbox|*sandbox.LocalSandbox",
+		},
+		{
 			name:     "unknown profile falls back to type",
 			cfg:      config.SandboxConfig{Profile: "bsd-jail", Type: "local"},
 			wantType: "*sandbox.LocalSandbox",
@@ -77,6 +82,12 @@ func TestNewSandbox(t *testing.T) {
 				_, isNix := sb.(*NixSandbox)
 				if !isLocal && !isNix {
 					t.Errorf("NewSandbox() type = %T, want *LocalSandbox or *NixSandbox", sb)
+				}
+			case "*sandbox.DevcontainerSandbox|*sandbox.LocalSandbox":
+				_, isLocal := sb.(*LocalSandbox)
+				_, isDC := sb.(*DevcontainerSandbox)
+				if !isLocal && !isDC {
+					t.Errorf("NewSandbox() type = %T, want *LocalSandbox or *DevcontainerSandbox", sb)
 				}
 			}
 		})

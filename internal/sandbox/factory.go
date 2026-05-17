@@ -25,6 +25,13 @@ func NewSandbox(cfg config.SandboxConfig) Sandbox {
 		}
 		log.Warn("nix not available, falling back to local sandbox")
 		return NewLocalSandbox(cfg)
+	case "devcontainer":
+		dc := NewDevcontainerSandbox(cfg)
+		if dc.IsAvailable(context.Background()) {
+			return dc
+		}
+		log.Warn("devcontainer CLI not available, falling back to local sandbox")
+		return NewLocalSandbox(cfg)
 	case "":
 		// no profile — fall through to Type
 	default:
