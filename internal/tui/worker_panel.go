@@ -14,7 +14,7 @@ type WorkerPanel struct {
 	viewport   viewport.Model
 	lines      []string
 	activeTask string
-	phase      string // "Worker" or "Reviewer"
+	phase      string // "worker" or "review"
 	width      int
 	height     int
 	autoScroll bool
@@ -26,7 +26,7 @@ func NewWorkerPanel() WorkerPanel {
 	return WorkerPanel{
 		viewport:   vp,
 		autoScroll: true,
-		phase:      "Worker",
+		phase:      "worker",
 	}
 }
 
@@ -44,17 +44,23 @@ func (w WorkerPanel) Update(msg tea.Msg) (WorkerPanel, tea.Cmd) {
 	return w, cmd
 }
 
-// View renders the panel header and viewport content.
+// View renders the panel header (phase + active task as a chip) followed
+// by the scrollable stream content.
 func (w WorkerPanel) View() string {
-	header := CounterStyle.Render(fmt.Sprintf(" %s: %s", w.phase, w.activeTask))
+	header := w.renderHeader()
+	return header + "\n" + w.viewport.View()
+}
 
-	contentWidth := w.width - 4
-	if contentWidth < 10 {
-		contentWidth = 10
+func (w WorkerPanel) renderHeader() string {
+	phase := w.phase
+	if phase == "" {
+		phase = "worker"
 	}
-	divider := DividerStyle.Render(strings.Repeat("─", contentWidth))
-
-	return header + "\n" + divider + "\n" + w.viewport.View()
+	chip := Chip.Render(phase)
+	if w.activeTask == "" {
+		return TextMuted.Render(" ") + chip
+	}
+	return " " + chip + " " + TextMuted.Render(w.activeTask)
 }
 
 // SetSize adjusts the panel and its viewport dimensions.
@@ -62,12 +68,12 @@ func (w WorkerPanel) SetSize(width, height int) WorkerPanel {
 	w.width = width
 	w.height = height
 
-	// viewport height minus header (1) and divider (1)
-	vpHeight := height - 2
+	// viewport height minus header (1 line)
+	vpHeight := height - 1
 	if vpHeight < 1 {
 		vpHeight = 1
 	}
-	vpWidth := width - 4 // border + padding
+	vpWidth := width - 2
 	if vpWidth < 10 {
 		vpWidth = 10
 	}
@@ -77,7 +83,9 @@ func (w WorkerPanel) SetSize(width, height int) WorkerPanel {
 	return w
 }
 
-// AppendStream adds a formatted stream event to the output.
+// AppendStream adds a formatted stream event to the output. Tool calls
+// and their results use ›/↳ glyphs instead of emoji icons; text events
+// are rendered plain to keep the stream low-noise.
 func (w WorkerPanel) AppendStream(ev *types.StreamEvent) WorkerPanel {
 	if ev == nil {
 		return w
@@ -86,17 +94,49 @@ func (w WorkerPanel) AppendStream(ev *types.StreamEvent) WorkerPanel {
 	var line string
 	switch ev.Type {
 	case types.EventToolUse:
-		icon := ToolIcon(ev.Tool)
-		line = StreamTool.Render(fmt.Sprintf("%s %s", icon, ev.Content))
+		tool := strings.TrimSpace(ev.Tool)
+		body := strings.TrimSpace(ev.Content)
+		if ev.File != "" {
+			body = ev.File
+		}
+		switch {
+		case tool != "" && body != "":
+			line = fmt.Sprintf("  %s %s  %s",
+				StreamTool.Render(GlyphToolUse),
+				StreamTool.Bold(true).Render(tool),
+				TextMuted.Render(truncate(body, 200)),
+			)
+		case tool != "":
+			line = fmt.Sprintf("  %s %s",
+				StreamTool.Render(GlyphToolUse),
+				StreamTool.Bold(true).Render(tool),
+			)
+		default:
+			line = fmt.Sprintf("  %s %s",
+				StreamTool.Render(GlyphToolUse),
+				StreamTool.Render(truncate(body, 200)),
+			)
+		}
 	case types.EventToolResult:
-		line = StreamResult.Render(fmt.Sprintf("  → %s", truncate(ev.Content, 120)))
+		line = fmt.Sprintf("  %s %s",
+			StreamResult.Render(GlyphToolDone),
+			StreamResult.Render(truncate(ev.Content, 200)),
+		)
 	case types.EventText:
-		line = StreamText.Render(fmt.Sprintf("💬 %s", ev.Content))
+		line = "  " + StreamText.Render(ev.Content)
+	case types.EventError:
+		line = fmt.Sprintf("  %s %s",
+			StreamError.Render(GlyphFailed),
+			StreamError.Render(ev.Content),
+		)
 	default:
 		if ev.File != "" {
-			line = StreamFile.Render(fmt.Sprintf("📄 %s", ev.File))
+			line = fmt.Sprintf("  %s %s",
+				StreamFile.Render(GlyphBullet),
+				StreamFile.Render(ev.File),
+			)
 		} else {
-			line = StreamText.Render(ev.Content)
+			line = "  " + StreamText.Render(ev.Content)
 		}
 	}
 
@@ -109,10 +149,10 @@ func (w WorkerPanel) AppendStream(ev *types.StreamEvent) WorkerPanel {
 	return w
 }
 
-// SetActiveTask updates the current task label and phase.
+// SetActiveTask updates the current task label and phase chip.
 func (w WorkerPanel) SetActiveTask(taskID, phase string) WorkerPanel {
 	w.activeTask = taskID
-	w.phase = phase
+	w.phase = strings.ToLower(phase)
 	return w
 }
 

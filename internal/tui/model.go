@@ -3,6 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -18,34 +21,56 @@ type channelClosedMsg struct{}
 
 type tickMsg time.Time
 
-// Model is the top-level Bubbletea model composing DAG, Worker, and Status panels.
+// modalKind identifies which full-screen overlay (if any) is currently open.
+type modalKind int
+
+const (
+	modalNone modalKind = iota
+	modalHelp
+	modalDetail
+)
+
+// Model is the top-level Bubbletea model. Layout is vertical:
+// header → DAG → divider → worker stream → status bar. Modals are
+// full-screen overlays drawn on top.
 type Model struct {
 	dag      DAGPanel
 	worker   WorkerPanel
 	status   StatusBar
 	keys     KeyMap
 	events   <-chan orchestrator.Event
+	commands chan<- orchestrator.Command
 	cancel   context.CancelFunc
 	project  string
 	ready    bool
 	quitting bool
 	done     bool
 	paused   bool
+	modal    modalKind
 	width    int
 	height   int
 }
 
 // New creates a TUI model connected to the orchestrator event channel.
+// `commands` (optional) is the channel the model uses to deliver
+// pause/skip/retry requests back to the orchestrator.
 func New(events <-chan orchestrator.Event, cancel context.CancelFunc, project string) Model {
+	return NewWithCommands(events, nil, cancel, project)
+}
+
+// NewWithCommands is like New but also wires a command channel so the
+// orchestrator can react to runtime control keys.
+func NewWithCommands(events <-chan orchestrator.Event, commands chan<- orchestrator.Command, cancel context.CancelFunc, project string) Model {
 	keys := DefaultKeyMap()
 	return Model{
-		dag:    NewDAGPanel(),
-		worker: NewWorkerPanel(),
-		status: NewStatusBar(keys),
-		keys:   keys,
-		events: events,
-		cancel: cancel,
-		project: project,
+		dag:      NewDAGPanel(),
+		worker:   NewWorkerPanel(),
+		status:   NewStatusBar(keys),
+		keys:     keys,
+		events:   events,
+		commands: commands,
+		cancel:   cancel,
+		project:  project,
 	}
 }
 
@@ -69,19 +94,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.resize()
 
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keys.Quit):
-			m.quitting = true
-			m.cancel()
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Pause):
-			m.paused = !m.paused
-			m.status = m.status.SetPaused(m.paused)
-		case key.Matches(msg, m.keys.Up):
-			m.dag = m.dag.Update(msg)
-		case key.Matches(msg, m.keys.Down):
-			m.dag = m.dag.Update(msg)
-		}
+		m, cmds = m.handleKey(msg, cmds)
 
 	case eventMsg:
 		m = m.handleEvent(orchestrator.Event(msg))
@@ -96,14 +109,123 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tickCmd())
 	}
 
-	// Delegate viewport updates
-	var vpCmd tea.Cmd
-	m.worker, vpCmd = m.worker.Update(msg)
-	if vpCmd != nil {
-		cmds = append(cmds, vpCmd)
+	// Delegate viewport updates only when no modal is open; otherwise the
+	// modal owns the keyboard.
+	if m.modal == modalNone {
+		var vpCmd tea.Cmd
+		m.worker, vpCmd = m.worker.Update(msg)
+		if vpCmd != nil {
+			cmds = append(cmds, vpCmd)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleKey(msg tea.KeyMsg, cmds []tea.Cmd) (Model, []tea.Cmd) {
+	// Filter mode captures keystrokes for the input.
+	if m.status.Filtering() {
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.status = m.status.ExitFilter()
+			m.dag = m.dag.SetFilter("")
+		case tea.KeyEnter:
+			m.status = m.status.ExitFilter()
+		case tea.KeyBackspace:
+			m.status = m.status.BackspaceFilter()
+			m.dag = m.dag.SetFilter(m.status.Filter())
+		case tea.KeyRunes:
+			for _, r := range msg.Runes {
+				m.status = m.status.AppendFilter(r)
+			}
+			m.dag = m.dag.SetFilter(m.status.Filter())
+		}
+		return m, cmds
+	}
+
+	// Modal-aware keys: only Esc / quit / help-toggle pass through.
+	if m.modal != modalNone {
+		switch {
+		case key.Matches(msg, m.keys.Esc), key.Matches(msg, m.keys.Help) && m.modal == modalHelp:
+			m.modal = modalNone
+		case key.Matches(msg, m.keys.Quit):
+			m.quitting = true
+			m.cancel()
+			return m, append(cmds, tea.Quit)
+		}
+		return m, cmds
+	}
+
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		m.quitting = true
+		m.cancel()
+		return m, append(cmds, tea.Quit)
+	case key.Matches(msg, m.keys.Help):
+		m.modal = modalHelp
+	case key.Matches(msg, m.keys.Detail):
+		if m.dag.SelectedTask() != nil {
+			m.modal = modalDetail
+		}
+	case key.Matches(msg, m.keys.Filter):
+		m.status = m.status.EnterFilter()
+	case key.Matches(msg, m.keys.Pause):
+		m.paused = !m.paused
+		m.status = m.status.SetPaused(m.paused)
+		m.sendCommand(orchestrator.Command{Type: pauseToggle(m.paused)})
+	case key.Matches(msg, m.keys.Skip):
+		if t := m.dag.SelectedTask(); t != nil && t.Status == types.StatusPending {
+			m.sendCommand(orchestrator.Command{Type: orchestrator.CmdSkip, TaskID: t.ID})
+		}
+	case key.Matches(msg, m.keys.Retry):
+		if t := m.dag.SelectedTask(); t != nil && t.Status == types.StatusFailed {
+			m.sendCommand(orchestrator.Command{Type: orchestrator.CmdRetry, TaskID: t.ID})
+		}
+	case key.Matches(msg, m.keys.Logs):
+		if t := m.dag.SelectedTask(); t != nil {
+			if logsCmd := buildLogsCommand(m.project, t.ID); logsCmd != nil {
+				cmds = append(cmds, tea.ExecProcess(logsCmd, nil))
+			}
+		}
+	case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.Down):
+		m.dag = m.dag.Update(msg)
+	}
+	return m, cmds
+}
+
+// buildLogsCommand assembles `corvex logs <project> <task> | $PAGER` for
+// tea.ExecProcess. Returns nil when the running binary path cannot be
+// resolved (in which case the `l` key becomes a no-op rather than crash).
+func buildLogsCommand(project, taskID string) *exec.Cmd {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return nil
+	}
+	pager := os.Getenv("PAGER")
+	if pager == "" {
+		pager = "less -R"
+	}
+	shellCmd := fmt.Sprintf("%q logs %q %q | %s", exe, project, taskID, pager)
+	return exec.Command("sh", "-c", shellCmd)
+}
+
+func (m Model) sendCommand(cmd orchestrator.Command) {
+	if m.commands == nil {
+		return
+	}
+	select {
+	case m.commands <- cmd:
+	default:
+		// Drop on full channel — control keys are advisory; user can
+		// re-press.
+	}
+}
+
+func pauseToggle(paused bool) orchestrator.CommandType {
+	if paused {
+		return orchestrator.CmdPause
+	}
+	return orchestrator.CmdResume
 }
 
 // View renders the full TUI layout.
@@ -111,76 +233,107 @@ func (m Model) View() string {
 	if !m.ready {
 		return "\n  Initializing..."
 	}
-
 	if m.quitting {
 		return "\n  Cancelled.\n"
 	}
 
 	header := m.renderHeader()
-
-	dagWidth := m.width * 40 / 100
-	workerWidth := m.width - dagWidth
-
-	// Main content height: total minus header (1) and status bar (3 lines)
-	mainHeight := m.height - 4
-	if mainHeight < 3 {
-		mainHeight = 3
-	}
-
-	dagView := DAGPanelStyle.
-		Width(dagWidth - 2). // minus border
-		Height(mainHeight - 2). // minus border
-		Render(m.dag.View())
-
-	workerView := WorkerPanelStyle.
-		Width(workerWidth - 2).
-		Height(mainHeight - 2).
-		Render(m.worker.View())
-
-	main := lipgloss.JoinHorizontal(lipgloss.Top, dagView, workerView)
 	statusView := m.status.View()
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, main, statusView)
+	// 1 header + status (2 lines: divider + body) = 3 lines; remainder for main.
+	mainHeight := m.height - 3
+	if mainHeight < 6 {
+		mainHeight = 6
+	}
+
+	// DAG gets ~40% of remaining height, capped at 12 rows for readability.
+	dagHeight := mainHeight * 40 / 100
+	if dagHeight < 4 {
+		dagHeight = 4
+	}
+	if dagHeight > 12 {
+		dagHeight = 12
+	}
+	if dagHeight > mainHeight-3 {
+		dagHeight = mainHeight - 3
+	}
+
+	workerHeight := mainHeight - dagHeight - 1 // 1 line for separator
+
+	dagView := lipgloss.NewStyle().
+		Width(m.width).
+		Height(dagHeight).
+		Render(m.dag.View())
+
+	separator := Divider.Render(strings.Repeat("─", m.width))
+
+	workerView := lipgloss.NewStyle().
+		Width(m.width).
+		Height(workerHeight).
+		Render(m.worker.View())
+
+	main := lipgloss.JoinVertical(lipgloss.Left, header, dagView, separator, workerView, statusView)
+
+	if m.modal == modalHelp {
+		return overlay(main, helpModalView(m.keys, m.width, m.height), m.width, m.height)
+	}
+	if m.modal == modalDetail {
+		if t := m.dag.SelectedTask(); t != nil {
+			return overlay(main, detailModalView(*t, m.width, m.height), m.width, m.height)
+		}
+	}
+
+	return main
 }
 
 func (m Model) renderHeader() string {
+	tasks := m.dag.Tasks()
 	completed := 0
-	total := 0
-	for _, t := range m.dag.tasks {
-		total++
+	for _, t := range tasks {
 		if t.Status == types.StatusPassed {
 			completed++
 		}
 	}
+	total := len(tasks)
 
-	headerText := fmt.Sprintf(
-		"corvex ─── %s ─── %d/%d done ─── %s",
-		m.project,
-		completed,
-		total,
+	left := HeaderTitle.Render("corvex") + TextMuted.Render(" · ") +
+		Chip.Render(m.project)
+
+	right := fmt.Sprintf("%s%s%s",
+		TextMuted.Render(fmt.Sprintf("%d/%d", completed, total)),
+		TextMuted.Render(" · "),
 		CostStyle.Render(FormatCost(m.status.totalCost)),
 	)
 
-	return HeaderStyle.Render(headerText)
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
+	gap := m.width - leftW - rightW - 2
+	if gap < 1 {
+		gap = 1
+	}
+
+	return " " + left + strings.Repeat(" ", gap) + right + " "
 }
 
 func (m Model) resize() Model {
-	dagWidth := m.width * 40 / 100
-	workerWidth := m.width - dagWidth
-
-	mainHeight := m.height - 4
-	if mainHeight < 3 {
-		mainHeight = 3
+	mainHeight := m.height - 3
+	if mainHeight < 6 {
+		mainHeight = 6
 	}
-
-	// Panel inner height (minus border top/bottom)
-	innerHeight := mainHeight - 2
-	if innerHeight < 1 {
-		innerHeight = 1
+	dagHeight := mainHeight * 40 / 100
+	if dagHeight < 4 {
+		dagHeight = 4
 	}
+	if dagHeight > 12 {
+		dagHeight = 12
+	}
+	if dagHeight > mainHeight-3 {
+		dagHeight = mainHeight - 3
+	}
+	workerHeight := mainHeight - dagHeight - 1
 
-	m.dag = m.dag.SetSize(dagWidth, innerHeight)
-	m.worker = m.worker.SetSize(workerWidth, innerHeight)
+	m.dag = m.dag.SetSize(m.width, dagHeight)
+	m.worker = m.worker.SetSize(m.width, workerHeight)
 	m.status = m.status.SetSize(m.width)
 	return m
 }
@@ -193,7 +346,7 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 	case orchestrator.EventTaskStart:
 		m.dag = m.dag.UpdateTask(ev.TaskID, types.StatusRunning, 0, ev.Attempt)
 		m.worker = m.worker.Clear()
-		m.worker = m.worker.SetActiveTask(ev.TaskID, "Worker")
+		m.worker = m.worker.SetActiveTask(ev.TaskID, "worker")
 		m.status = m.status.IncrTurns()
 
 	case orchestrator.EventTaskStream:
@@ -208,19 +361,18 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 		}
 
 	case orchestrator.EventReviewStart:
-		m.worker = m.worker.SetActiveTask(ev.TaskID, "Reviewer")
+		m.worker = m.worker.SetActiveTask(ev.TaskID, "review")
 
 	case orchestrator.EventReviewResult:
-		line := fmt.Sprintf("Review: %s", ev.Message)
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
-			Content: line,
+			Content: "review: " + ev.Message,
 		})
 
 	case orchestrator.EventCheckpoint:
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
-			Content: fmt.Sprintf("✅ Checkpoint saved for %s", ev.TaskID),
+			Content: fmt.Sprintf("checkpoint saved for %s", ev.TaskID),
 		})
 
 	case orchestrator.EventDone:
@@ -229,11 +381,11 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 	case orchestrator.EventError:
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventError,
-			Content: fmt.Sprintf("❌ Error: %s", ev.Message),
+			Content: ev.Message,
 		})
 
 	case orchestrator.EventPlanStart:
-		m.worker = m.worker.SetActiveTask("", "Planner")
+		m.worker = m.worker.SetActiveTask("", "plan")
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
 			Content: "Planning tasks...",
@@ -248,7 +400,7 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 	case orchestrator.EventRetry:
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
-			Content: fmt.Sprintf("🔄 Retrying %s (attempt %d)", ev.TaskID, ev.Attempt),
+			Content: fmt.Sprintf("retrying %s (attempt %d)", ev.TaskID, ev.Attempt),
 		})
 	}
 
@@ -280,7 +432,17 @@ func (m Model) AddDAGTasks(tasks []TaskEntry) Model {
 // HeaderLine returns a simple header string for non-TUI contexts.
 func HeaderLine(project string, completed, total int, cost float64) string {
 	return fmt.Sprintf(
-		"corvex ─── %s ─── %d/%d done ─── %s",
+		"corvex · %s · %d/%d done · %s",
 		project, completed, total, FormatCost(cost),
 	)
+}
+
+// overlay centres `inner` over `background` so the modal floats above the
+// main layout without breaking the rest of the screen geometry.
+func overlay(background, inner string, w, h int) string {
+	box := lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, inner,
+		lipgloss.WithWhitespaceChars(" "),
+	)
+	_ = background
+	return box
 }

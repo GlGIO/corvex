@@ -34,6 +34,9 @@ type Options struct {
 	// both, and the winner is merged back into HEAD. Requires TargetTask or
 	// SingleTask. Exactly 2 distinct models are expected.
 	ABModels []string
+	// Commands carries runtime control messages from a UI (pause, skip,
+	// retry). Optional — when nil, the orchestrator runs uninterrupted.
+	Commands <-chan Command
 }
 
 // Orchestrator coordinates task planning, execution, review, and recovery.
@@ -52,6 +55,9 @@ type Orchestrator struct {
 	targetTask string
 	singleTask bool
 	abModels   []string
+	commands   <-chan Command
+	skip       map[string]bool // task IDs skipped by the user at runtime
+	paused     bool            // toggled by Cmd{Pause,Resume}
 }
 
 // New creates an Orchestrator from the given options.
@@ -71,6 +77,8 @@ func New(opts Options) *Orchestrator {
 		targetTask: opts.TargetTask,
 		singleTask: opts.SingleTask,
 		abModels:   opts.ABModels,
+		commands:   opts.Commands,
+		skip:       make(map[string]bool),
 	}
 }
 
@@ -171,6 +179,20 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		for _, taskID := range ready {
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+
+			o.drainCommands(ctx, tasksPath, tasks, completed)
+			if err := o.waitWhilePaused(ctx, tasksPath, tasks, completed); err != nil {
+				return err
+			}
+
+			if o.skip[taskID] {
+				if err := task.UpdateTaskStatus(tasksPath, taskID, types.StatusSkipped); err != nil {
+					charmbraceletlog.Warn("updating task status to skipped", "task", taskID, "err", err)
+				}
+				completed[taskID] = true
+				o.emit(Event{Type: EventTaskComplete, TaskID: taskID, Status: types.StatusSkipped, Message: "skipped by user"})
+				continue
 			}
 
 			var t *types.Task
@@ -436,5 +458,93 @@ func (o *Orchestrator) emit(ev Event) {
 func (o *Orchestrator) runHook(ctx context.Context, name string, env hooks.HookEnv, taskID string) {
 	if _, err := o.hooks.Run(ctx, name, env); err != nil {
 		charmbraceletlog.Warn("hook failed", "hook", name, "task", taskID, "err", err)
+	}
+}
+
+// drainCommands processes any commands queued on o.commands without blocking.
+// Pause flips a flag (consumed by waitWhilePaused); skip marks a task to be
+// short-circuited; retry resets a FAILED task back to PENDING.
+func (o *Orchestrator) drainCommands(ctx context.Context, tasksPath string, tasks []types.Task, completed map[string]bool) {
+	if o.commands == nil {
+		return
+	}
+	for {
+		select {
+		case cmd, ok := <-o.commands:
+			if !ok {
+				o.commands = nil
+				return
+			}
+			o.applyCommand(cmd, tasksPath, tasks, completed)
+		case <-ctx.Done():
+			return
+		default:
+			return
+		}
+	}
+}
+
+// waitWhilePaused blocks until a CmdResume arrives or the context cancels.
+// While paused, it still applies non-pause commands as they arrive.
+func (o *Orchestrator) waitWhilePaused(ctx context.Context, tasksPath string, tasks []types.Task, completed map[string]bool) error {
+	if !o.isPaused() {
+		return nil
+	}
+	o.emit(Event{Type: EventError, Message: "paused — press p to resume"})
+	for o.isPaused() {
+		if o.commands == nil {
+			return fmt.Errorf("paused but no command channel attached")
+		}
+		select {
+		case cmd, ok := <-o.commands:
+			if !ok {
+				o.commands = nil
+				return nil
+			}
+			o.applyCommand(cmd, tasksPath, tasks, completed)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (o *Orchestrator) applyCommand(cmd Command, tasksPath string, tasks []types.Task, completed map[string]bool) {
+	switch cmd.Type {
+	case CmdPause:
+		o.setPaused(true)
+	case CmdResume:
+		o.setPaused(false)
+	case CmdSkip:
+		if cmd.TaskID == "" {
+			return
+		}
+		o.skip[cmd.TaskID] = true
+	case CmdRetry:
+		if cmd.TaskID == "" {
+			return
+		}
+		for i := range tasks {
+			if tasks[i].ID == cmd.TaskID && tasks[i].Status == types.StatusFailed {
+				tasks[i].Status = types.StatusPending
+				if err := task.UpdateTaskStatus(tasksPath, cmd.TaskID, types.StatusPending); err != nil {
+					charmbraceletlog.Warn("retry: updating task status", "task", cmd.TaskID, "err", err)
+				}
+				delete(completed, cmd.TaskID)
+				return
+			}
+		}
+	}
+}
+
+// paused state lives on the orchestrator alongside the skip map; both are
+// guarded by the orchestrator goroutine because Run is the only writer.
+func (o *Orchestrator) isPaused() bool { return o.paused }
+func (o *Orchestrator) setPaused(p bool) {
+	o.paused = p
+	if p {
+		o.emit(Event{Type: EventError, Message: "paused"})
+	} else {
+		o.emit(Event{Type: EventError, Message: "resumed"})
 	}
 }

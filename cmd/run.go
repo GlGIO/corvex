@@ -74,6 +74,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	sb := sandboxpkg.NewSandbox(cfg.Sandbox)
 
 	events := make(chan orchestrator.Event, 64)
+	commands := make(chan orchestrator.Command, 16)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -95,10 +96,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 		SingleTask: runSingle,
 		Sandbox:    sb,
 		ABModels:   abModels,
+		Commands:   commands,
 	})
 
 	if !runPlain && isInteractive() {
-		return runWithTUI(ctx, orc, events, cancel, project)
+		return runWithTUI(ctx, orc, events, commands, cancel, project)
 	}
 
 	go drainEvents(events)
@@ -152,8 +154,8 @@ func isInteractive() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, cancel context.CancelFunc, project string) error {
-	m := tui.New(events, cancel, project)
+func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, commands chan orchestrator.Command, cancel context.CancelFunc, project string) error {
+	m := tui.NewWithCommands(events, commands, cancel, project)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	go func() {

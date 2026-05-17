@@ -119,8 +119,8 @@ func TestModelEventTaskStart(t *testing.T) {
 	if m.worker.activeTask != "S01" {
 		t.Errorf("worker activeTask = %q, want S01", m.worker.activeTask)
 	}
-	if m.worker.phase != "Worker" {
-		t.Errorf("worker phase = %q, want Worker", m.worker.phase)
+	if m.worker.phase != "worker" {
+		t.Errorf("worker phase = %q, want worker", m.worker.phase)
 	}
 }
 
@@ -301,7 +301,7 @@ func TestDAGPanelScroll(t *testing.T) {
 		}
 	}
 	d = d.AddTasks(entries)
-	d = d.SetSize(40, 7) // visible = 7 - 2(header+divider) = 5
+	d = d.SetSize(40, 5) // 5 visible rows; panel parent draws header/divider
 
 	if d.cursor != 0 {
 		t.Errorf("initial cursor = %d, want 0", d.cursor)
@@ -532,52 +532,27 @@ func TestFormatCost(t *testing.T) {
 	}
 }
 
-func TestStatusEmoji(t *testing.T) {
+func TestStatusGlyph(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		status types.TaskStatus
 		want   string
 	}{
-		{types.StatusPassed, "✅"},
-		{types.StatusRunning, "🔄"},
-		{types.StatusPending, "⬜"},
-		{types.StatusFailed, "❌"},
-		{types.StatusSkipped, "⏭️"},
-		{"unknown", "?"},
+		{types.StatusPassed, GlyphPassed},
+		{types.StatusRunning, GlyphRunning},
+		{types.StatusPending, GlyphPending},
+		{types.StatusFailed, GlyphFailed},
+		{types.StatusSkipped, GlyphSkipped},
+		{"unknown", GlyphUnknown},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.status), func(t *testing.T) {
 			t.Parallel()
-			got := StatusEmoji(tt.status)
+			got := StatusGlyph(tt.status)
 			if got != tt.want {
-				t.Errorf("StatusEmoji(%q) = %q, want %q", tt.status, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestToolIcon(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		tool string
-		want string
-	}{
-		{"Read", "📖"},
-		{"Write", "✏️"},
-		{"Edit", "✏️"},
-		{"Bash", "⚡"},
-		{"Other", "🔧"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.tool, func(t *testing.T) {
-			t.Parallel()
-			got := ToolIcon(tt.tool)
-			if got != tt.want {
-				t.Errorf("ToolIcon(%q) = %q, want %q", tt.tool, got, tt.want)
+				t.Errorf("StatusGlyph(%q) = %q, want %q", tt.status, got, tt.want)
 			}
 		})
 	}
@@ -675,29 +650,18 @@ func TestStatusBarPaused(t *testing.T) {
 
 // --- KeyMap ---
 
-func TestKeyMapShortHelp(t *testing.T) {
+func TestKeyMapHelpGroups(t *testing.T) {
 	t.Parallel()
 	km := DefaultKeyMap()
-	bindings := km.ShortHelp()
+	groups := km.HelpGroups()
 
-	if len(bindings) != 4 {
-		t.Errorf("ShortHelp() len = %d, want 4", len(bindings))
+	if len(groups) < 3 {
+		t.Errorf("HelpGroups() len = %d, want at least 3", len(groups))
 	}
-}
-
-func TestKeyMapFullHelp(t *testing.T) {
-	t.Parallel()
-	km := DefaultKeyMap()
-	groups := km.FullHelp()
-
-	if len(groups) != 2 {
-		t.Errorf("FullHelp() groups = %d, want 2", len(groups))
-	}
-	if len(groups[0]) != 4 {
-		t.Errorf("FullHelp()[0] len = %d, want 4", len(groups[0]))
-	}
-	if len(groups[1]) != 2 {
-		t.Errorf("FullHelp()[1] len = %d, want 2", len(groups[1]))
+	for i, g := range groups {
+		if len(g) == 0 {
+			t.Errorf("HelpGroups()[%d] is empty", i)
+		}
 	}
 }
 
@@ -707,7 +671,7 @@ func TestHeaderLine(t *testing.T) {
 	t.Parallel()
 
 	got := HeaderLine("myproject", 3, 10, 1.50)
-	want := "corvex ─── myproject ─── 3/10 done ─── $1.50"
+	want := "corvex · myproject · 3/10 done · $1.50"
 	if got != want {
 		t.Errorf("HeaderLine() = %q, want %q", got, want)
 	}
@@ -724,8 +688,8 @@ func TestModelEventReviewStart(t *testing.T) {
 	updated, _ := m.Update(ev)
 	m = updated.(Model)
 
-	if m.worker.phase != "Reviewer" {
-		t.Errorf("worker phase = %q, want Reviewer", m.worker.phase)
+	if m.worker.phase != "review" {
+		t.Errorf("worker phase = %q, want review", m.worker.phase)
 	}
 	if m.worker.activeTask != "S01" {
 		t.Errorf("worker activeTask = %q, want S01", m.worker.activeTask)
@@ -779,8 +743,8 @@ func TestModelEventPlanStartComplete(t *testing.T) {
 	updated, _ := m.Update(ev)
 	m = updated.(Model)
 
-	if m.worker.phase != "Planner" {
-		t.Errorf("worker phase = %q, want Planner", m.worker.phase)
+	if m.worker.phase != "plan" {
+		t.Errorf("worker phase = %q, want plan", m.worker.phase)
 	}
 	if len(m.worker.lines) != 1 {
 		t.Fatalf("worker lines after PlanStart = %d, want 1", len(m.worker.lines))
@@ -1024,9 +988,9 @@ func TestModelMultipleTaskCompleteCostAccumulation(t *testing.T) {
 	}
 }
 
-// --- styleForStatus ---
+// --- StatusStyle ---
 
-func TestStyleForStatus(t *testing.T) {
+func TestStatusStyle(t *testing.T) {
 	t.Parallel()
 
 	statuses := []types.TaskStatus{
@@ -1047,9 +1011,9 @@ func TestStyleForStatus(t *testing.T) {
 	for i, s := range statuses {
 		t.Run(string(s), func(t *testing.T) {
 			t.Parallel()
-			got := styleForStatus(s)
+			got := StatusStyle(s)
 			if !reflect.DeepEqual(got, expected[i]) {
-				t.Errorf("styleForStatus(%q) mismatch", s)
+				t.Errorf("StatusStyle(%q) mismatch", s)
 			}
 		})
 	}

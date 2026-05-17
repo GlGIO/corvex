@@ -2,22 +2,44 @@ package tui
 
 import "github.com/charmbracelet/bubbles/key"
 
-// KeyMap defines all keyboard shortcuts for the TUI.
+// KeyMap defines all keyboard shortcuts for the TUI. Each binding maps
+// to a real action; nothing is purely decorative.
 type KeyMap struct {
-	Quit key.Binding
-	Pause key.Binding
-	Skip  key.Binding
-	Logs  key.Binding
-	Up    key.Binding
-	Down  key.Binding
+	Quit   key.Binding
+	Help   key.Binding
+	Filter key.Binding
+	Detail key.Binding
+	Esc    key.Binding
+	Pause  key.Binding
+	Skip   key.Binding
+	Retry  key.Binding
+	Logs   key.Binding
+	Up     key.Binding
+	Down   key.Binding
 }
 
-// DefaultKeyMap returns keybindings for the TUI.
+// DefaultKeyMap returns the standard keybindings.
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "help"),
+		),
+		Filter: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "filter"),
+		),
+		Detail: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("↵", "detail"),
+		),
+		Esc: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "back"),
 		),
 		Pause: key.NewBinding(
 			key.WithKeys("p"),
@@ -27,9 +49,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("s"),
 			key.WithHelp("s", "skip"),
 		),
+		Retry: key.NewBinding(
+			key.WithKeys("r"),
+			key.WithHelp("r", "retry"),
+		),
 		Logs: key.NewBinding(
 			key.WithKeys("l"),
-			key.WithHelp("l", "full logs"),
+			key.WithHelp("l", "logs"),
 		),
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
@@ -42,15 +68,12 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
-// ShortHelp returns bindings shown in the compact help view.
-func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Pause, k.Skip, k.Logs}
-}
-
-// FullHelp returns bindings for the expanded help view.
-func (k KeyMap) FullHelp() [][]key.Binding {
+// HelpGroups returns the bindings grouped for the help modal.
+func (k KeyMap) HelpGroups() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Quit, k.Pause, k.Skip, k.Logs},
-		{k.Up, k.Down},
+		{k.Up, k.Down, k.Detail, k.Esc},  // navigation
+		{k.Filter, k.Help},                // modes
+		{k.Pause, k.Skip, k.Retry, k.Logs}, // actions
+		{k.Quit},                          // exit
 	}
 }

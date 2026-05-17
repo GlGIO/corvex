@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
-// StatusBar renders bottom metrics and keybinding hints.
+// StatusBar renders the single-line bottom bar: metrics on the left,
+// keybinding hints on the right. When filter mode is active, the bar
+// displays the filter input in place of the metrics.
 type StatusBar struct {
 	tokensIn  int
 	tokensOut int
@@ -15,6 +19,8 @@ type StatusBar struct {
 	startedAt time.Time
 	elapsed   time.Duration
 	paused    bool
+	filtering bool
+	filter    string
 	width     int
 	keys      KeyMap
 }
@@ -27,38 +33,60 @@ func NewStatusBar(keys KeyMap) StatusBar {
 	}
 }
 
-// Update is a no-op for now (future: handle tick messages internally).
-func (s StatusBar) Update(_ any) StatusBar {
-	return s
+// View renders the status bar.
+func (s StatusBar) View() string {
+	if s.width <= 0 {
+		s.width = 80
+	}
+
+	left := s.renderLeft()
+	right := s.renderHints()
+
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(right)
+	gap := s.width - leftWidth - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+
+	line := left + strings.Repeat(" ", gap) + right
+	divider := Divider.Render(strings.Repeat("─", s.width))
+	return divider + "\n" + StatusBarStyle.Render(line)
 }
 
-// View renders the two-line status bar.
-func (s StatusBar) View() string {
-	pauseIndicator := ""
-	if s.paused {
-		pauseIndicator = StatusFailed.Render(" ⏸ PAUSED")
+func (s StatusBar) renderLeft() string {
+	if s.filtering {
+		return " " + KeyChip.Render("/") + " " + TextMain.Render(s.filter) + TextMuted.Render("_")
 	}
 
-	metrics := fmt.Sprintf(
-		"tokens: %s in / %s out    turns: %s    elapsed: %s    %s%s",
-		CounterStyle.Render(FormatTokens(s.tokensIn)),
-		CounterStyle.Render(FormatTokens(s.tokensOut)),
-		CounterStyle.Render(fmt.Sprintf("%d", s.turns)),
-		CounterStyle.Render(FormatDuration(s.elapsed)),
+	parts := []string{
+		fmt.Sprintf("tokens %s↑ %s↓",
+			CounterStyle.Render(FormatTokens(s.tokensIn)),
+			CounterStyle.Render(FormatTokens(s.tokensOut)),
+		),
+		fmt.Sprintf("turn %d", s.turns),
+		FormatDuration(s.elapsed),
 		CostStyle.Render(FormatCost(s.totalCost)),
-		pauseIndicator,
-	)
-
-	bindings := s.keys.ShortHelp()
-	hints := make([]string, 0, len(bindings))
-	for _, b := range bindings {
-		help := b.Help()
-		hints = append(hints, KeyHint.Render(fmt.Sprintf("[%s] %s", help.Key, help.Desc)))
 	}
-	keysLine := strings.Join(hints, "   ")
+	if s.paused {
+		parts = append(parts, StatusFailed.Render("⏸ paused"))
+	}
+	return " " + strings.Join(parts, "  ·  ")
+}
 
-	divider := DividerStyle.Render(strings.Repeat("─", s.width))
-	return divider + "\n" + StatusBarStyle.Render(metrics) + "\n" + StatusBarStyle.Render(keysLine)
+func (s StatusBar) renderHints() string {
+	hints := []string{
+		hint("?", "help"),
+		hint("/", "filter"),
+		hint("↵", "detail"),
+		hint("p", "pause"),
+		hint("q", "quit"),
+	}
+	return strings.Join(hints, "  ") + " "
+}
+
+func hint(key, desc string) string {
+	return KeyChip.Render(key) + " " + KeyHint.Render(desc)
 }
 
 // SetSize adjusts the bar width.
@@ -91,4 +119,43 @@ func (s StatusBar) SetPaused(p bool) StatusBar {
 func (s StatusBar) Tick(now time.Time) StatusBar {
 	s.elapsed = now.Sub(s.startedAt)
 	return s
+}
+
+// EnterFilter switches the bar into filter input mode.
+func (s StatusBar) EnterFilter() StatusBar {
+	s.filtering = true
+	s.filter = ""
+	return s
+}
+
+// ExitFilter clears filter mode.
+func (s StatusBar) ExitFilter() StatusBar {
+	s.filtering = false
+	return s
+}
+
+// AppendFilter appends a rune to the filter input.
+func (s StatusBar) AppendFilter(r rune) StatusBar {
+	s.filter += string(r)
+	return s
+}
+
+// BackspaceFilter removes the trailing rune from the filter input.
+func (s StatusBar) BackspaceFilter() StatusBar {
+	if s.filter == "" {
+		return s
+	}
+	runes := []rune(s.filter)
+	s.filter = string(runes[:len(runes)-1])
+	return s
+}
+
+// Filtering reports whether the bar is in filter mode.
+func (s StatusBar) Filtering() bool {
+	return s.filtering
+}
+
+// Filter returns the current filter text.
+func (s StatusBar) Filter() string {
+	return s.filter
 }

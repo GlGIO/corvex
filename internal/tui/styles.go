@@ -8,103 +8,123 @@ import (
 	"github.com/giovannialves/corvex/internal/types"
 )
 
+// Palette — charm.sh-inspired. Soft accents, restrained reds/greens,
+// adaptive for light and dark terminals.
 var (
-	subtle = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#666666"}
-	accent = lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#AD8CFF"}
+	accent      = lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#AD8CFF"}
+	accentSoft  = lipgloss.AdaptiveColor{Light: "#B59FFF", Dark: "#8B6FE0"}
+	textMain    = lipgloss.AdaptiveColor{Light: "#1A1A2E", Dark: "#E6E6F0"}
+	textMuted   = lipgloss.AdaptiveColor{Light: "#5F5F6E", Dark: "#9696A8"}
+	textFaint   = lipgloss.AdaptiveColor{Light: "#9E9EAD", Dark: "#5F5F70"}
+	dividerCol  = lipgloss.AdaptiveColor{Light: "#D4D4DC", Dark: "#3A3A4A"}
+	chipBg      = lipgloss.AdaptiveColor{Light: "#EFEAFC", Dark: "#2A2240"}
 
-	green = lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"}
-	cyan  = lipgloss.AdaptiveColor{Light: "#00ADD8", Dark: "#00E5FF"}
-	red   = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#FF6B8A"}
-	gray  = lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#555555"}
-
-	// HeaderStyle renders the top bar.
-	HeaderStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(accent).
-			PaddingLeft(1).
-			PaddingRight(1)
-
-	// DAGPanelStyle wraps the left task list panel.
-	DAGPanelStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(subtle).
-			PaddingLeft(1).
-			PaddingRight(1)
-
-	// WorkerPanelStyle wraps the right streaming panel.
-	WorkerPanelStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(subtle).
-				PaddingLeft(1).
-				PaddingRight(1)
-
-	// StatusBarStyle renders the bottom metrics bar.
-	StatusBarStyle = lipgloss.NewStyle().
-			Foreground(subtle).
-			PaddingLeft(1)
-
-	// StatusPassed styles passed task text.
-	StatusPassed = lipgloss.NewStyle().Foreground(green)
-	// StatusRunning styles running task text.
-	StatusRunning = lipgloss.NewStyle().Foreground(cyan)
-	// StatusPending styles pending task text.
-	StatusPending = lipgloss.NewStyle().Foreground(gray)
-	// StatusFailed styles failed task text.
-	StatusFailed = lipgloss.NewStyle().Foreground(red)
-	// StatusSkippedStyle styles skipped task text.
-	StatusSkippedStyle = lipgloss.NewStyle().Foreground(gray)
-
-	// StreamText styles streamed text content.
-	StreamText = lipgloss.NewStyle()
-	// StreamTool styles tool_use events.
-	StreamTool = lipgloss.NewStyle().Foreground(cyan)
-	// StreamResult styles tool_result events.
-	StreamResult = lipgloss.NewStyle().Foreground(green)
-	// StreamFile styles file events.
-	StreamFile = lipgloss.NewStyle().Foreground(accent)
-
-	// KeyHint styles keyboard shortcut hints.
-	KeyHint = lipgloss.NewStyle().Foreground(subtle)
-	// CostStyle styles cost display.
-	CostStyle = lipgloss.NewStyle().Foreground(green)
-	// CounterStyle styles numeric counters.
-	CounterStyle = lipgloss.NewStyle().Bold(true)
-	// DividerStyle styles vertical/horizontal dividers.
-	DividerStyle = lipgloss.NewStyle().Foreground(subtle)
-
-	// CursorStyle highlights the selected task row.
-	CursorStyle = lipgloss.NewStyle().Bold(true).Foreground(accent)
+	success = lipgloss.AdaptiveColor{Light: "#1E8A5E", Dark: "#4FD49C"}
+	running = lipgloss.AdaptiveColor{Light: "#0F8AAA", Dark: "#5EC4DA"}
+	failure = lipgloss.AdaptiveColor{Light: "#C9325A", Dark: "#E36A87"}
 )
 
-// StatusEmoji returns an emoji for the given task status.
-func StatusEmoji(status types.TaskStatus) string {
+// Status glyphs. Single Unicode characters keep widths predictable and
+// blend better with the muted palette than emoji.
+const (
+	GlyphPending  = "○"
+	GlyphRunning  = "●"
+	GlyphPassed   = "✓"
+	GlyphFailed   = "✗"
+	GlyphSkipped  = "→"
+	GlyphUnknown  = "·"
+	GlyphToolUse  = "›"
+	GlyphToolDone = "↳"
+	GlyphBullet   = "•"
+)
+
+// Core text styles.
+var (
+	TextMain  = lipgloss.NewStyle().Foreground(textMain)
+	TextMuted = lipgloss.NewStyle().Foreground(textMuted)
+	TextFaint = lipgloss.NewStyle().Foreground(textFaint)
+
+	HeaderTitle = lipgloss.NewStyle().Bold(true).Foreground(accent)
+
+	// Chip renders a soft-background label used in the header.
+	Chip = lipgloss.NewStyle().
+		Foreground(textMain).
+		Background(chipBg).
+		Padding(0, 1)
+
+	// Divider draws a thin horizontal rule used to separate panels.
+	Divider = lipgloss.NewStyle().Foreground(dividerCol)
+
+	// StatusBarStyle wraps the bottom metrics + hints line.
+	StatusBarStyle = lipgloss.NewStyle().Foreground(textMuted).Padding(0, 1)
+
+	// CounterStyle and CostStyle are kept for backwards compatibility with
+	// callers that format inline metrics.
+	CounterStyle = lipgloss.NewStyle().Bold(true).Foreground(textMain)
+	CostStyle    = lipgloss.NewStyle().Foreground(success).Bold(true)
+
+	// Status-coloured text used in DAG rows.
+	StatusPassed       = lipgloss.NewStyle().Foreground(success)
+	StatusRunning      = lipgloss.NewStyle().Foreground(running)
+	StatusPending      = lipgloss.NewStyle().Foreground(textFaint)
+	StatusFailed       = lipgloss.NewStyle().Foreground(failure)
+	StatusSkippedStyle = lipgloss.NewStyle().Foreground(textFaint).Italic(true)
+
+	// Stream styles for the worker viewport.
+	StreamText   = lipgloss.NewStyle().Foreground(textMain)
+	StreamTool   = lipgloss.NewStyle().Foreground(running)
+	StreamResult = lipgloss.NewStyle().Foreground(textMuted)
+	StreamFile   = lipgloss.NewStyle().Foreground(accentSoft)
+	StreamError  = lipgloss.NewStyle().Foreground(failure)
+
+	// CursorStyle highlights the selected DAG row.
+	CursorStyle = lipgloss.NewStyle().Bold(true).Foreground(accent)
+
+	// KeyHint renders a single [k] desc fragment in the status bar.
+	KeyHint = lipgloss.NewStyle().Foreground(textMuted)
+	KeyChip = lipgloss.NewStyle().Foreground(accent).Bold(true)
+
+	// ModalStyle wraps full-screen overlays (help, detail).
+	ModalStyle = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(accent).
+		Padding(1, 2)
+	ModalTitle = lipgloss.NewStyle().Bold(true).Foreground(accent).MarginBottom(1)
+	ModalLabel = lipgloss.NewStyle().Foreground(textMuted).Bold(true)
+)
+
+// StatusGlyph returns the glyph for a given task status. Falls back to a
+// neutral dot for unknown values.
+func StatusGlyph(status types.TaskStatus) string {
 	switch status {
 	case types.StatusPassed:
-		return "✅"
+		return GlyphPassed
 	case types.StatusRunning:
-		return "🔄"
+		return GlyphRunning
 	case types.StatusPending:
-		return "⬜"
+		return GlyphPending
 	case types.StatusFailed:
-		return "❌"
+		return GlyphFailed
 	case types.StatusSkipped:
-		return "⏭️"
+		return GlyphSkipped
 	default:
-		return "?"
+		return GlyphUnknown
 	}
 }
 
-// ToolIcon returns an icon for the given tool name.
-func ToolIcon(tool string) string {
-	switch tool {
-	case "Read":
-		return "📖"
-	case "Write", "Edit":
-		return "✏️"
-	case "Bash":
-		return "⚡"
+// StatusStyle returns the style for a status, used to colour the whole row.
+func StatusStyle(s types.TaskStatus) lipgloss.Style {
+	switch s {
+	case types.StatusPassed:
+		return StatusPassed
+	case types.StatusRunning:
+		return StatusRunning
+	case types.StatusFailed:
+		return StatusFailed
+	case types.StatusSkipped:
+		return StatusSkippedStyle
 	default:
-		return "🔧"
+		return StatusPending
 	}
 }
 
@@ -136,4 +156,23 @@ func FormatDuration(d time.Duration) string {
 // FormatCost formats a USD cost like "$2.34".
 func FormatCost(c float64) string {
 	return fmt.Sprintf("$%.2f", c)
+}
+
+// Status text labels — used instead of the raw status string when the
+// glyph carries the same information and only the textual label is needed.
+func StatusLabel(s types.TaskStatus) string {
+	switch s {
+	case types.StatusPassed:
+		return "passed"
+	case types.StatusRunning:
+		return "running"
+	case types.StatusPending:
+		return "pending"
+	case types.StatusFailed:
+		return "failed"
+	case types.StatusSkipped:
+		return "skipped"
+	default:
+		return "?"
+	}
 }
