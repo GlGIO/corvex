@@ -152,6 +152,17 @@ agent_routing:
 
 The Worker executes the Claude CLI **inside** the configured sandbox environment. When `sandbox.type` is `docker`, the CLI runs inside a container with the repo bind-mounted as a volume. When `local`, it runs directly on the host (the default).
 
+#### Profiles
+
+For repos that already declare their dev environment, set `sandbox.profile` to inherit it instead of configuring Corvex's own image:
+
+```yaml
+sandbox:
+  profile: nix          # reads flake.nix at the repo root
+```
+
+When `profile: nix` is set, the Worker command is wrapped with `nix develop --command <cmd>`, so it runs inside the flake's devShell. The Claude CLI must be reachable from the resolved PATH (either declared in the flake or kept on the host PATH, which is appended after the Nix shell environment). Corvex falls back to local execution if `nix` is not installed.
+
 Planner (read-only) and Reviewer (read+test) always run on the host since they present low risk.
 
 **Environment variables** for authentication (`ANTHROPIC_API_KEY`, `CLAUDE_*`, `AWS_*`, etc.) are automatically forwarded from the host process to the sandbox — secrets are never stored in `config.yaml`.

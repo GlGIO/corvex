@@ -35,6 +35,7 @@ type ModelsConfig struct {
 
 type SandboxConfig struct {
 	Type            string   `yaml:"type"`
+	Profile         string   `yaml:"profile"` // "" | "nix" | "devcontainer" — overrides Type when set
 	Image           string   `yaml:"image"`
 	Mount           string   `yaml:"mount"`
 	WorkDir         string   `yaml:"workdir"`
