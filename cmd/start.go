@@ -131,6 +131,7 @@ func brainstormPath(ctx context.Context, p provider.Provider, model, workDir, pr
 	}
 
 	br := orchestrator.NewBrainstormer(p, model, workDir)
+	br.SetProgressWriter(os.Stdout) // surface tool calls live so the model never looks hung
 	griller := orchestrator.NewGriller(p, model, workDir)
 
 	fmt.Println()

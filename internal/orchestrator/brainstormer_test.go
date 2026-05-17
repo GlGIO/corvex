@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -9,6 +10,23 @@ import (
 
 	"github.com/giovannialves/corvex/internal/types"
 )
+
+// mockProgressProvider implements both provider.Provider and the optional
+// provider.ProgressExecutor, so we can verify the Brainstormer switches to
+// the progress path when SetProgressWriter is set.
+type mockProgressProvider struct {
+	mockProvider
+	events []types.StreamEvent
+}
+
+func (m *mockProgressProvider) ExecuteWithProgress(ctx context.Context, req types.ExecuteRequest, onEvent func(types.StreamEvent)) (*types.ExecuteResult, error) {
+	for _, ev := range m.events {
+		if onEvent != nil {
+			onEvent(ev)
+		}
+	}
+	return m.Execute(ctx, req)
+}
 
 func TestParseBrainstormStep_Question(t *testing.T) {
 	t.Parallel()
@@ -78,6 +96,80 @@ func TestParseBrainstormStep_QuestionMissingText(t *testing.T) {
 	_, err := parseBrainstormStep(output)
 	if err == nil {
 		t.Fatal("expected error for empty question text")
+	}
+}
+
+func TestBrainstormer_StreamsToolUsesWhenWriterSet(t *testing.T) {
+	t.Parallel()
+
+	canned := "...\n```brainstorm\n{\"type\":\"question\",\"text\":\"REST or GraphQL?\",\"recommended\":\"REST\",\"rationale\":\"matches existing\"}\n```"
+
+	mp := &mockProgressProvider{
+		mockProvider: mockProvider{
+			executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
+				return &types.ExecuteResult{Output: canned, CostUSD: 0.05}, nil
+			},
+		},
+		events: []types.StreamEvent{
+			{Type: types.EventToolUse, Tool: "Read", File: "package.json"},
+			{Type: types.EventToolUse, Tool: "Glob", Content: "src/**/*.ts"},
+			{Type: types.EventText, Content: "thinking..."}, // should not surface
+		},
+	}
+
+	dir := t.TempDir()
+	br := NewBrainstormer(mp, "sonnet", dir)
+	var buf bytes.Buffer
+	br.SetProgressWriter(&buf)
+
+	step, err := br.Interview(context.Background(), "build something", filepath.Join(dir, "qa.md"))
+	if err != nil {
+		t.Fatalf("Interview error = %v", err)
+	}
+	if step.Question != "REST or GraphQL?" {
+		t.Errorf("Question = %q", step.Question)
+	}
+	if step.CostUSD != 0.05 {
+		t.Errorf("CostUSD = %v, want 0.05", step.CostUSD)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Read package.json") {
+		t.Errorf("progress missing Read line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Glob src/**/*.ts") {
+		t.Errorf("progress missing Glob line; got:\n%s", out)
+	}
+	if strings.Contains(out, "thinking") {
+		t.Errorf("progress should not echo plain text events; got:\n%s", out)
+	}
+}
+
+func TestBrainstormer_NoStreamingFallsBackToExecute(t *testing.T) {
+	t.Parallel()
+
+	canned := "```brainstorm\n{\"type\":\"done\"}\n```"
+	mp := &mockProgressProvider{
+		mockProvider: mockProvider{
+			executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
+				return &types.ExecuteResult{Output: canned}, nil
+			},
+		},
+		events: []types.StreamEvent{
+			{Type: types.EventToolUse, Tool: "Read", File: "should-not-print.go"},
+		},
+	}
+
+	dir := t.TempDir()
+	br := NewBrainstormer(mp, "sonnet", dir)
+	// SetProgressWriter intentionally NOT called.
+
+	step, err := br.Interview(context.Background(), "x", filepath.Join(dir, "qa.md"))
+	if err != nil {
+		t.Fatalf("Interview error = %v", err)
+	}
+	if !step.Done {
+		t.Error("expected Done = true")
 	}
 }
 

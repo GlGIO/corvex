@@ -53,6 +53,14 @@ func (c *ClaudeCLI) Name() string   { return "claude-cli" }
 func (c *ClaudeCLI) Models() []string { return supportedModels }
 
 func (c *ClaudeCLI) Execute(ctx context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+	return c.ExecuteWithProgress(ctx, req, nil)
+}
+
+// ExecuteWithProgress is identical to Execute but invokes onEvent for every
+// stream event (tool calls, text, errors) as it arrives. The final
+// ExecuteResult still carries cost and token totals — callers get
+// observability and accounting in one pass.
+func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRequest, onEvent func(types.StreamEvent)) (*types.ExecuteResult, error) {
 	if err := validateRequest(req); err != nil {
 		return nil, err
 	}
@@ -92,6 +100,9 @@ func (c *ClaudeCLI) Execute(ctx context.Context, req types.ExecuteRequest) (*typ
 		}
 
 		for _, ev := range events {
+			if onEvent != nil {
+				onEvent(ev)
+			}
 			switch ev.Type {
 			case types.EventText:
 				outputParts = append(outputParts, ev.Content)

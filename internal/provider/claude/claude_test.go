@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -536,6 +537,50 @@ func TestContextCancellation(t *testing.T) {
 	// Channel should close quickly after cancel, with at most an error event
 	if eventCount > 1 {
 		t.Errorf("expected at most 1 event after cancel, got %d", eventCount)
+	}
+}
+
+func TestExecuteWithProgress_InvokesCallback(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cli := New(cfg)
+
+	// Fake a Claude CLI run that emits an assistant message with one tool_use
+	// followed by a result line. The real binary is replaced with `printf`
+	// streaming the canned NDJSON.
+	canned := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"package.json"}}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"hi","total_input_tokens":10,"total_output_tokens":2,"total_cost_usd":0.01,"duration_ms":42}`
+
+	cli.cmdRunner = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "printf", "%s\n", canned)
+	}
+
+	var captured []types.StreamEvent
+	result, err := cli.ExecuteWithProgress(context.Background(),
+		types.ExecuteRequest{Prompt: "x", Model: "sonnet"},
+		func(ev types.StreamEvent) { captured = append(captured, ev) },
+	)
+	if err != nil {
+		t.Fatalf("ExecuteWithProgress error = %v", err)
+	}
+
+	if len(captured) == 0 {
+		t.Fatal("expected at least one event to reach the callback")
+	}
+	var sawToolUse bool
+	for _, ev := range captured {
+		if ev.Type == types.EventToolUse && ev.Tool == "Read" && ev.File == "package.json" {
+			sawToolUse = true
+		}
+	}
+	if !sawToolUse {
+		t.Errorf("expected EventToolUse Read package.json in callback events; got %+v", captured)
+	}
+
+	// Cost / tokens still come through.
+	if result.CostUSD != 0.01 || result.TokensIn != 10 || result.TokensOut != 2 {
+		t.Errorf("usage tracking lost: %+v", result)
 	}
 }
 

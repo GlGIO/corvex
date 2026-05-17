@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,11 +33,60 @@ type Brainstormer struct {
 	provider provider.Provider
 	model    string
 	workDir  string
+	progress io.Writer // when non-nil, tool-use events are printed as they arrive
 }
 
 // NewBrainstormer creates a Brainstormer bound to the given provider and model.
 func NewBrainstormer(p provider.Provider, model, workDir string) *Brainstormer {
 	return &Brainstormer{provider: p, model: model, workDir: workDir}
+}
+
+// SetProgressWriter wires a destination for live tool-call indicators. When
+// set, each Read/Glob/Grep the model issues during Interview/GenerateSpec is
+// printed as a faint single line so the user can see the model working
+// instead of staring at silence.
+func (b *Brainstormer) SetProgressWriter(w io.Writer) {
+	b.progress = w
+}
+
+// streamEventHandler returns an onEvent callback compatible with
+// provider.ProgressExecutor, or nil when no progress writer is set. The
+// callback prints a one-line summary of each tool call to the writer.
+func (b *Brainstormer) streamEventHandler() func(types.StreamEvent) {
+	if b.progress == nil {
+		return nil
+	}
+	return func(ev types.StreamEvent) {
+		if ev.Type != types.EventToolUse {
+			return
+		}
+		target := ev.File
+		if target == "" {
+			target = ev.Content
+		}
+		target = strings.TrimSpace(target)
+		if len(target) > 80 {
+			target = target[:79] + "…"
+		}
+		if target == "" {
+			fmt.Fprintf(b.progress, "  · %s\n", ev.Tool)
+		} else {
+			fmt.Fprintf(b.progress, "  · %s %s\n", ev.Tool, target)
+		}
+	}
+}
+
+// executeStep runs one provider call, preferring ProgressExecutor when the
+// provider supports it and a progress writer is set. Falls back to plain
+// Execute otherwise — preserving behaviour for tests and providers without
+// streaming hooks.
+func (b *Brainstormer) executeStep(ctx context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+	if cb := b.streamEventHandler(); cb != nil {
+		if pe, ok := b.provider.(provider.ProgressExecutor); ok {
+			return pe.ExecuteWithProgress(ctx, req, cb)
+		}
+	}
+	return b.provider.Execute(ctx, req)
 }
 
 // Interview performs one Q&A step: reads the feature description and accumulated Q&A,
@@ -50,7 +100,7 @@ func (b *Brainstormer) Interview(ctx context.Context, description, qaPath string
 
 	prompt := buildBrainstormerPrompt(description, string(qaContent))
 
-	result, err := b.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := b.executeStep(ctx, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,
@@ -80,7 +130,7 @@ func (b *Brainstormer) GenerateSpec(ctx context.Context, description, qaPath, sp
 
 	prompt := buildSpecGenPrompt(description, string(qaContent))
 
-	result, err := b.provider.Execute(ctx, types.ExecuteRequest{
+	result, err := b.executeStep(ctx, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,
@@ -131,10 +181,11 @@ to write a complete spec.md, declare done.
 
 ## How to work
 
-- Explore the workdir with Read/Glob/Grep to ground your recommendation in existing conventions.
+- **Be fast.** The user is waiting at a prompt. Ask immediately based on the description plus any prior Q&A — do NOT survey the codebase upfront.
+- Use Read/Glob/Grep **only when an answer cannot be defaulted without that look-up**, and cap yourself at **3 tool calls total** for this turn. If a single targeted Read can confirm a convention, do it; otherwise rely on the description and your recommendation. Deep exploration is the Planner's job, not yours.
 - Pick ONE high-impact question whose answer unlocks several downstream decisions.
 - Skip trivially defaultable details; ask only about choices that materially change what gets built.
-- Declare done when the idea plus gathered answers are sufficient for a competent planner.
+- Declare done when the idea plus gathered answers are sufficient for a competent planner (typically 3–5 answers).
 
 ## Output format
 
