@@ -149,7 +149,7 @@ func TestParseNDJSONLine(t *testing.T) {
 			name: "assistant tool_use",
 			line: `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"main.go"}}]}}`,
 			wantEvents: []types.StreamEvent{
-				{Type: types.EventToolUse, Tool: "Read", File: "main.go"},
+				{Type: types.EventToolUse, Tool: "Read", File: "main.go", Content: "main.go"},
 			},
 		},
 		{
@@ -537,6 +537,74 @@ func TestContextCancellation(t *testing.T) {
 	// Channel should close quickly after cancel, with at most an error event
 	if eventCount > 1 {
 		t.Errorf("expected at most 1 event after cancel, got %d", eventCount)
+	}
+}
+
+func TestToolInputSummary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   toolInput
+		want string
+	}{
+		{"empty", toolInput{}, ""},
+		{"file path wins", toolInput{FilePath: "a.go", Pattern: "x"}, "a.go"},
+		{"bash command", toolInput{Command: "npm test"}, "$ npm test"},
+		{"glob pattern", toolInput{Pattern: "src/**/*.ts"}, "src/**/*.ts"},
+		{"grep with path", toolInput{Pattern: "qrcode", Path: "app/"}, "qrcode in app/"},
+		{"path only", toolInput{Path: "internal/"}, "internal/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.in.summary(); got != tt.want {
+				t.Errorf("summary() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseAssistant_ToolUseContentRendersRichSummary(t *testing.T) {
+	t.Parallel()
+
+	line := []byte(`{"type":"assistant","message":{"role":"assistant","content":[
+		{"type":"tool_use","name":"Glob","input":{"pattern":"app/**/*.vue"}},
+		{"type":"tool_use","name":"Bash","input":{"command":"npm test"}},
+		{"type":"tool_use","name":"Grep","input":{"pattern":"qrcode","path":"app/"}},
+		{"type":"tool_use","name":"Read","input":{"file_path":"package.json"}}
+	]}}`)
+
+	events, err := parseAssistant(line)
+	if err != nil {
+		t.Fatalf("parseAssistant error = %v", err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("got %d events, want 4", len(events))
+	}
+
+	want := []struct {
+		tool    string
+		file    string
+		content string
+	}{
+		{"Glob", "", "app/**/*.vue"},
+		{"Bash", "", "$ npm test"},
+		{"Grep", "", "qrcode in app/"},
+		{"Read", "package.json", "package.json"},
+	}
+	for i, w := range want {
+		ev := events[i]
+		if ev.Tool != w.tool {
+			t.Errorf("event[%d].Tool = %q, want %q", i, ev.Tool, w.tool)
+		}
+		if ev.File != w.file {
+			t.Errorf("event[%d].File = %q, want %q", i, ev.File, w.file)
+		}
+		if ev.Content != w.content {
+			t.Errorf("event[%d].Content = %q, want %q", i, ev.Content, w.content)
+		}
 	}
 }
 

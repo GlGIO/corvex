@@ -291,8 +291,41 @@ type resultLine struct {
 	DurationMs       int64   `json:"duration_ms"`
 }
 
+// toolInput captures the most useful fields the assistant places in a
+// `tool_use` event's `input` payload, so we can render a meaningful summary
+// for each tool. Different tools use different keys:
+//
+//	Read/Write/Edit  → file_path
+//	Glob             → pattern (and optionally path to scope the search)
+//	Grep             → pattern + path
+//	Bash             → command
+//
+// Unknown / less-common fields silently fall through — the progress writer
+// degrades to the bare tool name.
 type toolInput struct {
 	FilePath string `json:"file_path,omitempty"`
+	Pattern  string `json:"pattern,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Command  string `json:"command,omitempty"`
+}
+
+// summary returns a single, terse description of the tool target suitable
+// for live progress output. Empty when no recognised field was set.
+func (t toolInput) summary() string {
+	switch {
+	case t.FilePath != "":
+		return t.FilePath
+	case t.Command != "":
+		return "$ " + t.Command
+	case t.Pattern != "" && t.Path != "":
+		return t.Pattern + " in " + t.Path
+	case t.Pattern != "":
+		return t.Pattern
+	case t.Path != "":
+		return t.Path
+	default:
+		return ""
+	}
 }
 
 func parseNDJSONLine(line []byte) ([]types.StreamEvent, error) {
@@ -335,8 +368,11 @@ func parseAssistant(line []byte) ([]types.StreamEvent, error) {
 				Tool: c.Name,
 			}
 			var ti toolInput
-			if json.Unmarshal(c.Input, &ti) == nil && ti.FilePath != "" {
+			if json.Unmarshal(c.Input, &ti) == nil {
 				ev.File = ti.FilePath
+				if summary := ti.summary(); summary != "" {
+					ev.Content = summary
+				}
 			}
 			events = append(events, ev)
 		}

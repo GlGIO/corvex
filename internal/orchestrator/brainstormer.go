@@ -108,15 +108,9 @@ func (b *Brainstormer) GenerateSpec(ctx context.Context, description, qaPath, sp
 func buildBrainstormerPrompt(description, qaContent string) string {
 	var b strings.Builder
 
-	b.WriteString(`You are a requirements analyst helping define a software feature.
+	b.WriteString(`You are a requirements analyst helping a developer refine a feature idea for the Corvex planner. The user has ALREADY provided a description below — read it carefully, then ask ONE concrete clarifying question that NARROWS the scope. Your goal is to convert a vague idea into a buildable spec through 3–5 targeted questions, not to re-elicit the idea itself.
 
-## Goal
-
-Ask ONE clarifying question that will most help define this feature. Ground your recommendation
-in conventions visible in the codebase. When you have enough information (typically 3–5 answers)
-to write a complete spec.md, declare done.
-
-## Feature Idea
+## Feature description (from the user)
 
 `)
 	b.WriteString(description)
@@ -130,22 +124,23 @@ to write a complete spec.md, declare done.
 
 	b.WriteString(`
 
-## How to work
+## Hard rules
 
-- **Be fast.** The user is waiting at a prompt. Ask immediately based on the description plus any prior Q&A — do NOT survey the codebase upfront.
-- Use Read/Glob/Grep **only when an answer cannot be defaulted without that look-up**, and cap yourself at **3 tool calls total** for this turn. If a single targeted Read can confirm a convention, do it; otherwise rely on the description and your recommendation. Deep exploration is the Planner's job, not yours.
-- Pick ONE high-impact question whose answer unlocks several downstream decisions.
-- Skip trivially defaultable details; ask only about choices that materially change what gets built.
-- Declare done when the idea plus gathered answers are sufficient for a competent planner (typically 3–5 answers).
+- The description above IS the feature idea, even if it is vague. Treat it as ground truth. **Never** ask "what is the feature?", "describe the problem", "who uses it?", or any other variant that re-elicits the description. Those are forbidden.
+- ` + "`recommended`" + ` MUST be a concrete, opinionated default answer the user can accept with one Enter — never empty, never a placeholder like "Ex.:" or "TBD". If you can't form a recommendation, you don't have a useful question.
+- Each question must NARROW one specific decision. Examples of useful questions for an analytics feature like the one above:
+  • "Track scan events at the QR endpoint or at the redirect target? The first gives reliable counts; the second confirms intent."
+  • "Banner suggestions: rank by historical CTR within the same store, or by category match with the active promotion?"
+- Use Read/Glob/Grep to ground the recommendation in actual code conventions — but cap yourself at 4 tool calls per turn. Don't survey the whole repo; one targeted Glob and a couple of Reads is plenty.
+- Declare done when 3–5 useful answers are accumulated and the spec writer has enough to produce file paths, data shapes, and acceptance criteria.
 
 ## Output format
 
-End your response with exactly one fenced code block tagged ` + "`brainstorm`" + `, containing a single JSON
-object. No other text after the block.
+End your response with exactly one fenced code block tagged ` + "`brainstorm`" + `, containing a single JSON object. No other text after the block.
 
-For a question:
+For a question (recommended must be a real answer, not a request to be more specific):
 
-` + "```brainstorm\n" + `{"type":"question","text":"<question>","recommended":"<answer>","rationale":"<short reason>"}
+` + "```brainstorm\n" + `{"type":"question","text":"<narrow question>","recommended":"<concrete default answer>","rationale":"<why this decision matters>"}
 ` + "```" + `
 
 When done:
