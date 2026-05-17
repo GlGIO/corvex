@@ -39,7 +39,18 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 		return fmt.Errorf("reading existing tasks %s: %w", tasksPath, err)
 	}
 
-	prompt := buildPlannerPrompt(string(specContent), string(anchorContent), string(existingTasks))
+	decisionsPath := filepath.Join(filepath.Dir(specPath), "decisions.md")
+	decisionsContent, err := os.ReadFile(decisionsPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading decisions %s: %w", decisionsPath, err)
+	}
+
+	spec := string(specContent)
+	if strings.TrimSpace(string(decisionsContent)) != "" {
+		spec += "\n\n## Resolved Design Decisions (from `corvex grill`)\n\n" + string(decisionsContent)
+	}
+
+	prompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks))
 
 	result, err := p.provider.Execute(ctx, types.ExecuteRequest{
 		Prompt:       prompt,

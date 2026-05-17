@@ -63,14 +63,33 @@ Implement user authentication with JWT tokens.
 - API responds correctly
 EOF
 
-# 3. Generate task plan from the spec
+# 3. (Optional) Interview the spec to resolve ambiguities before planning
+corvex grill my-feature
+
+# 4. Generate task plan from the spec (uses decisions.md if grill was run)
 corvex plan my-feature
 
-# 4. Execute all tasks
+# 5. Execute all tasks
 corvex run my-feature
 
-# 5. Check progress
+# 6. Check progress
 corvex status my-feature
+```
+
+### Grill: refine the spec before you commit to a plan
+
+`corvex grill` puts the AI in interviewer mode: it reads the spec, explores the
+codebase, and asks you one high-impact design question at a time with a
+recommended answer. Your responses persist in `decisions.md` next to the spec
+and feed into the next `corvex plan`. Cheaper to resolve a question for $0.05
+during grill than to discover it in a $0.30 worker retry.
+
+```bash
+corvex grill my-feature
+# 🔍 Should tokens persist across restarts?
+# 💡 Recommended: Yes — store hashed tokens in the existing sessions table
+#    why: matches the rotation pattern already in `auth/session.ts`
+# Your answer (Enter to accept recommendation, /skip to skip, /done to finish): _
 ```
 
 ## Commands
@@ -78,6 +97,7 @@ corvex status my-feature
 | Command | Description |
 |---------|-------------|
 | `corvex init` | Scaffold `.corvex/` directory with default configuration |
+| `corvex grill <project>` | Interview to resolve spec ambiguities (writes `decisions.md`) |
 | `corvex plan <project>` | Generate `tasks.md` from the project specification |
 | `corvex run <project>` | Execute pending tasks with the orchestration loop |
 | `corvex run <project> --task S03` | Execute a specific task |
