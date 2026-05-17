@@ -40,6 +40,7 @@ type Orchestrator struct {
 	planner    *Planner
 	worker     *Worker
 	reviewer   *Reviewer
+	advisor    *Advisor
 	sandbox    sandbox.Sandbox
 	events     chan<- Event
 	workDir    string
@@ -54,9 +55,10 @@ func New(opts Options) *Orchestrator {
 		provider:   opts.Provider,
 		hooks:      hooks.NewRunner(opts.WorkDir, 0),
 		recovery:   recovery.NewManager(opts.WorkDir),
-		planner:    NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir),
+		planner:    NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir, opts.Config.AgentRouting),
 		worker:     NewWorker(opts.Provider, opts.Config.Provider.Models.Worker, opts.WorkDir, opts.Sandbox),
 		reviewer:   NewReviewer(opts.Provider, opts.Config.Provider.Models.Reviewer, opts.WorkDir),
+		advisor:    NewAdvisor(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir),
 		sandbox:    opts.Sandbox,
 		events:     opts.Events,
 		workDir:    opts.WorkDir,
@@ -182,6 +184,16 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 
 		if o.targetTask != "" || o.singleTask {
 			break
+		}
+	}
+
+	if threshold := o.cfg.Execution.InsightThreshold; threshold != 0 && o.targetTask == "" && !o.singleTask {
+		insights, err := o.advisor.Analyze(ctx, tasks, o.cfg.AgentRouting, threshold)
+		if err != nil {
+			charmbraceletlog.Warn("advisor analysis failed", "err", err)
+		}
+		for i := range insights {
+			o.emit(Event{Type: EventInsight, Insight: &insights[i]})
 		}
 	}
 

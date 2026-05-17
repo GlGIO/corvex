@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/provider"
@@ -13,14 +14,16 @@ import (
 
 // Planner runs the AI provider with read-only tools to generate or update a tasks.md file.
 type Planner struct {
-	provider provider.Provider
-	model    string
-	workDir  string
+	provider     provider.Provider
+	model        string
+	workDir      string
+	agentRouting map[string]string
 }
 
 // NewPlanner creates a Planner that uses the given provider and model.
-func NewPlanner(p provider.Provider, model, workDir string) *Planner {
-	return &Planner{provider: p, model: model, workDir: workDir}
+// agentRouting is the agent_routing map from config; pass nil if not configured.
+func NewPlanner(p provider.Provider, model, workDir string, agentRouting map[string]string) *Planner {
+	return &Planner{provider: p, model: model, workDir: workDir, agentRouting: agentRouting}
 }
 
 // Plan generates a tasks.md by sending spec + anchor context to the AI provider.
@@ -50,7 +53,7 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 		spec += "\n\n## Resolved Design Decisions (from `corvex grill`)\n\n" + string(decisionsContent)
 	}
 
-	prompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks))
+	prompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting)
 
 	result, err := p.provider.Execute(ctx, types.ExecuteRequest{
 		Prompt:       prompt,
@@ -76,7 +79,7 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 	return nil
 }
 
-func buildPlannerPrompt(specContent, anchorContent, existingTasks string) string {
+func buildPlannerPrompt(specContent, anchorContent, existingTasks string, agentRouting map[string]string) string {
 	var b strings.Builder
 
 	b.WriteString(`You are a project planner for Corvex. Your job is to decompose a project specification
@@ -99,6 +102,27 @@ into executable tasks.
 		b.WriteString(existingTasks)
 	} else {
 		b.WriteString("No existing tasks — generate from scratch.")
+	}
+
+	b.WriteString("\n\n## Available Task Types\n\n")
+	b.WriteString("Assign one of the following types to each task's YAML block.\n\n")
+	b.WriteString("Built-in types (always available):\n")
+	b.WriteString("- `database` — schema migrations, seed data, query optimisation\n")
+	b.WriteString("- `backend`  — API endpoints, business logic, services\n")
+	b.WriteString("- `frontend` — UI components, pages, styles\n")
+	b.WriteString("- `review`   — code review, audit, documentation\n")
+	b.WriteString("- `general`  — anything that doesn't fit a specific type\n")
+	if len(agentRouting) > 0 {
+		b.WriteString("\nProject-specific types (dedicated agents configured):\n")
+		keys := make([]string, 0, len(agentRouting))
+		for k := range agentRouting {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(&b, "- `%s`\n", k)
+		}
+		b.WriteString("\nPrefer project-specific types when the task fits — they carry specialised instructions.\n")
 	}
 
 	b.WriteString(`

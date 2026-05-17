@@ -21,10 +21,11 @@ import (
 )
 
 var (
-	runTask   string
-	runSingle bool
-	runDryRun bool
-	runPlain  bool
+	runTask     string
+	runSingle   bool
+	runDryRun   bool
+	runPlain    bool
+	flagValidate bool
 )
 
 var runCmd = &cobra.Command{
@@ -40,6 +41,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runSingle, "single", false, "run only the next pending task")
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "show execution plan without running")
 	runCmd.Flags().BoolVar(&runPlain, "plain", false, "disable TUI, use plain log output")
+	runCmd.Flags().BoolVar(&flagValidate, "validate", false, "run integration validation after all tasks complete")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -95,6 +97,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("completed", "project", project)
+
+	if flagValidate {
+		if !validateConfigured(cfg.Validate) {
+			return fmt.Errorf("--validate set but validate: not configured — run 'corvex validate %s' first to set it up", project)
+		}
+		return validateProject(cmd.Context(), cfg, workDir, project)
+	}
 	return nil
 }
 
@@ -192,6 +201,12 @@ func drainEvents(events <-chan orchestrator.Event) {
 			log.Info("sandbox preparing")
 		case orchestrator.EventSandboxCleanup:
 			log.Info("sandbox cleanup")
+		case orchestrator.EventInsight:
+			if ev.Insight != nil {
+				fmt.Printf("\n✨ Insight: %d tasks of type %q completed without a dedicated agent.\n", ev.Insight.Count, ev.Insight.TaskType)
+				fmt.Printf("   A suggested agent prompt was saved to: .corvex/insights/%s-agent-suggestion.md\n", ev.Insight.TaskType)
+				fmt.Printf("   To activate it: mv .corvex/insights/%s-agent-suggestion.md %s\n\n", ev.Insight.TaskType, ev.Insight.SuggestedPath)
+			}
 		case orchestrator.EventError:
 			log.Error("error", "message", ev.Message)
 		}

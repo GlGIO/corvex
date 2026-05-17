@@ -13,7 +13,7 @@ import (
 
 func TestBuildPlannerPrompt_Fresh(t *testing.T) {
 	t.Parallel()
-	prompt := buildPlannerPrompt("Build a CLI tool", "", "")
+	prompt := buildPlannerPrompt("Build a CLI tool", "", "", nil)
 
 	if !strings.Contains(prompt, "Build a CLI tool") {
 		t.Error("prompt missing spec content")
@@ -29,7 +29,7 @@ func TestBuildPlannerPrompt_Fresh(t *testing.T) {
 func TestBuildPlannerPrompt_WithAnchor(t *testing.T) {
 	t.Parallel()
 	anchorContent := "project: myproject\ncompleted:\n  - id: S01"
-	prompt := buildPlannerPrompt("spec content", anchorContent, "")
+	prompt := buildPlannerPrompt("spec content", anchorContent, "", nil)
 
 	if !strings.Contains(prompt, anchorContent) {
 		t.Error("prompt missing anchor content")
@@ -42,7 +42,7 @@ func TestBuildPlannerPrompt_WithAnchor(t *testing.T) {
 func TestBuildPlannerPrompt_WithExistingTasks(t *testing.T) {
 	t.Parallel()
 	existingTasks := "## S01 — First Task ⬜ PENDING"
-	prompt := buildPlannerPrompt("spec content", "", existingTasks)
+	prompt := buildPlannerPrompt("spec content", "", existingTasks, nil)
 
 	if !strings.Contains(prompt, existingTasks) {
 		t.Error("prompt missing existing tasks content")
@@ -54,7 +54,7 @@ func TestBuildPlannerPrompt_WithExistingTasks(t *testing.T) {
 
 func TestBuildPlannerPrompt_Structure(t *testing.T) {
 	t.Parallel()
-	prompt := buildPlannerPrompt("my spec", "my anchor", "my tasks")
+	prompt := buildPlannerPrompt("my spec", "my anchor", "my tasks", nil)
 
 	sections := []string{
 		"## Project Specification",
@@ -132,7 +132,7 @@ func TestPlan_WritesFile(t *testing.T) {
 		},
 	}
 
-	p := NewPlanner(mock, "test-model", dir)
+	p := NewPlanner(mock, "test-model", dir, nil)
 	if err := p.Plan(context.Background(), specPath, filepath.Join(dir, "anchor.yaml"), tasksPath); err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -160,7 +160,7 @@ func TestPlan_AllowedToolsEnforcement(t *testing.T) {
 		},
 	}
 
-	p := NewPlanner(mock, "test-model", dir)
+	p := NewPlanner(mock, "test-model", dir, nil)
 	tasksPath := filepath.Join(dir, "tasks.md")
 	if err := p.Plan(context.Background(), specPath, filepath.Join(dir, "anchor.yaml"), tasksPath); err != nil {
 		t.Fatalf("Plan() error = %v", err)
@@ -187,7 +187,7 @@ func TestPlan_SpecNotFound(t *testing.T) {
 	dir := t.TempDir()
 	mock := &mockProvider{}
 
-	p := NewPlanner(mock, "test-model", dir)
+	p := NewPlanner(mock, "test-model", dir, nil)
 	err := p.Plan(context.Background(), filepath.Join(dir, "missing.md"), "", filepath.Join(dir, "tasks.md"))
 	if err == nil {
 		t.Fatal("Plan() expected error for missing spec, got nil")
@@ -211,7 +211,7 @@ func TestPlan_ProviderError(t *testing.T) {
 		},
 	}
 
-	p := NewPlanner(mock, "test-model", dir)
+	p := NewPlanner(mock, "test-model", dir, nil)
 	err := p.Plan(context.Background(), specPath, "", filepath.Join(dir, "tasks.md"))
 	if err == nil {
 		t.Fatal("Plan() expected error, got nil")
@@ -235,7 +235,7 @@ func TestPlan_ModelPassedThrough(t *testing.T) {
 		},
 	}
 
-	p := NewPlanner(mock, "opus", dir)
+	p := NewPlanner(mock, "opus", dir, nil)
 	if err := p.Plan(context.Background(), specPath, "", filepath.Join(dir, "tasks.md")); err != nil {
 		t.Fatal(err)
 	}

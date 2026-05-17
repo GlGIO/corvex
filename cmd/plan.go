@@ -39,7 +39,7 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating provider: %w", err)
 	}
 
-	planner := orchestrator.NewPlanner(p, cfg.Provider.Models.Planner, workDir)
+	planner := orchestrator.NewPlanner(p, cfg.Provider.Models.Planner, workDir, cfg.AgentRouting)
 
 	pDir := projectDir(workDir, project)
 	specPath := filepath.Join(pDir, "spec.md")

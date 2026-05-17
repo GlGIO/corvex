@@ -14,6 +14,7 @@ type Config struct {
 	Execution    ExecutionConfig   `yaml:"execution"`
 	Context      ContextConfig     `yaml:"context"`
 	AgentRouting map[string]string `yaml:"agent_routing"`
+	Validate     ValidateConfig    `yaml:"validate"`
 }
 
 type ProjectConfig struct {
@@ -41,13 +42,40 @@ type SandboxConfig struct {
 }
 
 type ExecutionConfig struct {
-	MaxRetries int  `yaml:"max_retries"`
-	AutoCommit bool `yaml:"auto_commit"`
-	Parallel   bool `yaml:"parallel"`
+	MaxRetries       int  `yaml:"max_retries"`
+	AutoCommit       bool `yaml:"auto_commit"`
+	Parallel         bool `yaml:"parallel"`
+	InsightThreshold int  `yaml:"insight_threshold"` // min repeated tasks of same unconfigured type to trigger agent suggestion; 0 = disabled
 }
 
 type ContextConfig struct {
 	AlwaysInclude []string `yaml:"always_include"`
+}
+
+type ValidateConfig struct {
+	Stack    ValidateStackConfig `yaml:"stack"`
+	Database ValidateDBConfig    `yaml:"database"`
+	UI       ValidateUIConfig    `yaml:"ui"`
+}
+
+type ValidateStackConfig struct {
+	Runtime      string `yaml:"runtime"`
+	Framework    string `yaml:"framework"`
+	StartCommand string `yaml:"start_command"`
+	Port         int    `yaml:"port"`
+	ReadyTimeout int    `yaml:"ready_timeout"`
+	HealthPath   string `yaml:"health_path"`
+}
+
+type ValidateDBConfig struct {
+	Type           string            `yaml:"type"`
+	Image          string            `yaml:"image"`
+	MigrateCommand string            `yaml:"migrate_command"`
+	Env            map[string]string `yaml:"env"`
+}
+
+type ValidateUIConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 func Load(path string) (*Config, error) {
@@ -83,8 +111,9 @@ func Default() *Config {
 			Type: "local",
 		},
 		Execution: ExecutionConfig{
-			MaxRetries: 2,
-			AutoCommit: true,
+			MaxRetries:       2,
+			AutoCommit:       true,
+			InsightThreshold: 3,
 		},
 	}
 }

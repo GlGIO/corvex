@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,7 +58,11 @@ func runGrill(cmd *cobra.Command, args []string) error {
 
 	griller := orchestrator.NewGriller(p, cfg.Provider.Models.Planner, workDir)
 	reader := bufio.NewReader(os.Stdin)
+	return runGrillLoop(cmd.Context(), griller, reader, project, specPath, decisionsPath)
+}
 
+// runGrillLoop is the shared interactive Q&A loop used by both `grill` and `start`.
+func runGrillLoop(ctx context.Context, griller *orchestrator.Griller, reader *bufio.Reader, project, specPath, decisionsPath string) error {
 	totalCost := 0.0
 	answered := 0
 
@@ -65,7 +70,7 @@ func runGrill(cmd *cobra.Command, args []string) error {
 
 	for i := 0; i < maxGrillIterations; i++ {
 		log.Info("grilling", "iteration", i+1)
-		step, err := griller.Grill(cmd.Context(), specPath, decisionsPath)
+		step, err := griller.Grill(ctx, specPath, decisionsPath)
 		if err != nil {
 			return fmt.Errorf("grill step: %w", err)
 		}
