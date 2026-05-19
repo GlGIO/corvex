@@ -73,7 +73,12 @@ func (m *Manager) Check() (*CheckResult, error) {
 			return nil, fmt.Errorf("resetting tracked files: %w", err)
 		}
 	}
-	if _, err := m.git("clean", "-fd"); err != nil {
+	// Preserve `.corvex` — it's the project's config directory in the
+	// main repo and a symlink in worktrees. Both are untracked by design,
+	// so a vanilla `git clean -fd` would wipe them and break the next
+	// `corvex run` ("`.corvex` directory not found"). `-e` accepts a
+	// .gitignore-style pattern.
+	if _, err := m.git("clean", "-fd", "-e", ".corvex"); err != nil {
 		return nil, fmt.Errorf("cleaning untracked files: %w", err)
 	}
 

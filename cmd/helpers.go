@@ -75,8 +75,21 @@ func findProjectWorktree(workDir, project string) string {
 
 func requireCorvexDir(workDir string) error {
 	corvexDir := filepath.Join(workDir, ".corvex")
-	if _, err := os.Stat(corvexDir); os.IsNotExist(err) {
-		return fmt.Errorf(".corvex directory not found — run 'corvex init' first")
+
+	// Lstat doesn't follow symlinks — distinguish "not there at all" from
+	// "broken symlink pointing somewhere that no longer exists" so users in
+	// a worktree get a more actionable hint than "run corvex init".
+	info, lstatErr := os.Lstat(corvexDir)
+	if os.IsNotExist(lstatErr) {
+		return fmt.Errorf(".corvex directory not found in %s — run 'corvex init' first (or if this is a worktree, recreate the symlink: ln -s <main-repo>/.corvex .corvex)", workDir)
+	}
+	if lstatErr != nil {
+		return fmt.Errorf("checking .corvex: %w", lstatErr)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		if _, err := os.Stat(corvexDir); err != nil {
+			return fmt.Errorf(".corvex is a symlink but points to a missing target (%w) — recreate it: rm %s && ln -s <main-repo>/.corvex %s", err, corvexDir, corvexDir)
+		}
 	}
 	return nil
 }
