@@ -100,7 +100,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	})
 
 	if !runPlain && isInteractive() {
-		return runWithTUI(ctx, orc, events, commands, cancel, project)
+		return runWithTUI(ctx, orc, events, commands, cancel, project, workDir)
 	}
 
 	go drainEvents(events)
@@ -154,8 +154,30 @@ func isInteractive() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, commands chan orchestrator.Command, cancel context.CancelFunc, project string) error {
+func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, commands chan orchestrator.Command, cancel context.CancelFunc, project, workDir string) error {
 	m := tui.NewWithCommands(events, commands, cancel, project)
+
+	// Pre-populate the DAG panel from tasks.md so the TUI shows the task list
+	// immediately on startup. Without this, the panel renders "no tasks loaded"
+	// until (and unless) the orchestrator emits per-task events.
+	tasksPath := filepath.Join(projectDir(workDir, project), "tasks.md")
+	if tasks, _, err := task.ParseTasksFile(tasksPath); err == nil {
+		entries := make([]tui.TaskEntry, 0, len(tasks))
+		completed := 0
+		for _, t := range tasks {
+			entries = append(entries, tui.TaskEntry{
+				ID:     t.ID,
+				Title:  t.Title,
+				Status: t.Status,
+			})
+			if t.Status == types.StatusPassed || t.Status == types.StatusSkipped {
+				completed++
+			}
+		}
+		m = m.AddDAGTasks(entries)
+		m = m.SetDAGProgress(completed, len(tasks))
+	}
+
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	go func() {

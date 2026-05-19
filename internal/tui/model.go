@@ -429,6 +429,12 @@ func (m Model) AddDAGTasks(tasks []TaskEntry) Model {
 	return m
 }
 
+// SetDAGProgress updates the completed/total counters shown in the header.
+func (m Model) SetDAGProgress(completed, total int) Model {
+	m.dag = m.dag.SetProgress(completed, total)
+	return m
+}
+
 // HeaderLine returns a simple header string for non-TUI contexts.
 func HeaderLine(project string, completed, total int, cost float64) string {
 	return fmt.Sprintf(
