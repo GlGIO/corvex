@@ -9,11 +9,12 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:          "corvex",
-	Short:        "AI-powered development orchestrator",
-	Long:         "Corvex orchestrates AI agents to execute complex software development tasks autonomously.",
-	Version:      types.Version,
-	SilenceUsage: true,
+	Use:           "corvex",
+	Short:         "AI-powered development orchestrator",
+	Long:          "Corvex orchestrates AI agents to execute complex software development tasks autonomously.",
+	Version:       types.Version,
+	SilenceUsage:  true,
+	SilenceErrors: true, // Execute() prints the error itself; avoid cobra's duplicate
 }
 
 func Execute() {
