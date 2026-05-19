@@ -75,7 +75,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	sb := sandboxpkg.NewSandbox(cfg.Sandbox)
 
-	events := make(chan orchestrator.Event, 64)
+	events := make(chan orchestrator.Event, 256)
 	commands := make(chan orchestrator.Command, 16)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

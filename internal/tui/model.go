@@ -386,15 +386,35 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 
 	case orchestrator.EventPlanStart:
 		m.worker = m.worker.SetActiveTask("", "plan")
+		content := ev.Message
+		if content == "" {
+			content = "Planning tasks..."
+		}
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
-			Content: "Planning tasks...",
+			Content: content,
 		})
 
 	case orchestrator.EventPlanComplete:
 		m.worker = m.worker.AppendStream(&types.StreamEvent{
 			Type:    types.EventText,
 			Content: "Planning complete.",
+		})
+
+	case orchestrator.EventRecoveryCheck:
+		m.worker = m.worker.AppendStream(&types.StreamEvent{
+			Type:    types.EventText,
+			Content: "Checking working tree for leftover state...",
+		})
+
+	case orchestrator.EventRecoveryResult:
+		msg := ev.Message
+		if msg == "" {
+			msg = "Recovery check complete."
+		}
+		m.worker = m.worker.AppendStream(&types.StreamEvent{
+			Type:    types.EventText,
+			Content: msg,
 		})
 
 	case orchestrator.EventRetry:

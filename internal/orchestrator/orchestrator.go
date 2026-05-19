@@ -475,10 +475,12 @@ func (o *Orchestrator) emit(ev Event) {
 		return
 	}
 	ev.Timestamp = time.Now()
-	select {
-	case o.events <- ev:
-	default:
-	}
+	// Block until the consumer drains the channel. Previously this used a
+	// non-blocking `select { default: }` which silently dropped events when
+	// the buffer was full — and stream chunks from chatty workers fill it
+	// quickly. The TUI/log consumers are fast; transient backpressure here
+	// is far better than losing recovery events, retries, or task results.
+	o.events <- ev
 }
 
 func (o *Orchestrator) runHook(ctx context.Context, name string, env hooks.HookEnv, taskID string) {
