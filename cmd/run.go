@@ -29,6 +29,7 @@ var (
 	flagValidate bool
 	runAB        string
 	runNoReplan  bool
+	runHere      bool
 )
 
 var runCmd = &cobra.Command{
@@ -47,6 +48,7 @@ func init() {
 	runCmd.Flags().BoolVar(&flagValidate, "validate", false, "run integration validation after all tasks complete")
 	runCmd.Flags().StringVar(&runAB, "ab", "", "A/B run two models against one task (e.g. --ab sonnet,opus); requires --task")
 	runCmd.Flags().BoolVar(&runNoReplan, "no-replan", false, "fail if spec.md drifted instead of auto-regenerating tasks.md (protects manual edits)")
+	runCmd.Flags().BoolVar(&runHere, "here", false, "run from the current directory even when a worktree exists for this project (rarely correct — usually you want to cd into the worktree)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -60,6 +62,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	if err := requireCorvexDir(workDir); err != nil {
 		return err
+	}
+
+	// `corvex start <proj>` creates a sibling worktree at <repo>-<proj>.
+	// If that worktree exists but the user is invoking `run` from somewhere
+	// else (typically the main repo where they ran `start`), the run would
+	// write all generated code to the wrong branch and orphan the worktree.
+	// Refuse with an actionable message; `--here` is the escape hatch when
+	// the user really means to run from the current directory (e.g. the
+	// worktree is a leftover from an abandoned experiment).
+	if !runHere {
+		if wt := findProjectWorktree(workDir, project); wt != "" {
+			absWork, _ := filepath.Abs(workDir)
+			absWT, _ := filepath.Abs(wt)
+			if absWork != absWT {
+				return fmt.Errorf("worktree for project %q exists at %s, but you are running from %s.\nThis would write code to the wrong branch and bypass the worktree.\n\n→ cd %s && corvex run %s\n\nOr pass --here to run from the current directory anyway", project, absWT, absWork, absWT, project)
+			}
+		}
 	}
 
 	if runDryRun {
