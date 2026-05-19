@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/giovannialves/corvex/internal/anchor"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/provider"
+	"github.com/giovannialves/corvex/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -54,5 +57,26 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("tasks.md generated", "path", tasksPath)
+
+	// Persist the spec hash in anchor.yaml so subsequent `corvex run`
+	// invocations can detect whether the spec has drifted. Without this,
+	// `needsPlanning` finds no anchor state, treats the spec as "changed",
+	// and triggers an automatic replan every time — wiping manual edits to
+	// tasks.md and resetting completed task statuses to PENDING.
+	existing, _ := anchor.Load(anchorPath)
+	hash, err := anchor.SpecHash(specPath)
+	if err != nil {
+		return fmt.Errorf("hashing spec: %w", err)
+	}
+	existing.Project = project
+	existing.SpecHash = hash
+	existing.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if existing.Completed == nil {
+		existing.Completed = []types.CompletedTask{}
+	}
+	if err := anchor.Save(anchorPath, existing); err != nil {
+		return fmt.Errorf("saving anchor: %w", err)
+	}
+
 	return nil
 }
