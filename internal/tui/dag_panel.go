@@ -82,9 +82,27 @@ func (d DAGPanel) View() string {
 		rows = len(visible)
 	}
 
-	end := d.scrollOff + rows
+	// Reserve one row for the "↑ N above" / "↓ N below" footer when we
+	// actually need to render one — otherwise the footer line overflows past
+	// the panel's declared height and visually corrupts the divider/worker
+	// area beneath it.
+	hasAbove := d.scrollOff > 0
+	wantTaskRows := rows
+	if hasAbove {
+		wantTaskRows--
+	}
+	end := d.scrollOff + wantTaskRows
 	if end > len(visible) {
 		end = len(visible)
+	}
+	hasBelow := end < len(visible)
+	if hasBelow {
+		// Pull back one more row so the "↓ N more" line fits.
+		end--
+		if end < d.scrollOff {
+			end = d.scrollOff
+		}
+		hasBelow = end < len(visible)
 	}
 
 	contentWidth := d.width - 2
@@ -93,16 +111,18 @@ func (d DAGPanel) View() string {
 	}
 
 	var b strings.Builder
+	if hasAbove {
+		fmt.Fprintf(&b, "%s\n", TextFaint.Render(fmt.Sprintf("  ↑ %d above", d.scrollOff)))
+	}
 	for i := d.scrollOff; i < end; i++ {
 		t := d.tasks[visible[i]]
 		b.WriteString(renderDAGRow(t, i == d.cursor, contentWidth))
-		if i < end-1 {
+		if i < end-1 || hasBelow {
 			b.WriteString("\n")
 		}
 	}
 
-	if end < len(visible) {
-		b.WriteString("\n")
+	if hasBelow {
 		b.WriteString(TextFaint.Render(fmt.Sprintf("  ↓ %d more", len(visible)-end)))
 	}
 
@@ -221,6 +241,62 @@ func (d DAGPanel) AddTasks(entries []TaskEntry) DAGPanel {
 func (d DAGPanel) SetProgress(completed, total int) DAGPanel {
 	d.completed = completed
 	d.totalTasks = total
+	return d
+}
+
+// ScrollToTask ensures the row containing the given task is visible in the
+// panel viewport. The cursor follows the task only when it was previously
+// parked on another running task (or hadn't moved from row 0) — if the user
+// manually navigated to inspect something, we keep their cursor put.
+func (d DAGPanel) ScrollToTask(id string) DAGPanel {
+	visible := d.visibleIndexes()
+	if len(visible) == 0 {
+		return d
+	}
+
+	// Locate the task's position within the visible slice.
+	targetVisible := -1
+	for vi, ti := range visible {
+		if d.tasks[ti].ID == id {
+			targetVisible = vi
+			break
+		}
+	}
+	if targetVisible == -1 {
+		return d // task hidden by filter; nothing to do
+	}
+
+	rows := d.visibleRows()
+	if rows <= 0 {
+		rows = len(visible)
+	}
+
+	// View() may consume up to two rows on "↑ N above" / "↓ N more" footers,
+	// shrinking the actual task-row budget. Account for this when computing
+	// the new scroll offset so the target doesn't get pushed back off-screen
+	// by the footer that appears once we scroll.
+	const footerBudget = 2
+	effective := rows - footerBudget
+	if effective < 1 {
+		effective = 1
+	}
+
+	if targetVisible < d.scrollOff {
+		// Position target near the top of the viewport.
+		d.scrollOff = targetVisible
+	} else if targetVisible >= d.scrollOff+effective {
+		// Position target near the bottom (but not on the absolute last row,
+		// so the "↓ more" footer still has room).
+		d.scrollOff = targetVisible - effective + 1
+		if d.scrollOff < 0 {
+			d.scrollOff = 0
+		}
+	}
+
+	if d.cursor == 0 || d.cursor < d.scrollOff || d.cursor >= d.scrollOff+effective {
+		d.cursor = targetVisible
+	}
+
 	return d
 }
 

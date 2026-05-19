@@ -345,6 +345,7 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 
 	case orchestrator.EventTaskStart:
 		m.dag = m.dag.UpdateTask(ev.TaskID, types.StatusRunning, 0, ev.Attempt)
+		m.dag = m.dag.ScrollToTask(ev.TaskID)
 		m.worker = m.worker.Clear()
 		m.worker = m.worker.SetActiveTask(ev.TaskID, "worker")
 		m.status = m.status.IncrTurns()
