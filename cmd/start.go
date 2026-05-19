@@ -356,6 +356,14 @@ func promptBaseBranch(reader *bufio.Reader) string {
 // setupWorktree creates a git worktree at wtPath branching from baseBranch,
 // then symlinks the main repo's .corvex directory into it.
 func setupWorktree(gitRoot, wtPath, feature, baseBranch string) error {
+	// A fresh `git init` repo has no commits, so any baseBranch ref (even
+	// "main") is invalid and `git worktree add` fails with a cryptic
+	// "fatal: invalid reference: main". Detect this up front and tell the
+	// user exactly how to recover.
+	if err := exec.Command("git", "-C", gitRoot, "rev-parse", "--verify", "HEAD").Run(); err != nil {
+		return fmt.Errorf("this repository has no commits yet — run `git -C %s commit --allow-empty -m \"initial commit\"` and retry `corvex start %s`", gitRoot, feature)
+	}
+
 	branch := "feat/" + feature
 	c := exec.Command("git", "-C", gitRoot, "worktree", "add", wtPath, "-b", branch, baseBranch)
 	c.Stdout = os.Stdout
