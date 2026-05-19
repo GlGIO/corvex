@@ -50,9 +50,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 		if err := setupWorktree(gitRoot, wtPath, project, baseBranch); err != nil {
 			return fmt.Errorf("setting up worktree: %w", err)
 		}
-		fmt.Printf("\n✓ Worktree ready at %s\n\n", wtPath)
+		fmt.Printf("\n✓ Worktree ready at %s\n", wtPath)
+		fmt.Printf("  Next (after this command finishes): cd %s && corvex run %s\n\n", wtPath, project)
 	} else {
-		fmt.Printf("✓ Using existing worktree at %s\n\n", wtPath)
+		fmt.Printf("✓ Using existing worktree at %s\n", wtPath)
+		fmt.Printf("  Next (after this command finishes): cd %s && corvex run %s\n\n", wtPath, project)
 	}
 
 	if err := os.Chdir(wtPath); err != nil {
@@ -82,16 +84,30 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	mode := promptMode(reader, specExists)
 
+	var pathErr error
 	switch mode {
 	case "brainstorm":
-		return brainstormPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, qaPath, reader)
+		pathErr = brainstormPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, qaPath, reader)
 	case "grill":
-		return grillPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, reader)
+		pathErr = grillPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, reader)
 	case "plan":
-		return planPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, reader)
+		pathErr = planPath(cmd.Context(), p, cfg.Provider.Models.Planner, workDir, project, specPath, decisionsPath, reader)
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
+	if pathErr != nil {
+		return pathErr
+	}
+
+	// `os.Chdir(wtPath)` above only affected this process. The user's shell
+	// is still wherever they invoked `corvex start` from — typically the
+	// main repo, not the worktree. Spell out the next step so they don't
+	// accidentally run `corvex run` from the wrong directory and write
+	// generated code to main.
+	fmt.Printf("\nReady to execute. From a new prompt, run:\n")
+	fmt.Printf("  cd %s\n", wtPath)
+	fmt.Printf("  corvex run %s\n\n", project)
+	return nil
 }
 
 func promptMode(reader *bufio.Reader, specExists bool) string {
