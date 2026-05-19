@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/task"
@@ -278,6 +279,48 @@ func TestParseTasksFile_CriteriaWithBackticks(t *testing.T) {
 
 	want := []string{"`npm test` passes", "Coverage above 80%"}
 	assertSliceEqual(t, "Criteria", tasks[0].Criteria, want)
+}
+
+func TestParseTasksFile_MalformedHeadingFails(t *testing.T) {
+	tests := []struct {
+		name    string
+		heading string
+		wantSub string // substring that should appear in the error message
+	}{
+		{
+			"non-canonical status word",
+			"## S01 — Bootstrap ✅ DONE",
+			`"## S01 — Bootstrap ✅ DONE"`,
+		},
+		{
+			"missing emoji",
+			"## S02 — Schema PASSED",
+			`"## S02 — Schema PASSED"`,
+		},
+		{
+			"unknown emoji",
+			"## S03 — Worker 🚧 PENDING",
+			`"## S03 — Worker 🚧 PENDING"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := fmt.Sprintf("%s\n\n### O que fazer\n1. Step\n", tt.heading)
+			path := writeTemp(t, content)
+
+			_, _, err := task.ParseTasksFile(path)
+			if err == nil {
+				t.Fatal("ParseTasksFile() succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), "unrecognized task heading") {
+				t.Errorf("error %q missing 'unrecognized task heading'", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantSub) {
+				t.Errorf("error %q missing offending heading %q", err, tt.wantSub)
+			}
+		})
+	}
 }
 
 func TestParseTasksFile_DashVariants(t *testing.T) {

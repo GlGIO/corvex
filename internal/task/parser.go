@@ -17,6 +17,12 @@ var (
 	fileCreateRe = regexp.MustCompile("^\\s*-\\s*\\*\\*Criar:\\*\\*\\s*`([^`]+)`")
 	fileModifyRe = regexp.MustCompile("^\\s*-\\s*\\*\\*Modificar:\\*\\*\\s*`([^`]+)`")
 	separatorRe  = regexp.MustCompile(`^---\s*$`)
+
+	// looseHeadingRe matches any "## S<digits>" line — used to detect task
+	// headings that almost match `headingRe` but have malformed status, missing
+	// emoji, or other formatting errors. Lines that match this but NOT
+	// `headingRe` are reported as parse errors instead of silently dropped.
+	looseHeadingRe = regexp.MustCompile(`^##\s+S\d+\b`)
 )
 
 var statusEmoji = map[types.TaskStatus]string{
@@ -61,9 +67,24 @@ func ParseTasksFile(path string) ([]types.Task, types.DAGSpec, error) {
 
 	lines := strings.Split(content, "\n")
 	dag, bodyStart := parseFrontmatter(lines)
-	tasks := parseTaskBlocks(lines[bodyStart:])
+	tasks, malformed := parseTaskBlocks(lines[bodyStart:])
+
+	if len(malformed) > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "parsing %s: %d unrecognized task heading(s):\n", path, len(malformed))
+		for _, m := range malformed {
+			fmt.Fprintf(&b, "  line %d: %q\n", m.lineNum+bodyStart+1, m.content)
+		}
+		b.WriteString("Hint: status must be one of PENDING|RUNNING|PASSED|FAILED|SKIPPED (with matching emoji ⬜|🔄|✅|❌|⏭️)")
+		return nil, types.DAGSpec{}, fmt.Errorf("%s", b.String())
+	}
 
 	return tasks, dag, nil
+}
+
+type malformedHeading struct {
+	lineNum int // 0-indexed within the body slice
+	content string
 }
 
 func parseFrontmatter(lines []string) (types.DAGSpec, int) {
@@ -118,11 +139,12 @@ type taskBlock struct {
 	lines  []string
 }
 
-func parseTaskBlocks(lines []string) []types.Task {
+func parseTaskBlocks(lines []string) ([]types.Task, []malformedHeading) {
 	var blocks []taskBlock
 	var current *taskBlock
+	var malformed []malformedHeading
 
-	for _, line := range lines {
+	for i, line := range lines {
 		if m := headingRe.FindStringSubmatch(line); m != nil {
 			if current != nil {
 				blocks = append(blocks, *current)
@@ -132,6 +154,18 @@ func parseTaskBlocks(lines []string) []types.Task {
 				title:  m[2],
 				status: types.TaskStatus(m[4]),
 			}
+			continue
+		}
+
+		// Catch headings that look like task lines but fail the strict regex
+		// (e.g. "## S01 ... ✅ DONE" instead of "## S01 ... ✅ PASSED"). Without
+		// this check, the parser silently drops them and downstream commands
+		// show baffling counts like "0/28 done" when the file has 30 tasks.
+		if looseHeadingRe.MatchString(line) {
+			malformed = append(malformed, malformedHeading{
+				lineNum: i,
+				content: strings.TrimSpace(line),
+			})
 			continue
 		}
 
@@ -161,7 +195,7 @@ func parseTaskBlocks(lines []string) []types.Task {
 		tasks = append(tasks, task)
 	}
 
-	return tasks
+	return tasks, malformed
 }
 
 func parseBlockContent(lines []string, task *types.Task) {
