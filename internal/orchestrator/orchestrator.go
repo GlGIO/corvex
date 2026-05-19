@@ -354,15 +354,12 @@ func (o *Orchestrator) executeTask(
 			o.runHook(ctx, hooks.OnSuccess, hookEnv, t.ID)
 			o.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
 
-			// D8: git commit FIRST, then update tasks.md and anchor.
-			// Crash before commit = retry from clean state.
-			// Crash after commit = consistent state, just re-read statuses.
-			if o.cfg.Execution.AutoCommit {
-				if err := o.recovery.MarkCheckpoint(t.ID); err != nil {
-					charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
-				}
-			}
-
+			// Write all state files BEFORE the commit so they're captured
+			// in the checkpoint. The previous order (commit first, write
+			// later) left tasks.md/anchor.yaml dirty after every task —
+			// and the next run's `git checkout .` recovery reverted them,
+			// making completed tasks reappear as RUNNING and dropping
+			// `completed` entries from anchor.yaml.
 			if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to passed", "task", t.ID, "err", statusErr)
 			}
@@ -392,6 +389,12 @@ func (o *Orchestrator) executeTask(
 			})
 			if err := anchor.Save(anchorPath, *anchorState); err != nil {
 				charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)
+			}
+
+			if o.cfg.Execution.AutoCommit {
+				if err := o.recovery.MarkCheckpoint(t.ID); err != nil {
+					charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
+				}
 			}
 
 			completed[t.ID] = true
