@@ -19,11 +19,20 @@ type Worker struct {
 	model    string
 	workDir  string
 	sandbox  sandbox.Sandbox
+	onStream func(types.StreamEvent)
 }
 
 // NewWorker creates a Worker bound to the given provider and model.
 func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox) *Worker {
 	return &Worker{provider: p, model: model, workDir: workDir, sandbox: sb}
+}
+
+// SetOnStream installs a callback that receives streaming events from the
+// provider while a task runs. Pass nil to clear. The callback is invoked
+// synchronously on the provider's goroutine, so it should be cheap (e.g.
+// forwarding to a buffered channel).
+func (w *Worker) SetOnStream(cb func(types.StreamEvent)) {
+	w.onStream = cb
 }
 
 // Execute runs the AI provider for the given task and returns the execution result.
@@ -43,6 +52,21 @@ func (w *Worker) Execute(
 		WorkDir: w.workDir,
 	}
 
+	// When a streaming callback is set AND we're running on a LocalSandbox,
+	// bypass the sandbox abstraction (which buffers stdout) and stream
+	// directly via the provider's ProgressStreamer. LocalSandbox is just a
+	// thin os/exec wrapper, so running the same command through
+	// ExecuteWithProgress produces identical results plus per-chunk events.
+	if w.onStream != nil && isLocalOrNilSandbox(w.sandbox) {
+		if ps, ok := w.provider.(provider.ProgressStreamer); ok {
+			result, err := ps.ExecuteWithProgress(ctx, req, w.onStream)
+			if err != nil {
+				return result, fmt.Errorf("worker execution for task %s: %w", t.ID, err)
+			}
+			return result, nil
+		}
+	}
+
 	if cb, ok := w.provider.(provider.CommandBuilder); ok && w.sandbox != nil {
 		return w.executeViaSandbox(ctx, cb, req, t.ID)
 	}
@@ -53,6 +77,17 @@ func (w *Worker) Execute(
 	}
 
 	return result, nil
+}
+
+// isLocalOrNilSandbox reports whether the sandbox can be safely bypassed for
+// streaming. Docker/devcontainer/nix sandboxes need their own runtime so we
+// can't shortcut to a local exec for them.
+func isLocalOrNilSandbox(sb sandbox.Sandbox) bool {
+	if sb == nil {
+		return true
+	}
+	_, ok := sb.(*sandbox.LocalSandbox)
+	return ok
 }
 
 func (w *Worker) executeViaSandbox(

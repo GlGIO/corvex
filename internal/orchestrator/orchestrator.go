@@ -304,7 +304,17 @@ func (o *Orchestrator) executeTask(
 		agentPrompt := loadAgentPrompt(o.workDir, o.cfg.AgentRouting, t.Type)
 		anchorCtx := anchor.GenerateContext(*anchorState, t.ID)
 
+		// Stream per-chunk events from the worker so the TUI panel can show
+		// what the AI is doing (tool calls, intermediate text) instead of
+		// just "worker S03" for several minutes.
+		taskID := t.ID
+		o.worker.SetOnStream(func(se types.StreamEvent) {
+			ev := se
+			o.emit(Event{Type: EventTaskStream, TaskID: taskID, Stream: &ev})
+		})
+
 		result, err := o.worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+		o.worker.SetOnStream(nil)
 		if err != nil {
 			if attempt == maxRetries {
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
