@@ -37,6 +37,11 @@ type Options struct {
 	// Commands carries runtime control messages from a UI (pause, skip,
 	// retry). Optional — when nil, the orchestrator runs uninterrupted.
 	Commands <-chan Command
+	// NoReplan disables the automatic replan that fires when spec.md has
+	// drifted from the hash stored in anchor.yaml. When true and the spec
+	// has changed, Run returns an actionable error instead of regenerating
+	// tasks.md. Use this to protect manual edits.
+	NoReplan bool
 }
 
 // Orchestrator coordinates task planning, execution, review, and recovery.
@@ -58,6 +63,7 @@ type Orchestrator struct {
 	commands   <-chan Command
 	skip       map[string]bool // task IDs skipped by the user at runtime
 	paused     bool            // toggled by Cmd{Pause,Resume}
+	noReplan   bool            // mirror of Options.NoReplan
 }
 
 // New creates an Orchestrator from the given options.
@@ -79,6 +85,7 @@ func New(opts Options) *Orchestrator {
 		abModels:   opts.ABModels,
 		commands:   opts.Commands,
 		skip:       make(map[string]bool),
+		noReplan:   opts.NoReplan,
 	}
 }
 
@@ -118,7 +125,26 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		return fmt.Errorf("checking planning needs: %w", planErr)
 	}
 	if plan {
-		o.emit(Event{Type: EventPlanStart})
+		// If tasks.md already exists, this is a replan triggered by spec drift.
+		// Honor --no-replan and refuse, or back up the existing file before
+		// the planner overwrites it.
+		_, tasksExist := os.Stat(tasksPath)
+		isReplan := tasksExist == nil
+		if isReplan && o.noReplan {
+			return fmt.Errorf("spec.md has changed since the last plan, but --no-replan is set; run `corvex plan %s` to regenerate tasks.md, or revert spec.md to its previous state", project)
+		}
+		var backupPath string
+		if isReplan {
+			backupPath = tasksPath + ".bak-" + time.Now().UTC().Format("20060102-150405")
+			if err := os.Rename(tasksPath, backupPath); err != nil {
+				return fmt.Errorf("backing up tasks.md before replan: %w", err)
+			}
+		}
+		msg := "Planning tasks..."
+		if isReplan {
+			msg = fmt.Sprintf("Spec changed — replanning. Backup: %s", filepath.Base(backupPath))
+		}
+		o.emit(Event{Type: EventPlanStart, Message: msg})
 		if err := o.planner.Plan(ctx, specPath, anchorPath, tasksPath); err != nil {
 			return fmt.Errorf("planning: %w", err)
 		}

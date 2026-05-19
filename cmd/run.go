@@ -22,12 +22,13 @@ import (
 )
 
 var (
-	runTask     string
-	runSingle   bool
-	runDryRun   bool
-	runPlain    bool
+	runTask      string
+	runSingle    bool
+	runDryRun    bool
+	runPlain     bool
 	flagValidate bool
-	runAB       string
+	runAB        string
+	runNoReplan  bool
 )
 
 var runCmd = &cobra.Command{
@@ -45,6 +46,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runPlain, "plain", false, "disable TUI, use plain log output")
 	runCmd.Flags().BoolVar(&flagValidate, "validate", false, "run integration validation after all tasks complete")
 	runCmd.Flags().StringVar(&runAB, "ab", "", "A/B run two models against one task (e.g. --ab sonnet,opus); requires --task")
+	runCmd.Flags().BoolVar(&runNoReplan, "no-replan", false, "fail if spec.md drifted instead of auto-regenerating tasks.md (protects manual edits)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -97,6 +99,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		Sandbox:    sb,
 		ABModels:   abModels,
 		Commands:   commands,
+		NoReplan:   runNoReplan,
 	})
 
 	if !runPlain && isInteractive() {
