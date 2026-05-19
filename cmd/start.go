@@ -316,30 +316,6 @@ func writeMinimalSpec(specPath, project, description string) error {
 	return nil
 }
 
-// findGitRoot walks up from start until it finds a directory containing .git.
-func findGitRoot(start string) (string, error) {
-	abs, err := filepath.Abs(start)
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(abs, ".git")); err == nil {
-			return abs, nil
-		}
-		parent := filepath.Dir(abs)
-		if parent == abs {
-			return "", fmt.Errorf("no .git found above %s", start)
-		}
-		abs = parent
-	}
-}
-
-// worktreePath returns the sibling path for a feature's worktree:
-// <parent-of-repo>/<repo-name>-<feature>
-func worktreePath(gitRoot, feature string) string {
-	return filepath.Join(filepath.Dir(gitRoot), filepath.Base(gitRoot)+"-"+feature)
-}
-
 // promptBaseBranch asks the user which branch to base the worktree on.
 func promptBaseBranch(reader *bufio.Reader) string {
 	fmt.Print("Base branch [main]: ")
