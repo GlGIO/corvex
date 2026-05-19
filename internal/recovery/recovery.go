@@ -60,8 +60,18 @@ func (m *Manager) Check() (*CheckResult, error) {
 		}, nil
 	}
 
-	if _, err := m.git("checkout", "."); err != nil {
-		return nil, fmt.Errorf("resetting tracked files: %w", err)
+	// `git checkout .` fails with "pathspec '.' did not match any file(s)"
+	// when HEAD has no tracked files (e.g. fresh repo with only an empty
+	// initial commit). Skip the checkout in that case — there's nothing
+	// tracked to reset — and still let `git clean -fd` remove untracked junk.
+	tracked, err := m.git("ls-files")
+	if err != nil {
+		return nil, fmt.Errorf("listing tracked files: %w", err)
+	}
+	if strings.TrimSpace(tracked) != "" {
+		if _, err := m.git("checkout", "."); err != nil {
+			return nil, fmt.Errorf("resetting tracked files: %w", err)
+		}
 	}
 	if _, err := m.git("clean", "-fd"); err != nil {
 		return nil, fmt.Errorf("cleaning untracked files: %w", err)
