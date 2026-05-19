@@ -99,8 +99,13 @@ into executable tasks.
 	}
 
 	b.WriteString("\n\n## Existing Tasks\n\n")
-	if strings.TrimSpace(existingTasks) != "" {
+	hasExisting := strings.TrimSpace(existingTasks) != ""
+	if hasExisting {
 		b.WriteString(existingTasks)
+		b.WriteString("\n\n**IMPORTANT — Preservation rules when regenerating:**\n")
+		b.WriteString("- Preserve the exact status (`✅ PASSED`, `🔄 RUNNING`, `❌ FAILED`, `⏭️ SKIPPED`) of any task whose title AND `O que fazer` description are unchanged.\n")
+		b.WriteString("- Only use `⬜ PENDING` for genuinely new tasks or tasks whose description changed substantively.\n")
+		b.WriteString("- Keep stable task IDs (S01, S02, ...) for tasks that already exist. Reuse the same ID — do not renumber.\n")
 	} else {
 		b.WriteString("No existing tasks — generate from scratch.")
 	}
@@ -134,7 +139,7 @@ Analyze the specification and generate a complete tasks.md file.
 Each task should have:
 - A unique ID (S01, S02, ...)
 - A descriptive title
-- Status (⬜ PENDING for new tasks)
+- Status (⬜ PENDING for new tasks; preserve existing status per the rules above)
 - YAML block with type and depends_on
 - "O que fazer" section
 - "Critérios de sucesso" section
