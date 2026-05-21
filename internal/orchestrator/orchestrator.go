@@ -204,6 +204,8 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		}
 	}
 
+	var totalCostUSD float64
+
 	for {
 		ready := d.NextReady(completed)
 		if len(ready) == 0 {
@@ -275,7 +277,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 				if err := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); err != nil {
 					charmbraceletlog.Warn("updating task status to passed after a/b", "task", t.ID, "err", err)
 				}
-			} else if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d); err != nil {
+			} else if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d, &totalCostUSD); err != nil {
 				return err
 			}
 		}
@@ -306,6 +308,7 @@ func (o *Orchestrator) executeTask(
 	anchorState *types.AnchorState,
 	completed map[string]bool,
 	d *dag.DAG,
+	totalCostUSD *float64,
 ) error {
 	maxRetries := o.cfg.Execution.MaxRetries
 	if maxRetries <= 0 {
@@ -434,15 +437,23 @@ func (o *Orchestrator) executeTask(
 
 			completed[t.ID] = true
 			o.emit(Event{Type: EventCheckpoint, TaskID: t.ID})
+			taskCost := result.CostUSD + reviewResult.CostUSD
 			o.emit(Event{
 				Type:       EventTaskComplete,
 				TaskID:     t.ID,
 				Status:     types.StatusPassed,
-				CostUSD:    result.CostUSD + reviewResult.CostUSD,
+				CostUSD:    taskCost,
 				TokensIn:   result.TokensIn + reviewResult.TokensIn,
 				TokensOut:  result.TokensOut + reviewResult.TokensOut,
 				DurationMs: result.DurationMs + reviewResult.DurationMs,
 			})
+			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskCost > cap {
+				return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskCost, cap)
+			}
+			*totalCostUSD += taskCost
+			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
+				return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
+			}
 			return nil
 		}
 

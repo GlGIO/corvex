@@ -64,6 +64,16 @@ type ExecutionConfig struct {
 	AutoCommit       bool `yaml:"auto_commit"`
 	Parallel         bool `yaml:"parallel"`
 	InsightThreshold int  `yaml:"insight_threshold"` // min repeated tasks of same unconfigured type to trigger agent suggestion; 0 = disabled
+
+	// MaxCostUSD caps the cumulative LLM spend across all tasks in a single
+	// `corvex run`. When exceeded, Run returns an actionable error pointing
+	// the user to raise the ceiling. 0 = no cap (use with caution). Default 25.
+	MaxCostUSD float64 `yaml:"max_cost_usd"`
+
+	// MaxCostPerTaskUSD caps the LLM spend on any single task (worker +
+	// reviewer combined). Prevents a runaway loop from burning the run's
+	// entire budget on one task. 0 = no cap. Default 5.
+	MaxCostPerTaskUSD float64 `yaml:"max_cost_per_task_usd"`
 }
 
 type ContextConfig struct {
@@ -232,9 +242,11 @@ func Default() *Config {
 			Type: "local",
 		},
 		Execution: ExecutionConfig{
-			MaxRetries:       2,
-			AutoCommit:       true,
-			InsightThreshold: 3,
+			MaxRetries:        2,
+			AutoCommit:        true,
+			InsightThreshold:  3,
+			MaxCostUSD:        25,
+			MaxCostPerTaskUSD: 5,
 		},
 	}
 }
