@@ -50,6 +50,19 @@ func (w *Worker) Execute(
 		Prompt:  prompt,
 		Model:   w.model,
 		WorkDir: w.workDir,
+		// Hard block: the worker LLM cannot touch corvex state files
+		// (tasks.md, anchor.yaml, decisions.md, spec.md). Status transitions
+		// happen through the orchestrator, not through Edit/Write tool calls.
+		// Without this guard, the worker has been observed to write
+		// "✅ DONE" instead of canonical "✅ PASSED" (silently corrupting
+		// the parser) and to delete the .corvex symlink in worktrees.
+		DisallowedTools: []string{
+			"Edit(.corvex/**)",
+			"Write(.corvex/**)",
+			"Bash(rm:.corvex/**)",
+			"Bash(rm:-rf .corvex*)",
+			"Bash(mv:.corvex/**)",
+		},
 	}
 
 	// When a streaming callback is set AND we're running on a LocalSandbox,
