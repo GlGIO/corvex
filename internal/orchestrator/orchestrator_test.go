@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -97,6 +98,62 @@ Do the second thing.
 
 ### Arquivos
 - **Criar:** ` + "`test-file-2.txt`" + `
+`
+
+// dagViolationTasksMD models the show-lqip-buffer corruption: S02 is PASSED but
+// depends on S01 which is still PENDING. The executor must refuse to run.
+const dagViolationTasksMD = `---
+generated_by: test
+generated_at: "2026-01-01T00:00:00Z"
+dag:
+  S01: []
+  S02: [S01]
+---
+
+## S01 — First Task ⬜ PENDING
+
+` + "```yaml\n" +
+	`type: general
+depends_on: []
+` + "```\n" + `
+### O que fazer
+Do the first thing.
+
+---
+
+## S02 — Second Task ✅ PASSED
+
+` + "```yaml\n" +
+	`type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+Do the second thing.
+`
+
+// runningOnResumeTasksMD models an interrupted previous run: S01 was left in
+// RUNNING. The executor must reset it to PENDING and re-pick it.
+const runningOnResumeTasksMD = `---
+generated_by: test
+generated_at: "2026-01-01T00:00:00Z"
+dag:
+  S01: []
+---
+
+## S01 — First Task 🔄 RUNNING
+
+` + "```yaml\n" +
+	`type: general
+depends_on: []
+` + "```\n" + `
+### O que fazer
+Do the first thing.
+
+### Critérios de sucesso
+- [ ] First criterion passes
+
+### Arquivos
+- **Criar:** ` + "`test-file-1.txt`" + `
 `
 
 const allPassedTasksMD = `---
@@ -264,6 +321,99 @@ func TestRun_AllTasksAlreadyPassed(t *testing.T) {
 	}
 	if containsEvent(eventTypes, EventTaskStart) {
 		t.Error("should not have EventTaskStart when all tasks passed")
+	}
+}
+
+func TestRun_DAGIntegrityViolationAborts(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-dag-violation"
+	setupProject(t, dir, project, dagViolationTasksMD)
+	gitCommitAll(t, dir, "add tasks with stale-dep PASSED")
+
+	events := make(chan Event, 100)
+	mock := &mockProvider{}
+	cfg := config.Default()
+	cfg.Project.Name = project
+
+	orch := New(Options{
+		Config: cfg, Provider: mock, WorkDir: dir, Events: events,
+	})
+
+	err := orch.Run(context.Background(), project)
+	close(events)
+
+	if err == nil {
+		t.Fatal("expected DAG integrity error, got nil")
+	}
+	if !strings.Contains(err.Error(), "DAG integrity violation") {
+		t.Errorf("error %q missing 'DAG integrity violation'", err)
+	}
+	if !strings.Contains(err.Error(), "S02") || !strings.Contains(err.Error(), "S01") {
+		t.Errorf("error %q should name both offending task and dep", err)
+	}
+
+	mock.mu.Lock()
+	callCount := len(mock.calls)
+	mock.mu.Unlock()
+	if callCount != 0 {
+		t.Errorf("expected 0 provider calls on integrity failure, got %d", callCount)
+	}
+}
+
+func TestRun_ResetsRunningTaskOnResume(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-running-reset"
+	tasksPath := setupProject(t, dir, project, runningOnResumeTasksMD)
+	gitCommitAll(t, dir, "add interrupted task")
+
+	events := make(chan Event, 200)
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
+			}
+			return &types.ExecuteResult{Output: "task completed"}, nil
+		},
+	}
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = false
+
+	orch := New(Options{
+		Config: cfg, Provider: mock, WorkDir: dir, Events: events,
+	})
+
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	// Provider should have been called for S01 (worker + review = at least 1).
+	mock.mu.Lock()
+	callCount := len(mock.calls)
+	mock.mu.Unlock()
+	if callCount == 0 {
+		t.Error("expected provider calls (S01 should re-run after RUNNING reset), got 0")
+	}
+
+	// Final state in tasks.md: S01 must be PASSED, not RUNNING.
+	tasks, _, err := task.ParseTasksFile(tasksPath)
+	if err != nil {
+		t.Fatalf("parsing final tasks.md: %v", err)
+	}
+	var s01 *types.Task
+	for i := range tasks {
+		if tasks[i].ID == "S01" {
+			s01 = &tasks[i]
+		}
+	}
+	if s01 == nil {
+		t.Fatal("S01 missing from final tasks.md")
+	}
+	if s01.Status != types.StatusPassed {
+		t.Errorf("S01 final status = %q, want PASSED (RUNNING should have been reset and re-run)", s01.Status)
 	}
 }
 
