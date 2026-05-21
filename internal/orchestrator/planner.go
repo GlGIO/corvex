@@ -103,8 +103,9 @@ into executable tasks.
 	if hasExisting {
 		b.WriteString(existingTasks)
 		b.WriteString("\n\n**IMPORTANT — Preservation rules when regenerating:**\n")
-		b.WriteString("- Preserve the exact status (`✅ PASSED`, `🔄 RUNNING`, `❌ FAILED`, `⏭️ SKIPPED`) of any task whose title AND `O que fazer` description are unchanged.\n")
-		b.WriteString("- Only use `⬜ PENDING` for genuinely new tasks or tasks whose description changed substantively.\n")
+		b.WriteString("- Preserve the exact status (`✅ PASSED`, `🔄 RUNNING`, `❌ FAILED`, `⏭️ SKIPPED`) of any task whose title, `O que fazer` description, AND `depends_on` list are all unchanged.\n")
+		b.WriteString("- If a task previously PASSED now has a different `depends_on` (added, removed, or reordered), reset its status to `⬜ PENDING` so it gets re-validated under the new dependency chain. Otherwise the executor will refuse to run with a 'DAG integrity violation' error.\n")
+		b.WriteString("- Use `⬜ PENDING` for genuinely new tasks or tasks whose description changed substantively.\n")
 		b.WriteString("- Keep stable task IDs (S01, S02, ...) for tasks that already exist. Reuse the same ID — do not renumber.\n")
 	} else {
 		b.WriteString("No existing tasks — generate from scratch.")
