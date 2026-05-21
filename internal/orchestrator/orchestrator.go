@@ -9,6 +9,7 @@ import (
 
 	charmbraceletlog "github.com/charmbracelet/log"
 
+	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/anchor"
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/dag"
@@ -64,6 +65,7 @@ type Orchestrator struct {
 	skip       map[string]bool // task IDs skipped by the user at runtime
 	paused     bool            // toggled by Cmd{Pause,Resume}
 	noReplan   bool            // mirror of Options.NoReplan
+	ledger     *activity.Ledger
 }
 
 // New creates an Orchestrator from the given options.
@@ -92,6 +94,15 @@ func New(opts Options) *Orchestrator {
 // Run executes the full orchestration loop for the given project.
 func (o *Orchestrator) Run(ctx context.Context, project string) error {
 	specPath, tasksPath, anchorPath := o.projectPaths(project)
+
+	// Open the activity ledger early so every emitted event gets persisted.
+	// Failure to open (e.g. project not yet planned) is non-fatal — emit()
+	// no-ops when ledger is nil.
+	if l, lerr := activity.New(o.workDir, project); lerr == nil {
+		o.ledger = l
+	} else {
+		charmbraceletlog.Warn("activity ledger unavailable", "err", lerr)
+	}
 
 	if o.sandbox != nil {
 		o.emit(Event{Type: EventSandboxPrepare})
@@ -551,16 +562,49 @@ func (o *Orchestrator) needsPlanning(specPath, tasksPath string, state types.Anc
 }
 
 func (o *Orchestrator) emit(ev Event) {
+	if ev.Timestamp.IsZero() {
+		ev.Timestamp = time.Now()
+	}
+
+	// Persist to the activity ledger (skip noisy stream chunks — those go to
+	// the TUI but explode disk usage and reading time without adding
+	// debugging signal). Errors are warned, never blocking the run.
+	if o.ledger != nil && ev.Type != EventTaskStream {
+		if err := o.ledger.Append(ledgerEntryFromEvent(ev)); err != nil {
+			charmbraceletlog.Warn("activity ledger append", "type", ev.Type, "err", err)
+		}
+	}
+
 	if o.events == nil {
 		return
 	}
-	ev.Timestamp = time.Now()
 	// Block until the consumer drains the channel. Previously this used a
 	// non-blocking `select { default: }` which silently dropped events when
 	// the buffer was full — and stream chunks from chatty workers fill it
 	// quickly. The TUI/log consumers are fast; transient backpressure here
 	// is far better than losing recovery events, retries, or task results.
 	o.events <- ev
+}
+
+// ledgerEntryFromEvent translates an orchestration event into the compact
+// JSONL schema. Status is the canonical PASSED/FAILED/etc. string for
+// task_complete events, empty otherwise.
+func ledgerEntryFromEvent(ev Event) activity.Entry {
+	e := activity.Entry{
+		Timestamp:  ev.Timestamp,
+		Type:       string(ev.Type),
+		TaskID:     ev.TaskID,
+		Attempt:    ev.Attempt,
+		DurationMs: ev.DurationMs,
+		CostUSD:    ev.CostUSD,
+		TokensIn:   ev.TokensIn,
+		TokensOut:  ev.TokensOut,
+		Message:    ev.Message,
+	}
+	if ev.Status != "" {
+		e.Status = string(ev.Status)
+	}
+	return e
 }
 
 func (o *Orchestrator) runHook(ctx context.Context, name string, env hooks.HookEnv, taskID string) {
