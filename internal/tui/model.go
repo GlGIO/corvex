@@ -360,6 +360,12 @@ func (m Model) handleEvent(ev orchestrator.Event) Model {
 	case orchestrator.EventTaskStream:
 		m.worker = m.worker.AppendStream(ev.Stream)
 
+	case orchestrator.EventTaskWarn:
+		m.worker = m.worker.AppendStream(&types.StreamEvent{
+			Type:    types.EventText,
+			Content: "⚠ " + ev.Message,
+		})
+
 	case orchestrator.EventTaskComplete:
 		dur := time.Duration(ev.DurationMs) * time.Millisecond
 		m.dag = m.dag.UpdateTask(ev.TaskID, ev.Status, dur, ev.Attempt)

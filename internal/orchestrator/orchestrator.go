@@ -351,7 +351,28 @@ func (o *Orchestrator) executeTask(
 			o.emit(Event{Type: EventTaskStream, TaskID: taskID, Stream: &ev})
 		})
 
+		// Watchdog: emit a warn event if the task is still running after
+		// task_warn_minutes. TUI surfaces this so the user can decide to
+		// pause or abort before hitting prod-relevant limits (e.g., Vercel
+		// cron 10min hard timeout).
+		watchDone := make(chan struct{})
+		if warnMin := o.cfg.Execution.TaskWarnMinutes; warnMin > 0 {
+			warnAt := time.Duration(warnMin) * time.Minute
+			go func() {
+				select {
+				case <-time.After(warnAt):
+					o.emit(Event{
+						Type:    EventTaskWarn,
+						TaskID:  taskID,
+						Message: fmt.Sprintf("task running > %dm — consider pausing if stuck", warnMin),
+					})
+				case <-watchDone:
+				}
+			}()
+		}
+
 		result, err := o.worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+		close(watchDone)
 		o.worker.SetOnStream(nil)
 		if err != nil {
 			if attempt == maxRetries {

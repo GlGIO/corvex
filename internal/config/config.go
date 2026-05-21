@@ -74,6 +74,12 @@ type ExecutionConfig struct {
 	// reviewer combined). Prevents a runaway loop from burning the run's
 	// entire budget on one task. 0 = no cap. Default 5.
 	MaxCostPerTaskUSD float64 `yaml:"max_cost_per_task_usd"`
+
+	// TaskWarnMinutes emits an EventTaskWarn (surfaced in TUI as a chip)
+	// when a task is still running after this many minutes. 0 = no warn.
+	// Default 5 — Vercel cron's free-tier limit is 10min so warning at 5
+	// gives time to abort before deploy-time tasks would fail in prod.
+	TaskWarnMinutes int `yaml:"task_warn_minutes"`
 }
 
 type ContextConfig struct {
@@ -247,6 +253,7 @@ func Default() *Config {
 			InsightThreshold:  3,
 			MaxCostUSD:        25,
 			MaxCostPerTaskUSD: 5,
+			TaskWarnMinutes:   5,
 		},
 	}
 }
