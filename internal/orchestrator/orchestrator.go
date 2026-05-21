@@ -162,10 +162,45 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 	}
 	o.emit(Event{Type: EventDAGResolved, Total: d.Size()})
 
+	// Tasks left in RUNNING from a previous interrupted run would otherwise
+	// stay in limbo: they're not in `completed` (so their dependents block)
+	// but the scheduler also never re-picks them. Reset to PENDING so the
+	// dependency chain can resume.
+	for i := range tasks {
+		if tasks[i].Status == types.StatusRunning {
+			charmbraceletlog.Warn("task left RUNNING from a previous run; resetting to PENDING for re-execution", "task", tasks[i].ID)
+			tasks[i].Status = types.StatusPending
+			if err := task.UpdateTaskStatus(tasksPath, tasks[i].ID, types.StatusPending); err != nil {
+				charmbraceletlog.Warn("persisting RUNNING→PENDING reset", "task", tasks[i].ID, "err", err)
+			}
+		}
+	}
+
 	completed := make(map[string]bool)
 	for _, t := range tasks {
 		if t.Status == types.StatusPassed {
 			completed[t.ID] = true
+		}
+	}
+
+	// DAG integrity check: every PASSED task must have all dependencies also
+	// PASSED. Replans can change the DAG and leave previously-passed tasks
+	// with stale (now-unsatisfied) deps; running their dependents would
+	// compound the corruption invisibly.
+	for _, t := range tasks {
+		if t.Status != types.StatusPassed {
+			continue
+		}
+		for _, dep := range t.DependsOn {
+			if !completed[dep] {
+				return fmt.Errorf(
+					"DAG integrity violation: task %s is PASSED but its dependency %s is not.\n"+
+						"This usually means a replan changed the DAG. To fix, choose one:\n"+
+						"  1) Reset %s to ⬜ PENDING in tasks.md (delete its artifacts first if they were written), so it re-validates under the new DAG.\n"+
+						"  2) Manually run %s by marking it PENDING and re-running, then retry.",
+					t.ID, dep, t.ID, dep,
+				)
+			}
 		}
 	}
 
