@@ -260,9 +260,15 @@ func (m Model) View() string {
 
 	workerHeight := mainHeight - dagHeight - 1 // 1 line for separator
 
+	// MaxHeight is the twin of Height that *truncates* overflow instead of
+	// padding. Without it, if either panel's View() ever returns more lines
+	// than its declared height (due to wrap, hidden styling padding, or any
+	// future refactor), the extra lines bleed into the divider and the
+	// adjacent panel — corrupting the whole layout.
 	dagView := lipgloss.NewStyle().
 		Width(m.width).
 		Height(dagHeight).
+		MaxHeight(dagHeight).
 		Render(m.dag.View())
 
 	separator := Divider.Render(strings.Repeat("─", m.width))
@@ -270,6 +276,7 @@ func (m Model) View() string {
 	workerView := lipgloss.NewStyle().
 		Width(m.width).
 		Height(workerHeight).
+		MaxHeight(workerHeight).
 		Render(m.worker.View())
 
 	main := lipgloss.JoinVertical(lipgloss.Left, header, dagView, separator, workerView, statusView)
