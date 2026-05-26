@@ -228,7 +228,36 @@ func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, ag
 		b.WriteString("\n\nPlease address these issues in your implementation.\n\n")
 	}
 
-	b.WriteString("## Instructions\n\nComplete the task described above. Make sure all success criteria are met.\n")
+	b.WriteString(`## Instructions
+
+Complete the task described above. Make sure all success criteria are met.
+
+### Before you write code — sanity check the task
+
+The task description above was produced by an upstream Planner that
+compacted spec.md. If the task touches **timing, ordering, units, numeric
+thresholds, or external API parameters**, take 30 seconds to:
+
+1. Glob ` + "`.corvex/tasks/*/spec.md`" + ` (and ` + "`decisions.md`" + ` if it exists)
+2. Read the section relevant to this task
+3. Check whether the task description matches the spec on those details
+
+If they match, proceed normally.
+
+If they disagree, **spec.md wins**. Implement what spec.md says, and at the
+top of your final response add an ` + "`INTERPRETATION:`" + ` note explaining which
+reading you took and why. Example:
+
+    INTERPRETATION: Task said "subtract 15min before scheduling" but
+    spec.md §2.8 says the scheduled timestamp itself is the campaign
+    send time and an internal cron triggers 15min earlier. Implemented
+    the spec.md reading — scheduleCampaign() receives agendado_para
+    unchanged.
+
+The reviewer cross-checks spec.md and accepts implementations that match
+it even when the task description points elsewhere. Documenting your
+interpretation up front prevents a wasted retry loop.
+`)
 
 	return b.String()
 }

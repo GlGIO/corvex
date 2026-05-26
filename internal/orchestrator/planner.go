@@ -148,6 +148,35 @@ Each task should have:
 
 Include a YAML frontmatter with the DAG (dependencies map).
 
+### Lossless compaction rule (critical)
+
+When a task involves any of these — **timing** (N minutes before/after, exact
+timestamps, durations), **ordering** (which step runs first/last), **units**
+(seconds vs ms, BRL vs USD, integer vs decimal), **numeric thresholds**
+(retry counts, page sizes, rate limits), or **external API contracts**
+(parameter names, HTTP verbs, exact endpoint paths) — you MUST:
+
+1. Quote the relevant spec.md line **verbatim** inside the "O que fazer"
+   section using a blockquote. Format:
+
+       > [verbatim from spec.md §<section>]
+       > <exact quoted text>
+
+2. Add an "Anti-padrão" sub-section listing the most likely
+   mis-interpretations and explicitly forbidding them. Example:
+
+       Anti-padrão: NÃO subtrair os 15min do timestamp passado ao Mailchimp.
+       O Mailchimp recebe ` + "`agendado_para`" + ` exato; o cron interno é que dispara
+       15min antes.
+
+The Reviewer is instructed to cross-check tasks.md against spec.md and will
+fail the task as ` + "`ambiguity`" + ` (routing to human review) if your
+paraphrase contradicts the spec. Citing verbatim eliminates this whole class
+of failure.
+
+For purely mechanical tasks (file rename, lint fix, dependency bump),
+verbatim quotes are unnecessary.
+
 Output ONLY the complete tasks.md file content, nothing else.
 `)
 

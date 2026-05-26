@@ -17,6 +17,16 @@ execution:
   auto_commit: true
   parallel: false
 
+review:
+  escalation:
+    # When the reviewer flags the task description as contradicting spec.md,
+    # retrying is pointless — the Planner compacted the spec in a lossy way
+    # and the Worker can't recover from it. Route straight to human review
+    # so the spec or task description can be clarified.
+    ambiguity:
+      after: 1
+      action: human-prompt
+
 context:
   always_include:
     - .corvex/context/*.md
