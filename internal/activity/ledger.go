@@ -109,6 +109,67 @@ func Read(workDir, project string) ([]Entry, error) {
 	return entries, nil
 }
 
+// TaskMetric carries the per-task metrics needed to seed the TUI when
+// resuming a project that has tasks already completed in previous runs.
+type TaskMetric struct {
+	TaskID     string
+	DurationMs int64
+	CostUSD    float64
+	TokensIn   int
+	TokensOut  int
+}
+
+// Summary aggregates activity.jsonl into the shape the TUI needs on
+// startup: per-task duration/cost for already-PASSED tasks (so the DAG
+// panel doesn't render them as "0s"), and the cumulative cost/token
+// totals (so the header doesn't show "$0.00" while $16.54 has actually
+// been spent).
+//
+// Only the *latest* PASSED completion of each task is counted — retries
+// produce multiple task_complete entries for the same task_id, and we
+// want the metrics matching the run that actually stuck.
+type Summary struct {
+	PerTask        map[string]TaskMetric
+	TotalCostUSD   float64
+	TotalTokensIn  int
+	TotalTokensOut int
+}
+
+// Summarize reads the activity ledger and returns a Summary. Missing
+// ledger files are not an error — the caller gets an empty Summary,
+// matching the case of a fresh project.
+func Summarize(workDir, project string) (Summary, error) {
+	entries, err := Read(workDir, project)
+	if err != nil {
+		return Summary{}, err
+	}
+
+	perTask := make(map[string]TaskMetric, len(entries))
+	for _, e := range entries {
+		if e.Type != "task_complete" || e.Status != "PASSED" || e.TaskID == "" {
+			continue
+		}
+		// Last write wins: later PASSED entries override earlier ones from
+		// retried attempts. (A task that previously FAILED then PASSED only
+		// contributes its PASSED metrics.)
+		perTask[e.TaskID] = TaskMetric{
+			TaskID:     e.TaskID,
+			DurationMs: e.DurationMs,
+			CostUSD:    e.CostUSD,
+			TokensIn:   e.TokensIn,
+			TokensOut:  e.TokensOut,
+		}
+	}
+
+	s := Summary{PerTask: perTask}
+	for _, m := range perTask {
+		s.TotalCostUSD += m.CostUSD
+		s.TotalTokensIn += m.TokensIn
+		s.TotalTokensOut += m.TokensOut
+	}
+	return s, nil
+}
+
 func splitLines(data []byte) [][]byte {
 	var out [][]byte
 	start := 0

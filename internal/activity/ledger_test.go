@@ -119,3 +119,72 @@ func TestRead_TolerantOfMalformedLines(t *testing.T) {
 		t.Errorf("entries: %+v", got)
 	}
 }
+
+func TestSummarize_PerTaskAndTotals(t *testing.T) {
+	workDir, project := setupProjectDir(t)
+	l, err := activity.New(workDir, project)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// S01 fails once (retried), then PASSED — only the PASSED metrics count.
+	// S02 PASSED on first attempt.
+	// S03 is still RUNNING — emits no task_complete; must not appear.
+	// A non-task_complete event must be ignored entirely.
+	entries := []activity.Entry{
+		{Type: "task_start", TaskID: "S01", Timestamp: time.Unix(1, 0).UTC()},
+		{Type: "task_complete", TaskID: "S01", Status: "FAILED", DurationMs: 9999, CostUSD: 0.01, TokensIn: 100, TokensOut: 50, Timestamp: time.Unix(2, 0).UTC()},
+		{Type: "task_complete", TaskID: "S01", Status: "PASSED", DurationMs: 1500, CostUSD: 0.20, TokensIn: 200, TokensOut: 80, Timestamp: time.Unix(3, 0).UTC()},
+		{Type: "task_complete", TaskID: "S02", Status: "PASSED", DurationMs: 3000, CostUSD: 0.50, TokensIn: 300, TokensOut: 150, Timestamp: time.Unix(4, 0).UTC()},
+		{Type: "task_start", TaskID: "S03", Timestamp: time.Unix(5, 0).UTC()},
+	}
+	for _, e := range entries {
+		if err := l.Append(e); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	s, err := activity.Summarize(workDir, project)
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+
+	if got := len(s.PerTask); got != 2 {
+		t.Fatalf("PerTask has %d entries, want 2 (S01, S02): %+v", got, s.PerTask)
+	}
+	if m := s.PerTask["S01"]; m.DurationMs != 1500 || m.CostUSD != 0.20 {
+		t.Errorf("S01 metric = %+v, want DurationMs=1500 CostUSD=0.20 (PASSED retry must override earlier FAILED)", m)
+	}
+	if m := s.PerTask["S02"]; m.DurationMs != 3000 {
+		t.Errorf("S02 metric = %+v, want DurationMs=3000", m)
+	}
+	if _, ok := s.PerTask["S03"]; ok {
+		t.Error("S03 has no task_complete entry yet; must not appear in PerTask")
+	}
+
+	wantCost := 0.20 + 0.50
+	if s.TotalCostUSD != wantCost {
+		t.Errorf("TotalCostUSD = %v, want %v (sum of latest PASSED per task; FAILED retries excluded)", s.TotalCostUSD, wantCost)
+	}
+	if s.TotalTokensIn != 500 {
+		t.Errorf("TotalTokensIn = %d, want 500", s.TotalTokensIn)
+	}
+	if s.TotalTokensOut != 230 {
+		t.Errorf("TotalTokensOut = %d, want 230", s.TotalTokensOut)
+	}
+}
+
+func TestSummarize_MissingLedgerReturnsEmpty(t *testing.T) {
+	// Fresh project with no activity.jsonl yet — Summarize must return an
+	// empty Summary, not an error. Otherwise the TUI startup would refuse
+	// to launch on first runs.
+	workDir, project := setupProjectDir(t)
+
+	s, err := activity.Summarize(workDir, project)
+	if err != nil {
+		t.Fatalf("Summarize on missing ledger: %v", err)
+	}
+	if len(s.PerTask) != 0 || s.TotalCostUSD != 0 {
+		t.Errorf("expected empty summary, got %+v", s)
+	}
+}

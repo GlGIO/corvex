@@ -469,6 +469,24 @@ func (m Model) SetDAGProgress(completed, total int) Model {
 	return m
 }
 
+// SeedStatusTotals adds cumulative tokens/cost from previous runs to the
+// status bar so the header doesn't display "$0.00" while the project has
+// actually consumed budget in earlier sessions. Call this once at startup
+// before the first orchestrator event arrives; subsequent EventTaskComplete
+// events add on top, producing the correct running total.
+func (m Model) SeedStatusTotals(tokensIn, tokensOut int, cost float64) Model {
+	m.status = m.status.AddTokens(tokensIn, tokensOut, cost)
+	return m
+}
+
+// SeedTaskDuration backfills the duration of a task that completed in a
+// previous run. The orchestrator emits no events for already-PASSED tasks,
+// so without this the DAG panel would render them with "0s".
+func (m Model) SeedTaskDuration(id string, status types.TaskStatus, duration time.Duration) Model {
+	m.dag = m.dag.UpdateTask(id, status, duration, 0)
+	return m
+}
+
 // HeaderLine returns a simple header string for non-TUI contexts.
 func HeaderLine(project string, completed, total int, cost float64) string {
 	return fmt.Sprintf(

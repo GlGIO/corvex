@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
+	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/dag"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/provider"
@@ -184,20 +186,34 @@ func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan
 	// until (and unless) the orchestrator emits per-task events.
 	tasksPath := filepath.Join(projectDir(workDir, project), "tasks.md")
 	if tasks, _, err := task.ParseTasksFile(tasksPath); err == nil {
+		// Look up historical per-task metrics from activity.jsonl so already-
+		// PASSED tasks render with their real duration (not "0s") and the
+		// header shows the accumulated cost (not "$0.00"). On a fresh project
+		// the ledger is empty and PerTask is nil — entries below short-circuit
+		// safely.
+		summary, _ := activity.Summarize(workDir, project)
+
 		entries := make([]tui.TaskEntry, 0, len(tasks))
 		completed := 0
 		for _, t := range tasks {
-			entries = append(entries, tui.TaskEntry{
+			entry := tui.TaskEntry{
 				ID:     t.ID,
 				Title:  t.Title,
 				Status: t.Status,
-			})
+			}
+			if metric, ok := summary.PerTask[t.ID]; ok && t.Status == types.StatusPassed {
+				entry.Duration = time.Duration(metric.DurationMs) * time.Millisecond
+			}
+			entries = append(entries, entry)
 			if t.Status == types.StatusPassed || t.Status == types.StatusSkipped {
 				completed++
 			}
 		}
 		m = m.AddDAGTasks(entries)
 		m = m.SetDAGProgress(completed, len(tasks))
+		// Cumulative cost/tokens from previous runs. New EventTaskComplete
+		// events accumulate on top during this run.
+		m = m.SeedStatusTotals(summary.TotalTokensIn, summary.TotalTokensOut, summary.TotalCostUSD)
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
