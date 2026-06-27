@@ -1,0 +1,16 @@
+project: ""
+updated_at: "2026-06-27T01:42:07Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Git changed-files helper (real created vs modified)
+      summary: "I'll locate the spec and review the implementation in parallel.Now let me run the tests and check the implementation details more carefully.Let me also check what changed in orchestrator.go to understand if it's part of this task.All checks pass. Here's my analysis:\n\n## Analysis\n\n**Spec (§Objective A) requirements vs implementation:**\n\n| Requirement | Implementation | Status |\n|---|---|---|\n| Run `git diff --name-status HEAD` in workDir | `m.git(\"diff\", \"--name-status\", \"HEAD\")` | ✅ |\n| Status `A` → created | `case \"A\": created = append(...)` | ✅ |\n| Status `M` → modified | `case \"M\": modified = append(...)` | ✅ |\n| Run `git status --porcelain`; `??` → created | Second loop checks `line[:2] != \"??\"` | ✅ |\n| Exclude `.corvex/` paths | `isCorvexPath()` applied to both loops | ✅ |\n| Capture BEFORE checkpoint commit | `ChangedFiles()` at line 586, `MarkCheckpoint` at line 609 | ✅ |\n| Follow git helper pattern in recovery.go | Method on `*Manager`, uses `m.git()` | ✅ |\n| Use real lists to populate `FilesCreated`/`FilesModified` | Wired in orchestrator.go PASS branch | ✅ |\n\n**Tests (4 cases, all passing):**\n- `TestChangedFilesCleanRepo` — no changes → both lists empty\n- `TestChangedFilesClassifiesCreatedAndModified` — modified file → `modified`, untracked file → `created`\n- `TestChangedFilesStagedNewFile` — `git add`ed file (shows as `A` in diff) → `created`\n- `TestChangedFilesExcludesCorvexPaths` — `.corvex/` paths filtered from both lists\n\n**`go build ./...`** — passes  \n**`go test ./...`** — all packages pass\n\nThe `porcelain` path extraction (`line[3:]`) is correct for the `?? path` format. The two git sources are complementary without duplication: staged additions appear in `git diff --name-status HEAD` as `A` (not as `??` in porcelain), and untracked files appear only in the `??` porcelain output. The fallback in orchestrator.go to planned file lists on error is sensible defensive behavior not prohibited by the spec."
+      files_created: []
+      files_modified: []
+      decisions: []
+current_state:
+    total_tasks: 5
+    completed_tasks: 1
+next_task: S02
+next_task_context: ""

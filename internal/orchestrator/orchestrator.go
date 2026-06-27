@@ -580,13 +580,23 @@ func (o *Orchestrator) executeTask(
 				nextTask = nextReady[0]
 			}
 
+			// Capture real changed files BEFORE the checkpoint commit while
+			// the working tree still diffs against HEAD. Fall back to the
+			// planned file lists if the git inspection fails.
+			realCreated, realModified, changedErr := o.recovery.ChangedFiles()
+			if changedErr != nil {
+				charmbraceletlog.Warn("capturing changed files", "task", t.ID, "err", changedErr)
+				realCreated = t.Files.Create
+				realModified = t.Files.Modify
+			}
+
 			*anchorState = anchor.Update(*anchorState, anchor.TaskResult{
 				Completed: types.CompletedTask{
 					ID:            t.ID,
 					Title:         t.Title,
 					Summary:       reviewResult.Summary,
-					FilesCreated:  t.Files.Create,
-					FilesModified: t.Files.Modify,
+					FilesCreated:  realCreated,
+					FilesModified: realModified,
 				},
 				NextTask:   nextTask,
 				TotalTasks: d.Size(),

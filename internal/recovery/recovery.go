@@ -154,6 +154,67 @@ func (m *Manager) MarkCheckpoint(taskID string) error {
 	return nil
 }
 
+// ChangedFiles inspects the working tree and returns files the worker actually
+// changed, split into created vs modified. Call this BEFORE MarkCheckpoint so
+// the tree still diffs against HEAD.
+//
+// Classification:
+//   - git diff --name-status HEAD: status A → created, M → modified
+//   - git status --porcelain: status ?? → created (untracked)
+//
+// Paths under .corvex/ are excluded from both lists.
+func (m *Manager) ChangedFiles() (created, modified []string, err error) {
+	diffOut, err := m.git("diff", "--name-status", "HEAD")
+	if err != nil {
+		return nil, nil, fmt.Errorf("git diff --name-status HEAD: %w", err)
+	}
+
+	for _, line := range strings.Split(strings.TrimRight(diffOut, "\n\r "), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		status, path := parts[0], parts[1]
+		if isCorvexPath(path) {
+			continue
+		}
+		switch status {
+		case "A":
+			created = append(created, path)
+		case "M":
+			modified = append(modified, path)
+		}
+	}
+
+	statusOut, err := m.git("status", "--porcelain")
+	if err != nil {
+		return nil, nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+
+	for _, line := range strings.Split(strings.TrimRight(statusOut, "\n\r "), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		if line[:2] != "??" {
+			continue
+		}
+		path := line[3:]
+		if isCorvexPath(path) {
+			continue
+		}
+		created = append(created, path)
+	}
+
+	return created, modified, nil
+}
+
+func isCorvexPath(p string) bool {
+	return p == ".corvex" || strings.HasPrefix(p, ".corvex/")
+}
+
 func (m *Manager) git(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = m.WorkDir

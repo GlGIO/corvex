@@ -316,3 +316,111 @@ func TestNewManager(t *testing.T) {
 		t.Errorf("WorkDir = %q, want %q", mgr.WorkDir, "/some/path")
 	}
 }
+
+func TestChangedFilesCleanRepo(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	created, modified, err := mgr.ChangedFiles()
+	if err != nil {
+		t.Fatalf("ChangedFiles() error = %v", err)
+	}
+	if len(created) != 0 || len(modified) != 0 {
+		t.Errorf("clean repo: created=%v modified=%v, want both empty", created, modified)
+	}
+}
+
+func TestChangedFilesClassifiesCreatedAndModified(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	// Modify existing tracked file.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("changed"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Create a new untracked file.
+	if err := os.WriteFile(filepath.Join(dir, "newfile.go"), []byte("package x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, modified, err := mgr.ChangedFiles()
+	if err != nil {
+		t.Fatalf("ChangedFiles() error = %v", err)
+	}
+
+	if !contains(modified, "README.md") {
+		t.Errorf("modified = %v, want to contain README.md", modified)
+	}
+	if !contains(created, "newfile.go") {
+		t.Errorf("created = %v, want to contain newfile.go", created)
+	}
+	if contains(created, "README.md") {
+		t.Errorf("README.md should not be in created (it was modified)")
+	}
+	if contains(modified, "newfile.go") {
+		t.Errorf("newfile.go should not be in modified (it is new/untracked)")
+	}
+}
+
+func TestChangedFilesStagedNewFile(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	// Stage a new file so it shows as 'A' in git diff --name-status HEAD.
+	if err := os.WriteFile(filepath.Join(dir, "staged.go"), []byte("package x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitExec(t, dir, "add", "staged.go")
+
+	created, _, err := mgr.ChangedFiles()
+	if err != nil {
+		t.Fatalf("ChangedFiles() error = %v", err)
+	}
+
+	if !contains(created, "staged.go") {
+		t.Errorf("created = %v, want to contain staged.go", created)
+	}
+}
+
+func TestChangedFilesExcludesCorvexPaths(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	if err := os.MkdirAll(filepath.Join(dir, ".corvex", "tasks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".corvex", "tasks", "anchor.yaml"), []byte("state: x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "real.go"), []byte("package x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, modified, err := mgr.ChangedFiles()
+	if err != nil {
+		t.Fatalf("ChangedFiles() error = %v", err)
+	}
+
+	for _, f := range created {
+		if isCorvexPath(f) {
+			t.Errorf("created contains corvex path %q, want excluded", f)
+		}
+	}
+	for _, f := range modified {
+		if isCorvexPath(f) {
+			t.Errorf("modified contains corvex path %q, want excluded", f)
+		}
+	}
+	if !contains(created, "real.go") {
+		t.Errorf("created = %v, want to contain real.go", created)
+	}
+}
+
+func contains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
