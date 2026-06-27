@@ -42,7 +42,7 @@ tasks (S02–S05) can be built independently in parallel.
 
 ---
 
-## S02 — `corvex list --json` ⬜ PENDING
+## S02 — `corvex list --json` ✅ PASSED
 
 ```yaml
 type: backend

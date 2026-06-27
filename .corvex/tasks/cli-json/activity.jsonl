@@ -7,3 +7,8 @@
 {"ts":"2026-06-27T00:46:44.846568-03:00","type":"task_start","task_id":"S01","message":"Shared JSON output plumbing + flag helper"}
 {"ts":"2026-06-27T00:48:41.420301-03:00","type":"review_start","task_id":"S01"}
 {"ts":"2026-06-27T00:50:31.729153-03:00","type":"review_result","task_id":"S01","message":"PASS"}
+{"ts":"2026-06-27T00:50:31.857106-03:00","type":"checkpoint","task_id":"S01"}
+{"ts":"2026-06-27T00:50:31.857253-03:00","type":"task_complete","task_id":"S01","duration_ms":223682,"cost_usd":0.9335568000000001,"status":"PASSED"}
+{"ts":"2026-06-27T00:50:31.858063-03:00","type":"task_start","task_id":"S02","message":"`corvex list --json`"}
+{"ts":"2026-06-27T00:51:51.478388-03:00","type":"review_start","task_id":"S02"}
+{"ts":"2026-06-27T00:54:03.153436-03:00","type":"review_result","task_id":"S02","message":"PASS"}

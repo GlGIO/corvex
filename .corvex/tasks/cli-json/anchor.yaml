@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:50:31Z"
+updated_at: "2026-06-27T03:54:03Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -14,8 +14,19 @@ completed:
         - Used `cmd.Flags().BoolVar` with a function-local `bool` variable (returned as `*bool`) rather than package-level vars, so each command that calls `addJSONFlag` owns its own flag storage — matches the pattern in `inspect.go` but avoids global state.
         - printJSON` takes `io.Writer` rather than hardcoding `os.Stdout` so commands can pass any writer (supports testability without pipe tricks).
         - 'Suppression mechanism documented via code comment: commands check `*jsonFlag` at the top of `RunE` and take an early-return JSON branch (same pattern `inspect.go` already uses for its inline `inspectJSON` flag). No new abstraction needed since commands write to `fmt.Printf`/`fmt.Fprintf` directly with no logger/color middleware to hook into.'
+    - id: S02
+      title: '`corvex list --json`'
+      summary: 'Added `--json` flag to `corvex list`. When set, it prints a JSON array of `listProject` objects (fields: `name`, `hasSpec`, `hasTasks`, `status`) using the existing `addJSONFlag`/`printJSON` helpers. The status values (`"ready"`, `"needs planning"`, `"no spec"`) are reused from the existing human-output path. Added table-driven tests covering all three status variants, the empty-project case, and verifying human output is unaffected.'
+      files_created:
+        - cmd/list_test.go
+      files_modified:
+        - cmd/list.go
+      decisions:
+        - Refactored the discovery loop so both JSON and human paths share the same `[]listProject` slice instead of duplicating the stat logic — single source of truth for status computation.
+        - Kept status strings identical to the existing human output (`"ready"`, `"needs planning"`, `"no spec"`); the spec's `"planned"` example is just illustrative.
+        - Empty projects with `--json` returns `[]` (empty array), not the "No projects found" message, because JSON consumers expect a valid array not prose.
 current_state:
     total_tasks: 6
-    completed_tasks: 1
-next_task: S02
-next_task_context: S02–S05 each call `addJSONFlag` in their `init()` (storing the returned `*bool` in a package-level var e.g. `var listJSON *bool`), then at the top of their `RunE` check `if *listJSON { return printJSON(os.Stdout, ...) }` and return early — suppressing all human output. `printJSON` accepts any `io.Writer`; pass `os.Stdout` from commands. The helper is in `cmd/helpers.go` (package `cmd`), so all command files can use it directly with no import.
+    completed_tasks: 2
+next_task: S03
+next_task_context: 'The `listJSON *bool` package-level var and `listProject` struct live in `cmd/list.go`. Subsequent tasks (S03 `status --json`, S04 `inspect --json`, S05 `doctor --json`) follow the identical pattern: `var <cmd>JSON *bool` declared at package level, `addJSONFlag` called in `init()`, and an early-return JSON branch at the top of `RunE`. The `captureStdout` test helper is defined in `cmd/status_test.go` and is available to all `package cmd` tests.'
