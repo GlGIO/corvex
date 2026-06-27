@@ -1,9 +1,0 @@
-{"ts":"2026-06-27T01:09:15.081709-03:00","type":"sandbox_prepare"}
-{"ts":"2026-06-27T01:09:15.082192-03:00","type":"recovery_check"}
-{"ts":"2026-06-27T01:09:15.101839-03:00","type":"recovery_result","message":"working tree clean"}
-{"ts":"2026-06-27T01:09:15.102002-03:00","type":"plan_start","message":"Planning tasks..."}
-{"ts":"2026-06-27T01:10:39.01918-03:00","type":"plan_complete"}
-{"ts":"2026-06-27T01:10:39.019959-03:00","type":"dag_resolved"}
-{"ts":"2026-06-27T01:10:39.021384-03:00","type":"task_start","task_id":"S01","message":"Extract doctor checks into a single callable function"}
-{"ts":"2026-06-27T01:11:03.472415-03:00","type":"review_start","task_id":"S01"}
-{"ts":"2026-06-27T01:11:35.840629-03:00","type":"sandbox_cleanup"}
