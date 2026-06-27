@@ -152,6 +152,11 @@ type ValidateStackConfig struct {
 	Port         int    `yaml:"port"`
 	ReadyTimeout int    `yaml:"ready_timeout"`
 	HealthPath   string `yaml:"health_path"`
+	// EnvFile (optional, path relative to the repo root) is a dotenv file
+	// sourced into the app AND migration processes during validation — e.g.
+	// `backend/.env-stg` to run the dev server against the STG stack. Keep it
+	// gitignored; it holds secrets.
+	EnvFile string `yaml:"env_file"`
 }
 
 type ValidateDBConfig struct {

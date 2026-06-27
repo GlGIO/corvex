@@ -311,12 +311,26 @@ func setupValidationStack(ctx context.Context, workDir, project string, cfg conf
 		log.Info("database ready", "type", cfg.Database.Type)
 	}
 
+	// Env file (e.g. backend/.env-stg): sourced into BOTH migrate and app so
+	// the stack runs against the chosen environment (STG, etc.).
+	appEnv := os.Environ()
+	if cfg.Stack.EnvFile != "" {
+		vars, err := loadEnvFileVars(filepath.Join(workDir, cfg.Stack.EnvFile))
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("loading stack env_file %s: %w", cfg.Stack.EnvFile, err)
+		}
+		appEnv = append(appEnv, vars...)
+		log.Info("sourced stack env_file", "file", cfg.Stack.EnvFile, "vars", len(vars))
+	}
+
 	// 2. Migrations
 	if cfg.Database.MigrateCommand != "" {
 		log.Info("running migrations")
 		parts := strings.Fields(cfg.Database.MigrateCommand)
 		c := exec.CommandContext(ctx, parts[0], parts[1:]...)
 		c.Dir = workDir
+		c.Env = appEnv
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
 		if err := c.Run(); err != nil {
@@ -326,7 +340,7 @@ func setupValidationStack(ctx context.Context, workDir, project string, cfg conf
 	}
 
 	// 3. Application
-	appCmd, err := startApp(workDir, cfg.Stack)
+	appCmd, err := startApp(workDir, cfg.Stack, appEnv)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -406,19 +420,50 @@ func startDBContainer(ctx context.Context, project string, cfg config.ValidateDB
 	return nil, fmt.Errorf("database did not become ready within 60s")
 }
 
-func startApp(workDir string, cfg config.ValidateStackConfig) (*exec.Cmd, error) {
+func startApp(workDir string, cfg config.ValidateStackConfig, env []string) (*exec.Cmd, error) {
 	parts := strings.Fields(cfg.StartCommand)
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("start_command is empty")
 	}
 	c := exec.Command(parts[0], parts[1:]...)
 	c.Dir = workDir
+	c.Env = env
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Start(); err != nil {
 		return nil, fmt.Errorf("starting app (%s): %w", cfg.StartCommand, err)
 	}
 	return c, nil
+}
+
+// loadEnvFileVars parses a dotenv file into "KEY=VALUE" entries (skipping blanks
+// and # comments, stripping an optional `export ` prefix and surrounding
+// quotes). Used to source a stack env_file (e.g. backend/.env-stg) into the
+// validation app + migration processes.
+func loadEnvFileVars(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var vars []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.Trim(strings.TrimSpace(val), `"'`)
+		if key == "" {
+			continue
+		}
+		vars = append(vars, key+"="+val)
+	}
+	return vars, nil
 }
 
 func waitForHealth(ctx context.Context, cfg config.ValidateStackConfig) error {
