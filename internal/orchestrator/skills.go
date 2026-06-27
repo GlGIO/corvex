@@ -69,21 +69,29 @@ func (o *Orchestrator) materializeSkills() func() {
 	}
 }
 
-// RepoSkills returns the names of repo-local skills under `.corvex/skills/`
-// (directories containing a SKILL.md). Used by `corvex doctor`.
+// RepoSkills returns the names of skills the Worker can invoke: directories
+// containing a SKILL.md under either `.corvex/skills/` (corvex-managed, linked
+// in before a run) or `.claude/skills/` (already discoverable by the Claude
+// CLI). De-duplicated. Used by `corvex doctor`.
 func RepoSkills(workDir string) []string {
-	srcDir := filepath.Join(workDir, ".corvex", "skills")
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return nil
-	}
+	seen := make(map[string]bool)
 	var names []string
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, base := range []string{
+		filepath.Join(workDir, ".corvex", "skills"),
+		filepath.Join(workDir, ".claude", "skills"),
+	} {
+		entries, err := os.ReadDir(base)
+		if err != nil {
 			continue
 		}
-		if _, serr := os.Stat(filepath.Join(srcDir, e.Name(), "SKILL.md")); serr == nil {
-			names = append(names, e.Name())
+		for _, e := range entries {
+			if !e.IsDir() || seen[e.Name()] {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(base, e.Name(), "SKILL.md")); serr == nil {
+				seen[e.Name()] = true
+				names = append(names, e.Name())
+			}
 		}
 	}
 	return names
