@@ -124,7 +124,7 @@ func New(opts Options) *Orchestrator {
 		provider:   opts.Provider,
 		hooks:      hooks.NewRunner(opts.WorkDir, 0),
 		recovery:   recovery.NewManager(opts.WorkDir),
-		planner:    NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir, opts.Config.AgentRouting),
+		planner:    NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir, opts.Config.AgentRouting, opts.Config.Plan.ContextCommand),
 		worker:     NewWorker(opts.Provider, opts.Config.Provider.Models.Worker, opts.WorkDir, opts.Sandbox, opts.Config.SkillRouting),
 		reviewer:   NewReviewer(opts.Provider, opts.Config.Provider.Models.Reviewer, opts.WorkDir, opts.Config.SkillRouting["review"]),
 		advisor:    NewAdvisor(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir),

@@ -1,31 +1,59 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	charmbraceletlog "github.com/charmbracelet/log"
 
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
+// runContextCommand runs the configured plan.context_command in workDir and
+// returns its stdout. A missing command yields ""; a failing command logs a
+// warning and yields "" so planning proceeds without the external context.
+func (p *Planner) runContextCommand(ctx context.Context) string {
+	command := strings.TrimSpace(p.contextCommand)
+	if command == "" {
+		return ""
+	}
+	c := exec.CommandContext(ctx, "sh", "-c", command)
+	c.Dir = p.workDir
+	var stdout, stderr bytes.Buffer
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	if err := c.Run(); err != nil {
+		charmbraceletlog.Warn("plan context_command failed; planning without it",
+			"err", err, "stderr", strings.TrimSpace(stderr.String()))
+		return ""
+	}
+	return strings.TrimSpace(stdout.String())
+}
+
 // Planner runs the AI provider with read-only tools to generate or update a tasks.md file.
 type Planner struct {
 	progressBase
-	provider     provider.Provider
-	model        string
-	workDir      string
-	agentRouting map[string]string
+	provider       provider.Provider
+	model          string
+	workDir        string
+	agentRouting   map[string]string
+	contextCommand string // optional shell command; its stdout is injected into the planner prompt
 }
 
 // NewPlanner creates a Planner that uses the given provider and model.
 // agentRouting is the agent_routing map from config; pass nil if not configured.
-func NewPlanner(p provider.Provider, model, workDir string, agentRouting map[string]string) *Planner {
-	return &Planner{provider: p, model: model, workDir: workDir, agentRouting: agentRouting}
+// contextCommand (optional) is run before planning and its stdout fed to the
+// planner as external context.
+func NewPlanner(p provider.Provider, model, workDir string, agentRouting map[string]string, contextCommand string) *Planner {
+	return &Planner{provider: p, model: model, workDir: workDir, agentRouting: agentRouting, contextCommand: contextCommand}
 }
 
 // Plan generates a tasks.md by sending spec + anchor context to the AI provider.
@@ -55,7 +83,12 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 		spec += "\n\n## Resolved Design Decisions (from `corvex grill`)\n\n" + string(decisionsContent)
 	}
 
-	basePrompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting)
+	// Optional: pull external context (e.g. an Azure DevOps / issue-tracker
+	// query) that the read-only Planner can't fetch itself. Failure is
+	// non-fatal — log and plan without it.
+	externalContext := p.runContextCommand(ctx)
+
+	basePrompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting, externalContext)
 
 	dir := filepath.Dir(tasksPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -109,7 +142,7 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 	return fmt.Errorf("planning failed after %d attempts: %w", maxPlanAttempts, lastErr)
 }
 
-func buildPlannerPrompt(specContent, anchorContent, existingTasks string, agentRouting map[string]string) string {
+func buildPlannerPrompt(specContent, anchorContent, existingTasks string, agentRouting map[string]string, externalContext string) string {
 	var b strings.Builder
 
 	b.WriteString(`You are a project planner for Corvex. Your job is to decompose a project specification
@@ -119,6 +152,12 @@ into executable tasks.
 
 `)
 	b.WriteString(specContent)
+
+	if strings.TrimSpace(externalContext) != "" {
+		b.WriteString("\n\n## External Context (from plan.context_command)\n\n")
+		b.WriteString("Authoritative input pulled from an external source of truth (e.g. the issue tracker). Decompose the DAG to match it.\n\n")
+		b.WriteString(externalContext)
+	}
 
 	b.WriteString("\n\n## Current State (anchor.yaml)\n\n")
 	if strings.TrimSpace(anchorContent) != "" {

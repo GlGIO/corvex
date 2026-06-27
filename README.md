@@ -243,6 +243,22 @@ the orchestrator **Reviewer** uses the skill routed to `review` to judge every
 task against it. `corvex doctor` warns if a routed skill isn't available under
 `.corvex/skills/`.
 
+### Pulling external context into planning
+
+The Planner is read-only (it can't run shell tools), so it can't reach an issue
+tracker or API on its own. Set `plan.context_command` to a shell command whose
+stdout is injected into the Planner prompt as authoritative context — the DAG is
+then built to match it:
+
+```yaml
+plan:
+  # e.g. pull an Azure DevOps feature + its stories/tasks via a skill-aware call
+  context_command: 'claude -p "use the az skill: dump Feature 59888 and its Stories/Tasks"'
+  # or raw: 'az boards query --wiql "SELECT ... WHERE [System.Parent]=59888"'
+```
+
+A failing command is non-fatal — planning proceeds without the context.
+
 ## Configuration
 
 After `corvex init`, edit `.corvex/config.yaml`:

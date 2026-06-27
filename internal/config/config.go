@@ -24,6 +24,16 @@ type Config struct {
 	// making skill use intentional rather than opportunistic.
 	SkillRouting map[string]string `yaml:"skill_routing"`
 	Validate     ValidateConfig    `yaml:"validate"`
+	Plan         PlanConfig        `yaml:"plan"`
+}
+
+// PlanConfig configures the planning step.
+type PlanConfig struct {
+	// ContextCommand, when set, is a shell command run before the Planner; its
+	// stdout is injected into the Planner prompt as external context. Use it to
+	// pull a source of truth the read-only Planner can't reach itself — e.g. an
+	// Azure DevOps / issue-tracker query, or a `claude -p` that uses a skill.
+	ContextCommand string `yaml:"context_command"`
 }
 
 type ProjectConfig struct {
