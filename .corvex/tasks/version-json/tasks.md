@@ -30,7 +30,7 @@ Passos:
 
 ---
 
-## S02 — Teste em cmd/ cobrindo JSON e saída padrão ⬜ PENDING
+## S02 — Teste em cmd/ cobrindo JSON e saída padrão ✅ PASSED
 
 ```yaml
 type: backend

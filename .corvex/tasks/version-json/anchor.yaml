@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T05:32:07Z"
+updated_at: "2026-06-27T05:33:30Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -15,8 +15,16 @@ completed:
         - Changed `Run` to `RunE` to allow returning errors from `printJSON`, consistent with how all other JSON-capable commands are structured.
         - Declared a package-level `var versionJSON *bool` (same pattern as `inspectJSON`) so the flag pointer is accessible from both `init()` and `runVersion`.
         - printJSON` uses `json.MarshalIndent` (2-space indent), which satisfies the spec's "using encoding/json" requirement and is consistent with every other `--json` command in the codebase.
+    - id: S02
+      title: Teste em cmd/ cobrindo JSON e saída padrão
+      summary: The `cmd/version_test.go` file already contained the required table-driven tests from S01. Both paths — `json output contains version` (which unmarshals the JSON and asserts `Version == types.Version`) and `human output unchanged` (which checks the output contains `"corvex " + types.Version`) — were already in place and passing. No code changes were needed; verified that `go build ./...` and `go test ./...` both pass cleanly.
+      files_created: []
+      files_modified: []
+      decisions:
+        - No new code written — S01 had already delivered the test file meeting the spec's validation criteria.
+        - Confirmed `captureStdout` helper is defined in `cmd/status_test.go` and available to the whole `package cmd` test suite.
 current_state:
     total_tasks: 2
-    completed_tasks: 1
-next_task: S02
+    completed_tasks: 2
+next_task: ""
 next_task_context: none

@@ -7,3 +7,8 @@
 {"ts":"2026-06-27T02:29:28.469482-03:00","type":"task_start","task_id":"S01","message":"Add `--json` flag to the version command"}
 {"ts":"2026-06-27T02:31:14.98905-03:00","type":"review_start","task_id":"S01"}
 {"ts":"2026-06-27T02:32:07.641406-03:00","type":"review_result","task_id":"S01","message":"PASS"}
+{"ts":"2026-06-27T02:32:07.795192-03:00","type":"checkpoint","task_id":"S01"}
+{"ts":"2026-06-27T02:32:07.795304-03:00","type":"task_complete","task_id":"S01","duration_ms":155947,"cost_usd":0.5620578,"status":"PASSED"}
+{"ts":"2026-06-27T02:32:07.795914-03:00","type":"task_start","task_id":"S02","message":"Teste em cmd/ cobrindo JSON e saída padrão"}
+{"ts":"2026-06-27T02:32:38.325964-03:00","type":"review_start","task_id":"S02"}
+{"ts":"2026-06-27T02:33:30.641358-03:00","type":"review_result","task_id":"S02","message":"PASS"}
