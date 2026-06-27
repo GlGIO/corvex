@@ -1,0 +1,87 @@
+package recipe
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/giovannialves/corvex/internal/types"
+)
+
+const sampleRecipe = `
+name: build-feature
+description: scaffold then implement then review
+stages:
+  - id: S01
+    title: Scaffold
+    type: backend
+    description: create the skeleton
+    criteria:
+      - builds
+  - id: S02
+    title: Implement
+    type: backend
+    depends_on: [S01]
+  - id: S03
+    title: Review
+    type: review
+    depends_on: [S02]
+`
+
+func TestParseAndCompile(t *testing.T) {
+	r, err := Parse([]byte(sampleRecipe))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	tasks, dag, err := r.Compile()
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Fatalf("tasks = %d, want 3", len(tasks))
+	}
+	if tasks[0].ID != "S01" || tasks[0].Type != types.TypeBackend {
+		t.Errorf("S01 = %+v", tasks[0])
+	}
+	if tasks[0].Status != types.StatusPending {
+		t.Errorf("S01 status = %s, want PENDING", tasks[0].Status)
+	}
+	if len(tasks[0].Criteria) != 1 || tasks[0].Criteria[0] != "builds" {
+		t.Errorf("S01 criteria = %v", tasks[0].Criteria)
+	}
+	if got := dag.Dependencies["S02"]; len(got) != 1 || got[0] != "S01" {
+		t.Errorf("S02 deps = %v, want [S01]", got)
+	}
+	if dag.GeneratedBy != "corvex-recipe:build-feature" {
+		t.Errorf("GeneratedBy = %q", dag.GeneratedBy)
+	}
+}
+
+func TestValidate_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"no name", "stages:\n  - id: S01\n", "name is required"},
+		{"no stages", "name: x\n", "no stages"},
+		{"dup id", "name: x\nstages:\n  - id: S01\n  - id: S01\n", "duplicate stage id"},
+		{"unknown dep", "name: x\nstages:\n  - id: S01\n    depends_on: [S99]\n", "unknown stage"},
+		{"unknown kind", "name: x\nstages:\n  - id: S01\n    kind: magic\n", "unknown kind"},
+		{"cycle", "name: x\nstages:\n  - id: S01\n    depends_on: [S02]\n  - id: S02\n    depends_on: [S01]\n", "cycle"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := Parse([]byte(tt.yaml))
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			err = r.Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
