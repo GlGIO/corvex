@@ -13,8 +13,9 @@ import (
 type ReviewVerdict string
 
 const (
-	VerdictPass ReviewVerdict = "PASS"
-	VerdictFail ReviewVerdict = "FAIL"
+	VerdictPass          ReviewVerdict = "PASS"
+	VerdictFail          ReviewVerdict = "FAIL"
+	VerdictIndeterminate ReviewVerdict = "INDETERMINATE"
 )
 
 // ReviewResult carries the reviewer's verdict and analysis summary.
@@ -154,20 +155,29 @@ tasks.md, quote the exact line so a human can audit the call.
 	return b.String()
 }
 
+// stripMarkup strips leading markdown/quote markers (* _ # > ` and spaces)
+// and trailing punctuation/markup (. * _ ` and spaces), then uppercases the
+// result for tolerant verdict/category matching.
+func stripMarkup(line string) string {
+	line = strings.TrimLeft(line, " *_#>`")
+	line = strings.TrimRight(line, " .*_`")
+	return strings.ToUpper(strings.TrimSpace(line))
+}
+
 func parseVerdict(output string) *ReviewResult {
 	lines := strings.Split(output, "\n")
 
-	verdict := VerdictFail
+	verdict := VerdictIndeterminate
 	verdictIdx := -1
 
 	for i := len(lines) - 1; i >= 0; i-- {
-		upper := strings.TrimSpace(strings.ToUpper(lines[i]))
-		if upper == "VERDICT: PASS" {
+		normalized := stripMarkup(lines[i])
+		if normalized == "VERDICT: PASS" {
 			verdict = VerdictPass
 			verdictIdx = i
 			break
 		}
-		if upper == "VERDICT: FAIL" {
+		if normalized == "VERDICT: FAIL" {
 			verdict = VerdictFail
 			verdictIdx = i
 			break
@@ -175,7 +185,7 @@ func parseVerdict(output string) *ReviewResult {
 	}
 
 	// Category is only meaningful on FAIL. Search the last few lines for a
-	// CATEGORY: marker; tolerate whitespace and casing.
+	// CATEGORY: marker; tolerate markdown markup and casing.
 	category := ""
 	if verdict == VerdictFail {
 		start := verdictIdx - 5
@@ -187,11 +197,9 @@ func parseVerdict(output string) *ReviewResult {
 			end = len(lines)
 		}
 		for i := end - 1; i >= start; i-- {
-			line := strings.TrimSpace(lines[i])
-			upper := strings.ToUpper(line)
-			if strings.HasPrefix(upper, "CATEGORY:") {
-				category = strings.TrimSpace(line[len("CATEGORY:"):])
-				category = strings.ToLower(category)
+			normalized := stripMarkup(lines[i])
+			if strings.HasPrefix(normalized, "CATEGORY:") {
+				category = strings.ToLower(strings.TrimSpace(normalized[len("CATEGORY:"):]))
 				break
 			}
 		}

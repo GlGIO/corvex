@@ -54,11 +54,39 @@ func TestParseVerdict_NoMarker(t *testing.T) {
 	t.Parallel()
 	output := "Some analysis output without any verdict marker."
 	result := parseVerdict(output)
-	if result.Verdict != VerdictFail {
-		t.Errorf("Verdict = %q, want %q (default)", result.Verdict, VerdictFail)
+	if result.Verdict != VerdictIndeterminate {
+		t.Errorf("Verdict = %q, want %q (default)", result.Verdict, VerdictIndeterminate)
 	}
 	if result.Summary != output {
 		t.Errorf("Summary = %q, want %q", result.Summary, output)
+	}
+}
+
+func TestParseVerdict_Tolerant(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		verdict ReviewVerdict
+	}{
+		{"bold-wrapped pass", "Analysis done.\n**VERDICT: PASS**", VerdictPass},
+		{"bold-wrapped fail", "Issues found.\n**VERDICT: FAIL**", VerdictFail},
+		{"trailing period pass", "VERDICT: PASS.", VerdictPass},
+		{"trailing period fail", "VERDICT: FAIL.", VerdictFail},
+		{"blockquote prefix pass", "> VERDICT: PASS", VerdictPass},
+		{"blockquote prefix fail", "> VERDICT: FAIL", VerdictFail},
+		{"backtick-wrapped pass", "`VERDICT: PASS`", VerdictPass},
+		{"backtick-wrapped fail", "`VERDICT: FAIL`", VerdictFail},
+		{"no verdict line", "Some output with no verdict.", VerdictIndeterminate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := parseVerdict(tt.input)
+			if result.Verdict != tt.verdict {
+				t.Errorf("Verdict = %q, want %q", result.Verdict, tt.verdict)
+			}
+		})
 	}
 }
 
