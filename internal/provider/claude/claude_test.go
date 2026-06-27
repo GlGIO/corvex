@@ -1059,3 +1059,32 @@ func TestParseFullOutput_MalformedLines(t *testing.T) {
 		t.Errorf("Output = %q, want %q", result.Output, "valid output")
 	}
 }
+
+func TestWriteMCPConfig_Perms0600(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	servers := []config.MCPServerConfig{{
+		Name:    "postgres",
+		Command: "npx",
+		Args:    []string{"-y", "@modelcontextprotocol/server-postgres", "postgres://localhost/db"},
+	}}
+	if err := writeMCPConfig(servers); err != nil {
+		t.Fatalf("writeMCPConfig() error = %v", err)
+	}
+
+	info, err := os.Stat(mcpConfigRelPath)
+	if err != nil {
+		t.Fatalf("stat mcp.json: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("mcp.json mode = %o, want 600 (secrets must not be world-readable)", perm)
+	}
+}

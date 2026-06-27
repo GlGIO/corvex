@@ -121,6 +121,11 @@ func (d *DockerSandbox) buildRunArgs(mount string) []string {
 	args := []string{
 		"run", "-d",
 		"--name", d.containerName,
+		// Hardening: the Worker runs untrusted AI-generated commands. Block
+		// privilege escalation and drop all Linux capabilities — the worker
+		// only needs filesystem + network, no caps.
+		"--security-opt", "no-new-privileges",
+		"--cap-drop", "ALL",
 	}
 	if mount != "" {
 		args = append(args, "-v", mount)

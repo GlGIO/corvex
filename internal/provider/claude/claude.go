@@ -460,8 +460,15 @@ func writeMCPConfig(servers []config.MCPServerConfig) error {
 	if err := os.MkdirAll(filepath.Dir(mcpConfigRelPath), 0o755); err != nil {
 		return fmt.Errorf("create %s dir: %w", filepath.Dir(mcpConfigRelPath), err)
 	}
-	if err := os.WriteFile(mcpConfigRelPath, data, 0o644); err != nil {
+	// 0o600: the materialised MCP config carries env-expanded values that may
+	// include secrets (DB URLs, tokens). It must be readable only by the owner,
+	// never world-readable. Chmod explicitly in case the file pre-existed with
+	// looser perms (WriteFile does not tighten an existing file's mode).
+	if err := os.WriteFile(mcpConfigRelPath, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", mcpConfigRelPath, err)
+	}
+	if err := os.Chmod(mcpConfigRelPath, 0o600); err != nil {
+		return fmt.Errorf("chmod %s: %w", mcpConfigRelPath, err)
 	}
 	return nil
 }

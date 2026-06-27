@@ -41,6 +41,8 @@ func TestDockerSandbox_BuildRunArgs(t *testing.T) {
 			wantParts: []string{
 				"run", "-d",
 				"--name", "corvex-abc123",
+				"--security-opt", "no-new-privileges",
+				"--cap-drop", "ALL",
 				"-v", "/host:/container",
 				"-w", "/app",
 				"node:20-slim", "tail", "-f", "/dev/null",
@@ -55,6 +57,8 @@ func TestDockerSandbox_BuildRunArgs(t *testing.T) {
 			wantParts: []string{
 				"run", "-d",
 				"--name", "corvex-test",
+				"--security-opt", "no-new-privileges",
+				"--cap-drop", "ALL",
 				"-w", "/work",
 				"alpine:latest", "tail", "-f", "/dev/null",
 			},
@@ -68,6 +72,8 @@ func TestDockerSandbox_BuildRunArgs(t *testing.T) {
 			wantParts: []string{
 				"run", "-d",
 				"--name", "corvex-test",
+				"--security-opt", "no-new-privileges",
+				"--cap-drop", "ALL",
 				"-v", "/a:/b",
 				"alpine:latest", "tail", "-f", "/dev/null",
 			},

@@ -66,6 +66,14 @@ func runInit(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Materialised secrets (mcp.json carries env-expanded MCP server config)
+	// must never be committed. Drop a .corvex/.gitignore so it is ignored from
+	// the start.
+	gitignorePath := filepath.Join(corvexDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("mcp.json\n"), 0o644); err != nil {
+		return fmt.Errorf("writing .corvex/.gitignore: %w", err)
+	}
+
 	log.Info("initialized corvex project", "path", corvexDir)
 	fmt.Println("\nCreated .corvex/ with:")
 	fmt.Println("  config.yaml         — project configuration")
