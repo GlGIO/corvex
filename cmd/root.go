@@ -37,4 +37,5 @@ func Execute() {
 func init() {
 	rootCmd.SetVersionTemplate("corvex {{.Version}}\n")
 	rootCmd.PersistentFlags().Bool("no-color", false, "Disable color output")
+	rootCmd.PersistentFlags().BoolP("quiet", "q", false, "Suppress per-task progress; print only failures/errors and the final summary")
 }

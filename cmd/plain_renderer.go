@@ -21,12 +21,15 @@ import (
 type PlainRenderer struct {
 	w       io.Writer
 	noColor bool
+	quiet   bool
 }
 
 // NewPlainRenderer returns a renderer that writes to w.
 // Set noColor=true when the output is not a colour-capable TTY.
-func NewPlainRenderer(w io.Writer, noColor bool) *PlainRenderer {
-	return &PlainRenderer{w: w, noColor: noColor}
+// Set quiet=true to suppress per-task progress lines; only failures/errors and
+// the final summary are printed.
+func NewPlainRenderer(w io.Writer, noColor, quiet bool) *PlainRenderer {
+	return &PlainRenderer{w: w, noColor: noColor, quiet: quiet}
 }
 
 // Drain consumes events until the channel is closed, writing a line per event.
@@ -39,6 +42,9 @@ func (r *PlainRenderer) Drain(events <-chan orchestrator.Event) {
 func (r *PlainRenderer) render(ev orchestrator.Event) {
 	switch ev.Type {
 	case orchestrator.EventTaskStart:
+		if r.quiet {
+			return
+		}
 		g := r.coloured("▶", ">", tui.StatusRunning)
 		if ev.Message != "" {
 			fmt.Fprintf(r.w, "%s %s  %s\n", g, ev.TaskID, ev.Message)
@@ -49,12 +55,18 @@ func (r *PlainRenderer) render(ev orchestrator.Event) {
 	case orchestrator.EventTaskComplete:
 		switch ev.Status {
 		case types.StatusPassed:
+			if r.quiet {
+				return
+			}
 			g := r.coloured("✓", "+", tui.StatusPassed)
 			dur := tui.FormatDuration(time.Duration(ev.DurationMs) * time.Millisecond)
 			cost := tui.FormatCost(ev.CostUSD)
 			fmt.Fprintf(r.w, "%s %s  passed %s %s %s %s\n",
 				g, ev.TaskID, r.dot(), dur, r.dot(), cost)
 		case types.StatusSkipped:
+			if r.quiet {
+				return
+			}
 			g := r.coloured("⏭", "->", tui.StatusSkippedStyle)
 			msg := strings.TrimPrefix(ev.Message, "skipped: ")
 			msg = strings.TrimPrefix(msg, "skipped ")
@@ -65,14 +77,23 @@ func (r *PlainRenderer) render(ev orchestrator.Event) {
 		}
 
 	case orchestrator.EventRetry:
+		if r.quiet {
+			return
+		}
 		g := r.coloured("↻", "~", tui.TextMuted)
 		fmt.Fprintf(r.w, "%s %s  retry %d\n", g, ev.TaskID, ev.Attempt)
 
 	case orchestrator.EventPlanStart:
+		if r.quiet {
+			return
+		}
 		g := r.coloured("■", "*", tui.TextMuted)
 		fmt.Fprintf(r.w, "%s planning%s\n", g, r.ellipsis())
 
 	case orchestrator.EventDAGResolved:
+		if r.quiet {
+			return
+		}
 		g := r.coloured("✓", "+", tui.StatusPassed)
 		if ev.Total > 0 {
 			fmt.Fprintf(r.w, "%s plan ready (%d tasks)\n", g, ev.Total)

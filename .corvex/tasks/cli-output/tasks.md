@@ -70,7 +70,7 @@ deles).
 
 ---
 
-## S02 — Flag persistente `-q/--quiet` em rootCmd ⬜ PENDING
+## S02 — Flag persistente `-q/--quiet` em rootCmd 🔄 RUNNING
 
 ```yaml
 type: backend

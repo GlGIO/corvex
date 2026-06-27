@@ -148,7 +148,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	noColor, _ := cmd.Flags().GetBool("no-color")
 	noColor = noColor || os.Getenv("NO_COLOR") != "" || !isInteractive()
-	renderer := NewPlainRenderer(os.Stdout, noColor)
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	renderer := NewPlainRenderer(os.Stdout, noColor, quiet)
 	go renderer.Drain(events)
 
 	if err := orc.Run(ctx, project); err != nil {
