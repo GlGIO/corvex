@@ -55,43 +55,58 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 		spec += "\n\n## Resolved Design Decisions (from `corvex grill`)\n\n" + string(decisionsContent)
 	}
 
-	prompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting)
-
-	result, err := p.runStep(ctx, p.provider, types.ExecuteRequest{
-		Prompt:       prompt,
-		Model:        p.model,
-		WorkDir:      p.workDir,
-		AllowedTools: []string{"Read", "Glob", "Grep"},
-	})
-	if err != nil {
-		return fmt.Errorf("planner execution: %w", err)
-	}
-
-	content := extractTasksContent(result.Output)
+	basePrompt := buildPlannerPrompt(spec, string(anchorContent), string(existingTasks), p.agentRouting)
 
 	dir := filepath.Dir(tasksPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating tasks dir %s: %w", dir, err)
 	}
 
-	if err := os.WriteFile(tasksPath, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing tasks %s: %w", tasksPath, err)
+	// The model is told to output ONLY tasks.md content, but it occasionally
+	// narrates ("I'll now write the tasks...") and emits no structured file —
+	// which parses to zero tasks. Rather than persist that prose (a silent
+	// no-op downstream), retry planning a few times, escalating the
+	// "emit only the file" instruction each round.
+	const maxPlanAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxPlanAttempts; attempt++ {
+		prompt := basePrompt
+		if attempt > 1 {
+			prompt += fmt.Sprintf(
+				"\n\n## RETRY (attempt %d/%d)\n\nThe previous attempt emitted prose instead of a file. "+
+					"Respond with the tasks.md content ONLY — your entire message must start with `---` (the YAML frontmatter) "+
+					"and contain `## S01 — <title> ⬜ PENDING` style headings. No preamble, no explanation, no code fences.",
+				attempt, maxPlanAttempts)
+		}
+
+		result, err := p.runStep(ctx, p.provider, types.ExecuteRequest{
+			Prompt:       prompt,
+			Model:        p.model,
+			WorkDir:      p.workDir,
+			AllowedTools: []string{"Read", "Glob", "Grep"},
+		})
+		if err != nil {
+			return fmt.Errorf("planner execution: %w", err)
+		}
+
+		content := extractTasksContent(result.Output)
+		if err := os.WriteFile(tasksPath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("writing tasks %s: %w", tasksPath, err)
+		}
+
+		// Validate what we just wrote: must parse and contain at least one task.
+		parsed, _, perr := task.ParseTasksFile(tasksPath)
+		switch {
+		case perr != nil:
+			lastErr = fmt.Errorf("planner produced an unparseable tasks.md (the model likely narrated instead of emitting the file): %w", perr)
+		case len(parsed) == 0:
+			lastErr = fmt.Errorf("planner produced no tasks — the model output contained no '## S<n> — … ⬜ PENDING' headings (it likely narrated instead of emitting tasks.md content)")
+		default:
+			return nil // valid plan
+		}
 	}
 
-	// Validate what we just wrote. The model is told to output ONLY the
-	// tasks.md content, but it sometimes narrates ("I'll now write the
-	// tasks...") instead — that prose gets persisted and parses to zero tasks,
-	// which the run loop would otherwise treat as "nothing to do" and report a
-	// silent false success. Fail loudly here so the caller can re-plan/retry.
-	parsed, _, perr := task.ParseTasksFile(tasksPath)
-	if perr != nil {
-		return fmt.Errorf("planner produced an unparseable tasks.md (the model likely narrated instead of emitting the file): %w", perr)
-	}
-	if len(parsed) == 0 {
-		return fmt.Errorf("planner produced no tasks — the model output did not contain any '## S<n> — … ⬜ PENDING' headings (it likely narrated instead of emitting tasks.md content). Re-run planning")
-	}
-
-	return nil
+	return fmt.Errorf("planning failed after %d attempts: %w", maxPlanAttempts, lastErr)
 }
 
 func buildPlannerPrompt(specContent, anchorContent, existingTasks string, agentRouting map[string]string) string {

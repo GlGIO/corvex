@@ -6,3 +6,8 @@
 {"ts":"2026-06-26T22:29:02.757498-03:00","type":"dag_resolved"}
 {"ts":"2026-06-26T22:29:02.75779-03:00","type":"done"}
 {"ts":"2026-06-26T22:29:02.758088-03:00","type":"sandbox_cleanup"}
+{"ts":"2026-06-26T22:31:48.733169-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-26T22:31:48.733721-03:00","type":"recovery_check"}
+{"ts":"2026-06-26T22:31:48.762356-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-26T22:31:48.762571-03:00","type":"plan_start","message":"Planning tasks..."}
+{"ts":"2026-06-26T22:34:15.757265-03:00","type":"sandbox_cleanup"}
