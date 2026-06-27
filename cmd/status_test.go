@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -141,5 +142,94 @@ func TestStatusMissingProject(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for missing project")
+	}
+}
+
+func TestStatusJSON(t *testing.T) {
+	_, cleanup := setupStatusTestProject(t)
+	defer cleanup()
+
+	b := true
+	statusJSON = &b
+	defer func() { f := false; statusJSON = &f }()
+
+	output, err := captureStdout(t, func() error {
+		return runStatus(nil, []string{"test-project"})
+	})
+	if err != nil {
+		t.Fatalf("runStatus --json failed: %v", err)
+	}
+
+	var out statusOutput
+	if err := json.Unmarshal([]byte(output), &out); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput:\n%s", err, output)
+	}
+
+	if out.Project != "test-project" {
+		t.Errorf("project: got %q, want %q", out.Project, "test-project")
+	}
+	if out.Total != 2 {
+		t.Errorf("total: got %d, want 2", out.Total)
+	}
+	if out.Passed != 1 {
+		t.Errorf("passed: got %d, want 1", out.Passed)
+	}
+	if out.Failed != 0 {
+		t.Errorf("failed: got %d, want 0", out.Failed)
+	}
+	if out.Pending != 1 {
+		t.Errorf("pending: got %d, want 1", out.Pending)
+	}
+	if len(out.Tasks) != 2 {
+		t.Fatalf("tasks: got %d, want 2", len(out.Tasks))
+	}
+
+	byID := make(map[string]statusTask, len(out.Tasks))
+	for _, task := range out.Tasks {
+		byID[task.ID] = task
+	}
+
+	s01, ok := byID["S01"]
+	if !ok {
+		t.Fatal("S01 missing from tasks")
+	}
+	if s01.Status != "PASSED" {
+		t.Errorf("S01 status: got %q, want PASSED", s01.Status)
+	}
+	if s01.DependsOn == nil {
+		t.Error("S01 dependsOn should be [] not null")
+	}
+
+	s02, ok := byID["S02"]
+	if !ok {
+		t.Fatal("S02 missing from tasks")
+	}
+	if s02.Status != "PENDING" {
+		t.Errorf("S02 status: got %q, want PENDING", s02.Status)
+	}
+	if len(s02.DependsOn) != 1 || s02.DependsOn[0] != "S01" {
+		t.Errorf("S02 dependsOn: got %v, want [S01]", s02.DependsOn)
+	}
+}
+
+func TestStatusJSONHumanUnchanged(t *testing.T) {
+	_, cleanup := setupStatusTestProject(t)
+	defer cleanup()
+
+	f := false
+	statusJSON = &f
+
+	output, err := captureStdout(t, func() error {
+		return runStatus(nil, []string{"test-project"})
+	})
+	if err != nil {
+		t.Fatalf("runStatus failed: %v", err)
+	}
+
+	if len(output) > 0 && output[0] == '{' {
+		t.Error("human output should not start with '{' (looks like JSON)")
+	}
+	if !strings.Contains(output, "test-project") {
+		t.Error("human output should contain project name")
 	}
 }

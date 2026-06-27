@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var statusJSON *bool
+
 var statusCmd = &cobra.Command{
 	Use:               "status <project>",
 	Short:             "Show DAG status and progress",
@@ -21,7 +24,26 @@ var statusCmd = &cobra.Command{
 	RunE:              runStatus,
 }
 
+// statusOutput is the stable JSON shape for corvex status --json.
+type statusOutput struct {
+	Project string       `json:"project"`
+	Total   int          `json:"total"`
+	Passed  int          `json:"passed"`
+	Failed  int          `json:"failed"`
+	Pending int          `json:"pending"`
+	Tasks   []statusTask `json:"tasks"`
+}
+
+// statusTask is the per-task entry within statusOutput.
+type statusTask struct {
+	ID        string     `json:"id"`
+	Title     string     `json:"title"`
+	Status    string     `json:"status"`
+	DependsOn []string   `json:"dependsOn"`
+}
+
 func init() {
+	statusJSON = addJSONFlag(statusCmd)
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -62,11 +84,43 @@ func runStatus(_ *cobra.Command, args []string) error {
 		taskMap[tasks[i].ID] = &tasks[i]
 	}
 
-	passed := 0
+	passed, failed := 0, 0
 	for _, t := range tasks {
-		if t.Status == types.StatusPassed {
+		switch t.Status {
+		case types.StatusPassed:
 			passed++
+		case types.StatusFailed:
+			failed++
 		}
+	}
+	pending := len(tasks) - passed - failed
+
+	if statusJSON != nil && *statusJSON {
+		out := statusOutput{
+			Project: project,
+			Total:   len(tasks),
+			Passed:  passed,
+			Failed:  failed,
+			Pending: pending,
+			Tasks:   make([]statusTask, 0, len(tasks)),
+		}
+		for _, id := range order {
+			t := taskMap[id]
+			if t == nil {
+				continue
+			}
+			deps := t.DependsOn
+			if deps == nil {
+				deps = []string{}
+			}
+			out.Tasks = append(out.Tasks, statusTask{
+				ID:        t.ID,
+				Title:     t.Title,
+				Status:    string(t.Status),
+				DependsOn: deps,
+			})
+		}
+		return printJSON(os.Stdout, out)
 	}
 
 	fmt.Printf("Project: %s\n", project)

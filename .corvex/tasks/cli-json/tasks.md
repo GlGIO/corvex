@@ -66,7 +66,7 @@ to populate `name`, `hasSpec`, `hasTasks`, `status`. Use `internal/task`
 
 ---
 
-## S03 — `corvex status <project> --json` ⬜ PENDING
+## S03 — `corvex status <project> --json` ✅ PASSED
 
 ```yaml
 type: backend
