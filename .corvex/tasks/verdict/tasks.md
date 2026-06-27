@@ -97,7 +97,7 @@ for `VerdictIndeterminate` BEFORE that FAIL path:
 
 ---
 
-## S03 — Honest spawn-investigation ⬜ PENDING
+## S03 — Honest spawn-investigation ✅ PASSED
 
 ```yaml
 type: backend

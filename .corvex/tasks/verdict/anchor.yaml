@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T00:48:39Z"
+updated_at: "2026-06-27T00:54:20Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -44,8 +44,47 @@ completed:
       files_created: []
       files_modified: []
       decisions: []
+    - id: S03
+      title: Honest spawn-investigation
+      summary: |-
+        I'll review this task by reading the spec, decisions doc, and the actual implementation changes.Let me read the spec and decisions files, and also look at the relevant parts of the orchestrator.The git status shows uncommitted changes. Let me look at the current state of the orchestrator (where S03 changes live) and the full diff including uncommitted changes.Let me check the advisor struct to verify `o.advisor.model` is accessible, and look at the full orchestrator context around the spawn-investigation code.Build passes. Now let me run the relevant tests.Let me verify the event ordering and check if there are any EventRetry conflicts.Let me verify package accessibility for the `advisor.model` field.Let me verify how the `diagnosis` is included in the worker prompt.All checks are complete. Here is my analysis:
+
+        ## Analysis
+
+        ### Spec Requirements for Objective C (Honest spawn-investigation)
+
+        **Requirement 1: Run investigation BEFORE next retry, using Advisor's model and read-only tools**
+        - `runInvestigation` is called in the `ActionSpawnInvestigation` case at line 591.
+        - Uses `o.advisor.model` (same package, `model` field is accessible) and `AllowedTools: []string{"Read", "Glob", "Grep"}` — correctly read-only.
+        - Both `advisor.go` and `orchestrator.go` are in `package orchestrator`, so the unexported `advisor.model` field is accessible. ✅
+
+        **Requirement 2: Prompt includes task, reviewer summary, asks for root-cause and fix approach**
+        - `buildInvestigationPrompt` includes task ID, title, description, criteria, reviewer summary, and explicitly asks for "A concrete root-cause diagnosis" and "A recommended fix approach". ✅
+
+        **Requirement 3: Feed diagnosis to next attempt's `diagnosis` string**
+        - `diagnosis = investigationDiagnosis` at line 592, which propagates into `o.worker.Execute(taskCtx, t, ..., diagnosis)` at line 416 in the next loop iteration.
+        - `buildWorkerPrompt` (worker.go:224-227) includes a "previous attempt failed with the following diagnosis:" section — so the investigation output reaches the next worker call. ✅
+
+        **Requirement 4: Emit an observable event**
+        - Emits `EventRetry` with `Message: "spawn-investigation: " + investigationDiagnosis` — reuses `EventRetry` with a distinguishing prefix, which is the spec's preferred minimal approach. ✅
+
+        **Requirement 5: Test proving diagnosis is passed to the next worker attempt**
+        - `TestRun_SpawnInvestigationProducesDiagnosisForNextWorker` configures spawn-investigation escalation, drives with the stub provider, intercepts investigation output (`"root-cause: ..."`), and asserts `prompts[1]` contains `"root-cause"`. ✅
+        - Test passes.
+
+        **Build and full test suite**
+        - `go build ./...` ✅
+        - `go test ./...` — all packages pass. ✅
+
+        **Error handling in `runInvestigation`**
+        - Falls back to returning `reviewerSummary` on provider error or empty output — safe, keeps the prior diagnosis rather than losing context. ✅
+
+        No issues found with the implementation. All spec requirements for Objective C are satisfied.
+      files_created: []
+      files_modified: []
+      decisions: []
 current_state:
     total_tasks: 4
-    completed_tasks: 2
-next_task: S03
+    completed_tasks: 3
+next_task: S04
 next_task_context: ""

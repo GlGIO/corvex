@@ -1072,6 +1072,82 @@ func TestRun_IndeterminateVerdictRetryDiagnosisPassedToWorker(t *testing.T) {
 	}
 }
 
+func TestRun_SpawnInvestigationProducesDiagnosisForNextWorker(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-spawn-investigation"
+	setupProject(t, dir, project, singleTaskMD)
+	gitCommitAll(t, dir, "add task")
+
+	var mu sync.Mutex
+	var workerPrompts []string
+	reviewerCall := 0
+	providerCall := 0
+
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			mu.Lock()
+			providerCall++
+			mu.Unlock()
+
+			if strings.Contains(req.Prompt, "code reviewer") {
+				mu.Lock()
+				n := reviewerCall
+				reviewerCall++
+				mu.Unlock()
+				if n == 0 {
+					// First review: fail with a category to trigger spawn-investigation.
+					// CATEGORY and summary must appear BEFORE VERDICT so parseVerdict
+					// can find them (it searches lines[:verdictIdx]).
+					return &types.ExecuteResult{
+						Output: "missing error handling\nCATEGORY: wrong-approach\nVERDICT: FAIL",
+					}, nil
+				}
+				// Second review: pass.
+				return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
+			}
+
+			if strings.Contains(req.Prompt, "investigator") {
+				// Investigation step: return a concrete diagnosis.
+				return &types.ExecuteResult{
+					Output: "root-cause: the function lacks nil checks; fix: add nil guard at line 10",
+				}, nil
+			}
+
+			// Worker call.
+			mu.Lock()
+			workerPrompts = append(workerPrompts, req.Prompt)
+			mu.Unlock()
+			return &types.ExecuteResult{Output: "task done"}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.MaxRetries = 2
+	cfg.Execution.AutoCommit = false
+	cfg.Review.Escalation = map[string]config.EscalationPolicy{
+		"wrong-approach": {After: 1, Action: ActionSpawnInvestigation},
+	}
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir})
+
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	mu.Lock()
+	prompts := workerPrompts
+	mu.Unlock()
+
+	if len(prompts) < 2 {
+		t.Fatalf("expected at least 2 worker calls (initial + post-investigation retry), got %d", len(prompts))
+	}
+	if !strings.Contains(prompts[1], "root-cause") {
+		t.Errorf("second worker prompt %q should contain investigation diagnosis 'root-cause'", prompts[1])
+	}
+}
+
 // helpers
 
 func hashFileContent(path string) (string, error) {

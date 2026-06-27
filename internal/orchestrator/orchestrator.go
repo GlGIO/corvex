@@ -588,12 +588,14 @@ func (o *Orchestrator) executeTask(
 				}
 				return fmt.Errorf("task %s escalated to human review (category %s); see %s", t.ID, cat, path)
 			case ActionSpawnInvestigation:
-				// Not yet implemented: emits a warning and falls through to
-				// the standard retry. The diagnosis already carries the
-				// reviewer summary so the next attempt has the context it
-				// needs.
-				charmbraceletlog.Warn("escalation: spawn-investigation is not yet implemented; falling back to retry",
-					"task", t.ID, "category", cat)
+				investigationDiagnosis := o.runInvestigation(ctx, t, reviewResult.Summary)
+				diagnosis = investigationDiagnosis
+				o.emit(Event{
+					Type:    EventRetry,
+					TaskID:  t.ID,
+					Attempt: attempt,
+					Message: "spawn-investigation: " + investigationDiagnosis,
+				})
 			}
 		}
 	}
@@ -602,6 +604,48 @@ func (o *Orchestrator) executeTask(
 		charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 	}
 	return fmt.Errorf("task %s failed review after %d attempts", t.ID, maxRetries+1)
+}
+
+func (o *Orchestrator) runInvestigation(ctx context.Context, t *types.Task, reviewerSummary string) string {
+	prompt := buildInvestigationPrompt(t, reviewerSummary)
+	result, err := o.provider.Execute(ctx, types.ExecuteRequest{
+		Prompt:       prompt,
+		Model:        o.advisor.model,
+		WorkDir:      o.workDir,
+		AllowedTools: []string{"Read", "Glob", "Grep"},
+	})
+	if err != nil {
+		charmbraceletlog.Warn("spawn-investigation failed", "task", t.ID, "err", err)
+		return reviewerSummary
+	}
+	if result == nil || strings.TrimSpace(result.Output) == "" {
+		return reviewerSummary
+	}
+	return strings.TrimSpace(result.Output)
+}
+
+func buildInvestigationPrompt(t *types.Task, reviewerSummary string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are a software engineering investigator. A task has been rejected by the reviewer.\n\n")
+	fmt.Fprintf(&b, "## Task\n\n")
+	fmt.Fprintf(&b, "ID: %s\n", t.ID)
+	fmt.Fprintf(&b, "Title: %s\n", t.Title)
+	if t.Description != "" {
+		fmt.Fprintf(&b, "\n%s\n", t.Description)
+	}
+	if len(t.Criteria) > 0 {
+		b.WriteString("\nSuccess criteria:\n")
+		for _, c := range t.Criteria {
+			fmt.Fprintf(&b, "- %s\n", c)
+		}
+	}
+	fmt.Fprintf(&b, "\n## Reviewer Feedback\n\n%s\n\n", reviewerSummary)
+	b.WriteString("## Your Goal\n\n")
+	b.WriteString("Investigate the codebase (use Read, Glob, Grep — read-only) and provide:\n")
+	b.WriteString("1. A concrete root-cause diagnosis: what exactly is wrong?\n")
+	b.WriteString("2. A recommended fix approach: what specific changes should be made?\n\n")
+	b.WriteString("Be concise and actionable. Your output will guide the next implementation attempt.\n")
+	return b.String()
 }
 
 func (o *Orchestrator) projectPaths(project string) (specPath, tasksPath, anchorPath string) {
