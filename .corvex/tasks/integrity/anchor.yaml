@@ -1,5 +1,5 @@
 project: integrity
-updated_at: "2026-06-27T00:27:46Z"
+updated_at: "2026-06-27T00:29:42Z"
 spec_hash: e2a4ca87ced09a62f9a3f4ee989e6faf4476afbc182b529a200b4824741c66d7
 intent: ""
 completed:
@@ -37,8 +37,46 @@ completed:
         - internal/provider/claude/claude.go
         - internal/provider/claude/claude_test.go
       decisions: []
+    - id: S02
+      title: Atomic tasks.md writes via temp file + rename
+      summary: |-
+        I'll review this task by reading the spec, the implementation, and running the tests.Now let me read the spec file and check the git diff for this task.Now let me run the tests to verify everything passes.Let me also run the full test suite and verify file permissions.All tests pass. Let me now summarize my analysis against each criterion.
+
+        ## Analysis
+
+        **Spec reference (Objective B):** `"Write to a temp file in the SAME directory (so rename is atomic on the same filesystem), then os.Rename it over the destination. Use a temp name derived from the destination (e.g. <path>.tmp-<pid> or os.CreateTemp in filepath.Dir(path)). Preserve 0644 perms. On any error, clean up the temp."`
+
+        ### Success Criterion Verification
+
+        **1. Writes to temp in same directory, then `os.Rename`:**
+        `writer.go:28` uses `os.CreateTemp(filepath.Dir(path), ".tasks-*.tmp")` — same directory as destination. `os.Rename(tmpName, path)` at line 50 performs the atomic replacement. ✓
+
+        **2. Final file preserves 0644 permissions:**
+        `tmp.Chmod(0644)` is called at line 43 before rename. Verified empirically: the permission check script confirms `perms: 644`. ✓
+
+        **3. Any intermediate error cleans up the temp:**
+        The `defer` at lines 33–37 captures `err` by reference. All error paths (`WriteString`, `Chmod`, `Close`, `Rename`) assign to the same `err` variable before returning, so the deferred cleanup sees `err != nil` and calls `os.Remove(tmpName)`. On the success path, `err = os.Rename(...)` leaves `err == nil`, so the defer correctly skips removal of the already-renamed file. ✓
+
+        **4. Existing tests still pass:**
+        `TestWriteTasksFile_RoundTrip`, `TestWriteTasksFile_MinimalRoundTrip`, `TestUpdateTaskStatus`, `TestUpdateTaskStatus_NotFound` — all pass. ✓
+
+        **5. New test for no leftover temp files:**
+        `TestWriteTasksFile_NoTempFilesLeft` (lines 141–162) creates the file, reads the directory, and fails if anything other than `output.md` exists. Test passes. ✓
+
+        **6. `go build ./...` and `go test ./...` pass:**
+        Full suite is green across all packages. ✓
+
+        **Anti-patterns check:**
+        - Temp is in `filepath.Dir(path)`, not `os.TempDir()` or `/tmp`. ✓
+        - Permission is explicitly set to `0644` via `Chmod` (correctly compensating for `os.CreateTemp`'s default `0600`). ✓
+        - No temp left behind on any error path. ✓
+      files_created: []
+      files_modified:
+        - internal/task/writer.go
+        - internal/task/writer_test.go
+      decisions: []
 current_state:
     total_tasks: 4
-    completed_tasks: 1
-next_task: S02
+    completed_tasks: 2
+next_task: S03
 next_task_context: ""

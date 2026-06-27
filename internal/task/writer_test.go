@@ -138,6 +138,29 @@ func TestUpdateTaskStatus(t *testing.T) {
 	}
 }
 
+func TestWriteTasksFile_NoTempFilesLeft(t *testing.T) {
+	tasks, dag, err := task.ParseTasksFile("../../testdata/tasks/valid.md")
+	if err != nil {
+		t.Fatalf("ParseTasksFile() error = %v", err)
+	}
+
+	dir := t.TempDir()
+	out := filepath.Join(dir, "output.md")
+	if err := task.WriteTasksFile(out, tasks, dag); err != nil {
+		t.Fatalf("WriteTasksFile() error = %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != "output.md" {
+			t.Errorf("unexpected file left in dir: %q", e.Name())
+		}
+	}
+}
+
 func TestUpdateTaskStatus_NotFound(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/tasks/valid.md")
 	if err != nil {

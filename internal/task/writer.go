@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/types"
@@ -24,7 +25,32 @@ func WriteTasksFile(path string, tasks []types.Task, dag types.DAGSpec) error {
 		writeTask(&b, task)
 	}
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tasks-*.tmp")
+	if err != nil {
+		return fmt.Errorf("writing tasks %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmpName)
+		}
+	}()
+
+	if _, err = tmp.WriteString(b.String()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("writing tasks %s: %w", path, err)
+	}
+	if err = tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("writing tasks %s: %w", path, err)
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("writing tasks %s: %w", path, err)
+	}
+	if err = os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("writing tasks %s: %w", path, err)
+	}
+	return nil
 }
 
 // UpdateTaskStatus re-writes a single task's status inside a tasks.md file.

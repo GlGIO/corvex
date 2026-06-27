@@ -79,7 +79,7 @@ Passos:
 
 ---
 
-## S02 — Atomic tasks.md writes via temp file + rename ⬜ PENDING
+## S02 — Atomic tasks.md writes via temp file + rename ✅ PASSED
 
 ```yaml
 type: backend
