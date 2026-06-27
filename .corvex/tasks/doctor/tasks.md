@@ -137,7 +137,7 @@ Para cada policy em `cfg.Review.Escalation` (map de `string` → `config.Escalat
 
 ---
 
-## S03 — Testes table-driven para `corvex doctor` ⬜ PENDING
+## S03 — Testes table-driven para `corvex doctor` ✅ PASSED
 
 ```yaml
 type: review
