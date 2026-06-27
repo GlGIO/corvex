@@ -1,9 +1,0 @@
-name: smoke-loop
-description: loop until counter reaches 2
-stages:
-  - id: S01
-    title: Retry until ready
-    kind: command
-    command: "c=$(cat /tmp/corvex_ctr 2>/dev/null||echo 0);c=$((c+1));echo $c>/tmp/corvex_ctr;echo attempt $c;[ $c -ge 2 ]"
-    loop:
-      max: 4
