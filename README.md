@@ -321,6 +321,24 @@ Pause, skip, and retry travel from the TUI to the orchestrator over a `Commands`
 - **Docker** (optional, for sandboxed execution)
 - **Git** (for checkpointing and recovery)
 
+## Shell completion
+
+Corvex ships with shell completion via cobra's built-in `completion` command.
+
+```bash
+# Bash (add to ~/.bashrc)
+source <(corvex completion bash)
+
+# Zsh (add to ~/.zshrc)
+source <(corvex completion zsh)
+
+# Fish (add to ~/.config/fish/completions/corvex.fish)
+corvex completion fish | source
+
+# PowerShell (add to $PROFILE)
+corvex completion powershell | Out-String | Invoke-Expression
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

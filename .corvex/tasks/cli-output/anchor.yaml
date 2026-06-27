@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:36:53Z"
+updated_at: "2026-06-27T03:38:12Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -17,8 +17,18 @@ completed:
         - Removed the old `drainEvents` function and its `charmbracelet/log` import from `run.go` entirely. The two noisy `log.Info("running"/"completed")` wrapper lines were also removed; the orchestrator events (`EventPlanStart`, `EventDone`) cover that context.
         - EventPlanComplete` is silently ignored (no output) since `EventDAGResolved` follows immediately and carries the task count needed for `✓ plan ready (N tasks)`.
         - The renderer writes to an injected `io.Writer` (not hardcoded `os.Stdout`) so S03's tests can capture output via a `bytes.Buffer` without ANSI codes when `noColor=true`.
+    - id: S04
+      title: Habilitar `completion` + nota no README
+      summary: Verified that cobra's default `completion` command is already enabled (no `DisableDefaultCmd` anywhere in `cmd/root.go`). Added a "Shell completion" section to README.md with usage snippets for bash, zsh, fish, and powershell.
+      files_created: []
+      files_modified:
+        - README.md
+      decisions:
+        - No code changes were needed — cobra provides completion by default and it was not disabled.
+        - Added the README section just before `## License` as a natural placement at the end of user-facing content.
+        - Used `source <(...)` pattern for bash/zsh and shell-specific idioms for fish/powershell.
 current_state:
     total_tasks: 6
-    completed_tasks: 1
+    completed_tasks: 2
 next_task: S02
-next_task_context: 'S02 (quiet flag) should add a `quiet bool` field to `PlainRenderer` and a constructor parameter (or a setter). In `render()`, suppress non-error/non-final events when `quiet == true`; the events to always emit in quiet mode are `EventTaskComplete` (failed), `EventError`, and `EventDone`. The `noColor` computation already lives in `runRun`; S02 should read the `--quiet` flag there the same way. S03 tests should create a `PlainRenderer` with `noColor: true` and inject a `bytes.Buffer` — the output will be deterministic ASCII with no ANSI sequences.'
+next_task_context: none

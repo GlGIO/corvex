@@ -140,7 +140,7 @@ falhas/erros AINDA aparecem em quiet.
 
 ---
 
-## S04 — Habilitar `completion` + nota no README ⬜ PENDING
+## S04 — Habilitar `completion` + nota no README ✅ PASSED
 
 ```yaml
 type: general

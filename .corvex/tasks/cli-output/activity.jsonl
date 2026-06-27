@@ -8,3 +8,8 @@
 {"ts":"2026-06-27T00:31:57.846305-03:00","type":"task_warn","task_id":"S01","message":"task running \u003e 5m0s — consider pausing if stuck"}
 {"ts":"2026-06-27T00:34:07.856147-03:00","type":"review_start","task_id":"S01"}
 {"ts":"2026-06-27T00:36:53.461162-03:00","type":"review_result","task_id":"S01","message":"PASS"}
+{"ts":"2026-06-27T00:36:53.610586-03:00","type":"checkpoint","task_id":"S01"}
+{"ts":"2026-06-27T00:36:53.610766-03:00","type":"task_complete","task_id":"S01","duration_ms":591612,"cost_usd":1.5430100999999998,"status":"PASSED"}
+{"ts":"2026-06-27T00:36:53.61151-03:00","type":"task_start","task_id":"S04"}
+{"ts":"2026-06-27T00:37:21.959807-03:00","type":"review_start","task_id":"S04"}
+{"ts":"2026-06-27T00:38:12.201515-03:00","type":"review_result","task_id":"S04","message":"PASS"}
