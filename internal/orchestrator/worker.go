@@ -15,16 +15,18 @@ import (
 
 // Worker executes a single task using the AI provider with full tool access.
 type Worker struct {
-	provider provider.Provider
-	model    string
-	workDir  string
-	sandbox  sandbox.Sandbox
-	onStream func(types.StreamEvent)
+	provider     provider.Provider
+	model        string
+	workDir      string
+	sandbox      sandbox.Sandbox
+	onStream     func(types.StreamEvent)
+	skillRouting map[string]string // task type → repo skill name
 }
 
 // NewWorker creates a Worker bound to the given provider and model.
-func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox) *Worker {
-	return &Worker{provider: p, model: model, workDir: workDir, sandbox: sb}
+// skillRouting (task type → skill name) may be nil.
+func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox, skillRouting map[string]string) *Worker {
+	return &Worker{provider: p, model: model, workDir: workDir, sandbox: sb, skillRouting: skillRouting}
 }
 
 // clone returns a copy of the Worker with its own mutable fields (model,
@@ -32,10 +34,11 @@ func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox) *
 // model upgrade and the per-task stream callback never race across goroutines.
 func (w *Worker) clone() *Worker {
 	return &Worker{
-		provider: w.provider,
-		model:    w.model,
-		workDir:  w.workDir,
-		sandbox:  w.sandbox,
+		provider:     w.provider,
+		model:        w.model,
+		workDir:      w.workDir,
+		sandbox:      w.sandbox,
+		skillRouting: w.skillRouting,
 	}
 }
 
@@ -56,7 +59,11 @@ func (w *Worker) Execute(
 	agentPrompt string,
 	diagnosis string,
 ) (*types.ExecuteResult, error) {
-	prompt := buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+	routedSkill := ""
+	if w.skillRouting != nil {
+		routedSkill = w.skillRouting[string(t.Type)]
+	}
+	prompt := buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill)
 
 	req := types.ExecuteRequest{
 		Prompt:  prompt,
@@ -187,13 +194,17 @@ func collectAuthEnv() map[string]string {
 	return env
 }
 
-func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis string) string {
+func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis, routedSkill string) string {
 	var b strings.Builder
 
 	if agentPrompt != "" {
 		b.WriteString("## Agent Instructions\n\n")
 		b.WriteString(agentPrompt)
 		b.WriteString("\n\n")
+	}
+
+	if routedSkill != "" {
+		fmt.Fprintf(&b, "## Required Skill\n\nThis %q task is routed to the `%s` skill. Invoke the `%s` skill (via the Skill tool) and follow it while completing the task.\n\n", t.Type, routedSkill, routedSkill)
 	}
 
 	if len(contextDocs) > 0 {

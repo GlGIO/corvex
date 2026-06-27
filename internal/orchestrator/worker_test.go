@@ -81,7 +81,7 @@ func TestBuildWorkerPrompt_BasicTask(t *testing.T) {
 		Description: "Do something basic",
 	}
 
-	prompt := buildWorkerPrompt(task, "", nil, "", "")
+	prompt := buildWorkerPrompt(task, "", nil, "", "", "")
 
 	if !strings.Contains(prompt, "## Current Task: S01 — Basic Task") {
 		t.Error("prompt missing current task header")
@@ -108,7 +108,7 @@ func TestBuildWorkerPrompt_WithAnchorContext(t *testing.T) {
 	task := &types.Task{ID: "S02", Title: "Task", Description: "desc"}
 	anchor := "## Completed Work\n\n### S01 — First\nDone."
 
-	prompt := buildWorkerPrompt(task, anchor, nil, "", "")
+	prompt := buildWorkerPrompt(task, anchor, nil, "", "", "")
 
 	if !strings.Contains(prompt, "## Previous Work") {
 		t.Error("prompt missing previous work section")
@@ -123,7 +123,7 @@ func TestBuildWorkerPrompt_WithContextDocs(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	docs := []string{"doc1 content", "doc2 content"}
 
-	prompt := buildWorkerPrompt(task, "", docs, "", "")
+	prompt := buildWorkerPrompt(task, "", docs, "", "", "")
 
 	if !strings.Contains(prompt, "## Project Context") {
 		t.Error("prompt missing project context section")
@@ -141,7 +141,7 @@ func TestBuildWorkerPrompt_WithAgentPrompt(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	agent := "You are a database specialist."
 
-	prompt := buildWorkerPrompt(task, "", nil, agent, "")
+	prompt := buildWorkerPrompt(task, "", nil, agent, "", "")
 
 	if !strings.Contains(prompt, "## Agent Instructions") {
 		t.Error("prompt missing agent instructions section")
@@ -156,7 +156,7 @@ func TestBuildWorkerPrompt_WithDiagnosis(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	diag := "Missing import for fmt package"
 
-	prompt := buildWorkerPrompt(task, "", nil, "", diag)
+	prompt := buildWorkerPrompt(task, "", nil, "", diag, "")
 
 	if !strings.Contains(prompt, "## Previous Attempt Failed") {
 		t.Error("prompt missing diagnosis section")
@@ -179,7 +179,11 @@ func TestBuildWorkerPrompt_AllCombined(t *testing.T) {
 		},
 	}
 
-	prompt := buildWorkerPrompt(task, "anchor ctx", []string{"doc1"}, "agent prompt", "prev error")
+	prompt := buildWorkerPrompt(task, "anchor ctx", []string{"doc1"}, "agent prompt", "prev error", "")
+
+	if strings.Contains(prompt, "Required Skill") {
+		t.Error("prompt should not mention a skill when none is routed")
+	}
 
 	expectedOrder := []string{
 		"## Agent Instructions",
@@ -217,6 +221,17 @@ func TestBuildWorkerPrompt_AllCombined(t *testing.T) {
 	}
 }
 
+func TestBuildWorkerPrompt_RoutedSkill(t *testing.T) {
+	task := &types.Task{ID: "S01", Title: "Build UI", Type: types.TypeFrontend, Description: "do it"}
+	prompt := buildWorkerPrompt(task, "", nil, "", "", "frontend-design")
+	if !strings.Contains(prompt, "Required Skill") {
+		t.Error("prompt missing the Required Skill section for a routed task")
+	}
+	if !strings.Contains(prompt, "frontend-design") {
+		t.Error("prompt should name the routed skill")
+	}
+}
+
 func TestExecute_NoAllowedTools(t *testing.T) {
 	t.Parallel()
 	mock := &mockProvider{
@@ -224,7 +239,7 @@ func TestExecute_NoAllowedTools(t *testing.T) {
 			return &types.ExecuteResult{Output: "done"}, nil
 		},
 	}
-	w := NewWorker(mock, "test-model", "/tmp", nil)
+	w := NewWorker(mock, "test-model", "/tmp", nil, nil)
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
@@ -356,7 +371,7 @@ func TestExecute_ModelAndWorkDir(t *testing.T) {
 			return &types.ExecuteResult{Output: "done"}, nil
 		},
 	}
-	w := NewWorker(mock, "sonnet", "/my/workdir", nil)
+	w := NewWorker(mock, "sonnet", "/my/workdir", nil, nil)
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
@@ -396,7 +411,7 @@ func TestWorkerExecute_ViaSandbox(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -426,7 +441,7 @@ func TestWorkerExecute_FallbackDirect(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -459,7 +474,7 @@ func TestWorkerExecute_NilSandbox(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", nil)
+	w := NewWorker(prov, "sonnet", "/tmp", nil, nil)
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -538,7 +553,7 @@ func TestWorkerExecute_SandboxError(t *testing.T) {
 
 	prov := &mockCommandProvider{}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	_, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -572,7 +587,7 @@ func TestWorkerExecute_NonZeroExitCode(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")

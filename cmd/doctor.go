@@ -78,14 +78,30 @@ func (r checkResult) statusString() string {
 func allChecks(cfg *config.Config, workDir string) []checkResult {
 	results := runChecks(cfg)
 	results = append(results, checkMCPGitignore(cfg, workDir))
-	results = append(results, checkSkills(workDir))
+	results = append(results, checkSkills(cfg, workDir))
 	return results
 }
 
 // checkSkills reports the repo-local skills under .corvex/skills/ that the
-// Worker will be able to invoke (corvex symlinks them into .claude/skills/).
-func checkSkills(workDir string) checkResult {
+// Worker can invoke, and warns when a skill_routing entry points at a skill
+// that isn't available.
+func checkSkills(cfg *config.Config, workDir string) checkResult {
 	names := orchestrator.RepoSkills(workDir)
+	available := make(map[string]bool, len(names))
+	for _, n := range names {
+		available[n] = true
+	}
+
+	var missing []string
+	for taskType, skill := range cfg.SkillRouting {
+		if !available[skill] {
+			missing = append(missing, fmt.Sprintf("%s→%s", taskType, skill))
+		}
+	}
+	if len(missing) > 0 {
+		return checkResult{"skills", checkWarn, fmt.Sprintf("skill_routing points at unavailable skill(s): %s (add them under .corvex/skills/)", strings.Join(missing, ", "))}
+	}
+
 	if len(names) == 0 {
 		return checkResult{"skills", checkPass, "no repo skills (add .corvex/skills/<name>/SKILL.md to expose some to the worker)"}
 	}

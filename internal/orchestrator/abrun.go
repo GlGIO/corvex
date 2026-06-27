@@ -135,7 +135,7 @@ func (o *Orchestrator) runABSide(
 		return abRunResult{Model: model, Err: fmt.Errorf("create worktree: %w", err)}
 	}
 
-	worker := NewWorker(o.provider, model, wt.Path, nil)
+	worker := NewWorker(o.provider, model, wt.Path, nil, o.cfg.SkillRouting)
 	workerResult, err := worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, "")
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Err: fmt.Errorf("worker: %w", err)}

@@ -228,6 +228,18 @@ Only the **Worker** can invoke skills (the Planner and Reviewer run with a
 restricted tool set). An existing `.claude/skills/<name>` is never overwritten.
 `corvex doctor` lists the repo skills available to the Worker.
 
+To make skill use **intentional** rather than opportunistic, route a task type
+to a skill in `config.yaml`:
+
+```yaml
+skill_routing:
+  frontend: my-ui-conventions   # frontend tasks are told to use this skill
+  database: sql-review
+```
+
+The Worker prompt for a routed task type instructs it to invoke that skill.
+`corvex doctor` warns if a routed skill isn't available under `.corvex/skills/`.
+
 ## Configuration
 
 After `corvex init`, edit `.corvex/config.yaml`:

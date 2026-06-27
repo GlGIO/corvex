@@ -19,6 +19,10 @@ type Config struct {
 	Review       ReviewConfig      `yaml:"review"`
 	Context      ContextConfig     `yaml:"context"`
 	AgentRouting map[string]string `yaml:"agent_routing"`
+	// SkillRouting maps a task type to a repo skill name (under .corvex/skills/).
+	// When set, the Worker prompt for that type is instructed to use the skill,
+	// making skill use intentional rather than opportunistic.
+	SkillRouting map[string]string `yaml:"skill_routing"`
 	Validate     ValidateConfig    `yaml:"validate"`
 }
 
