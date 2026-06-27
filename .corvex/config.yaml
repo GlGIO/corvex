@@ -32,3 +32,9 @@ context:
     - .corvex/context/*.md
 
 agent_routing: {}
+
+# Route task types to a repo skill (.corvex/skills/<name>). The Worker is told
+# to use the skill for tasks of that type.
+skill_routing:
+  backend: go-corvex-conventions
+  general: go-corvex-conventions
