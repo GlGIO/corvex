@@ -28,3 +28,8 @@
 {"ts":"2026-06-27T01:02:14.379972-03:00","type":"task_start","task_id":"S05","message":"`corvex doctor --json` (mantém exit code)"}
 {"ts":"2026-06-27T01:04:11.316056-03:00","type":"review_start","task_id":"S05"}
 {"ts":"2026-06-27T01:04:52.620008-03:00","type":"review_result","task_id":"S05","message":"PASS"}
+{"ts":"2026-06-27T01:04:52.772446-03:00","type":"checkpoint","task_id":"S05"}
+{"ts":"2026-06-27T01:04:52.772591-03:00","type":"task_complete","task_id":"S05","duration_ms":154722,"cost_usd":0.7290587999999999,"status":"PASSED"}
+{"ts":"2026-06-27T01:04:52.773317-03:00","type":"task_start","task_id":"S06","message":"Table-driven tests para o output `--json`"}
+{"ts":"2026-06-27T01:08:06.750422-03:00","type":"review_start","task_id":"S06"}
+{"ts":"2026-06-27T01:08:51.57772-03:00","type":"review_result","task_id":"S06","message":"PASS"}

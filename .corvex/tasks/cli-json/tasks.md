@@ -134,7 +134,7 @@ doctor check execution to populate them.
 
 ---
 
-## S06 — Table-driven tests para o output `--json` ⬜ PENDING
+## S06 — Table-driven tests para o output `--json` ✅ PASSED
 
 ```yaml
 type: review

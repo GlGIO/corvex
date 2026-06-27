@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T04:04:52Z"
+updated_at: "2026-06-27T04:08:51Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -64,8 +64,19 @@ completed:
         - Added `statusString()` method to `checkResult` (returns `"pass"`, `"warn"`, `"fail"`) rather than inline switches — keeps the struct self-contained and the JSON mapping close to the type definition.
         - doctorOutput.Warnings` uses the JSON key `"warnings"` (plural) to match the spec shape exactly (`"warnings":0`).
         - 'Added 3 table-driven tests: JSON shape correctness (all checks have valid name/status, counts sum to len(checks)), failed check still returns non-nil error with `--json`, and human output unchanged without `--json`.'
+    - id: S06
+      title: Table-driven tests para o output `--json`
+      summary: 'Added `cmd/json_fixture_test.go` with a shared `setupCombinedFixture` helper and four table-driven tests — `TestListJSONFixture`, `TestStatusJSONFixture`, `TestInspectJSONFixture`, and `TestDoctorJSONFixture` — that run all `--json` commands against a common fixture project and assert expected field values. The doctor test has two subtests: one for a valid config (all checks pass, no error) and one for a bad provider (failed check count > 0, non-nil error returned).'
+      files_created:
+        - cmd/json_fixture_test.go
+      files_modified: []
+      decisions:
+        - Created a single shared `setupCombinedFixture` that provisions spec.md, tasks.md (S01 PASSED / S02 PENDING with S01 dependency), an activity ledger with known metrics (8000ms, $0.15, 600/300 tokens, 1 retry), and a valid config.yaml — covering all four commands from one fixture.
+        - TestDoctorJSONFixture` is table-driven with two rows (valid and bad-provider configs) rather than two separate test functions, satisfying the "also assert non-zero exit behavior" requirement within the same table.
+        - Used the existing `captureStdout` helper (defined in `status_test.go`, shared across the package) rather than duplicating it.
+        - All fixture tests use package-level flag vars (`listJSON`, `statusJSON`, etc.) with `defer` resets matching the S02–S05 pattern.
 current_state:
     total_tasks: 6
-    completed_tasks: 5
-next_task: S06
+    completed_tasks: 6
+next_task: ""
 next_task_context: none
