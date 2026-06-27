@@ -1,5 +1,5 @@
 project: doctor
-updated_at: "2026-06-27T00:14:03Z"
+updated_at: "2026-06-27T00:17:40Z"
 spec_hash: ff2e8d2421df60b6aff187fd9334a7597fe80dc3c12ffc31915b049669bb16d2
 intent: ""
 completed:
@@ -34,8 +34,46 @@ completed:
       files_created: []
       files_modified: []
       decisions: []
+    - id: S02
+      title: Implementar os cinco checks do doctor
+      summary: |-
+        I'll start by locating the spec, reading it, and then reviewing the implementation.Now let me check the config types, the provider registry, and the sandbox docker.go to verify the implementation matches the spec.Let me check the sandbox docker.go for the mount parsing logic, and also run the build and tests:Now let me verify a few more details — the sandbox check edge case and the provider claude.New reference:All checks are verified. Here's my analysis:
+
+        ## Analysis
+
+        ### Spec vs Implementation
+
+        **1. provider** — The check reads `CORVEX_CLAUDE_BIN`, defaults to `"claude"`, and uses `exec.LookPath`. This exactly mirrors `claude.New()` (lines 41-43 of `internal/provider/claude/claude.go`). The known-provider check limits to `"claude-cli"` which matches the spec's "currently only claude-cli." ✓
+
+        **2. models** — All three fields (`Planner`, `Worker`, `Reviewer`) checked for empty strings. Correct. ✓
+
+        **3. sandbox** — Type/profile validation, docker warning via `exec.LookPath("docker")`, and mount parsing that mirrors `resolveMountPath` in `docker.go` (`SplitN + filepath.Abs`). One minor observation: when docker is absent the function returns early (warning) and skips the mount check. In practice the mount check almost never fails (only if `os.Getwd()` fails), and the spec does not require both to be reported together. ✓
+
+        **4. escalation** — All three required conditions: action ∈ known set, `After >= 1`, `upgrade-model` requires `To`. ✓
+
+        **5. cost ceilings** — Warns on either or both costs being 0. ✓
+
+        ### Tests
+
+        All spec-required test cases are present and use table-driven style:
+        - "a valid config passes" — covered by `all_set_passes`, `local_type_passes`, `no_policies_passes`, `both_set_passes`
+        - "an unknown provider fails" — `TestCheckProvider/unknown_provider_fails`, `another_unknown_provider_fails`
+        - "an upgrade-model policy missing to fails" — `TestCheckEscalation/upgrade-model_missing_to_fails`
+        - "a missing model fails" — `TestCheckModels/missing_planner_fails`, `missing_worker_fails`, `missing_reviewer_fails`
+
+        ### Build & Tests
+
+        - `go build ./...` passes with no output.
+        - `go test ./...` — all 17 packages pass.
+
+        ### Default config
+
+        `config.Default()` produces `claude-cli` (known), all three models set, `local` sandbox, no escalation policies, `MaxCostUSD=25`, `MaxCostPerTaskUSD=5` — all failure checks pass; only warnings possible (assuming binary on PATH, which is an environmental assumption, not a code defect).
+      files_created: []
+      files_modified: []
+      decisions: []
 current_state:
     total_tasks: 3
-    completed_tasks: 1
-next_task: S02
+    completed_tasks: 2
+next_task: S03
 next_task_context: ""

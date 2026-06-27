@@ -5,3 +5,8 @@
 {"ts":"2026-06-26T21:10:13.736864-03:00","type":"task_start","task_id":"S01"}
 {"ts":"2026-06-26T21:13:29.515163-03:00","type":"review_start","task_id":"S01"}
 {"ts":"2026-06-26T21:14:03.958619-03:00","type":"review_result","task_id":"S01","message":"PASS"}
+{"ts":"2026-06-26T21:14:04.085498-03:00","type":"checkpoint","task_id":"S01"}
+{"ts":"2026-06-26T21:14:04.085817-03:00","type":"task_complete","task_id":"S01","duration_ms":226776,"cost_usd":0.7883594999999999,"status":"PASSED"}
+{"ts":"2026-06-26T21:14:04.086344-03:00","type":"task_start","task_id":"S02"}
+{"ts":"2026-06-26T21:14:47.149712-03:00","type":"review_start","task_id":"S02"}
+{"ts":"2026-06-26T21:17:40.580522-03:00","type":"review_result","task_id":"S02","message":"PASS"}

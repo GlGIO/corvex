@@ -60,7 +60,7 @@ de checks vazia ou com um stub que será preenchido na S02.
 
 ---
 
-## S02 — Implementar os cinco checks do doctor ⬜ PENDING
+## S02 — Implementar os cinco checks do doctor ✅ PASSED
 
 ```yaml
 type: backend
