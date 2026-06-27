@@ -30,8 +30,10 @@ var (
 	flagValidate bool
 	runAB        string
 	runNoReplan  bool
-	runHere      bool
-	runForce     bool
+	runHere       bool
+	runForce      bool
+	runYes        bool
+	runSkipDoctor bool
 )
 
 var runCmd = &cobra.Command{
@@ -53,6 +55,8 @@ func init() {
 	runCmd.Flags().BoolVar(&runNoReplan, "no-replan", false, "fail if spec.md drifted instead of auto-regenerating tasks.md (protects manual edits)")
 	runCmd.Flags().BoolVar(&runHere, "here", false, "run from the current directory even when a worktree exists for this project (rarely correct — usually you want to cd into the worktree)")
 	runCmd.Flags().BoolVar(&runForce, "force", false, "run even if the working tree is dirty, discarding uncommitted changes first (DESTRUCTIVE)")
+	runCmd.Flags().BoolVarP(&runYes, "yes", "y", false, "skip the cost-preview confirmation prompt (for CI/scripts)")
+	runCmd.Flags().BoolVar(&runSkipDoctor, "skip-doctor", false, "skip the pre-run config checks (corvex doctor)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -105,6 +109,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 		pDir := projectDir(workDir, project)
 		tasksPath := filepath.Join(pDir, "tasks.md")
 		return dryRun(tasksPath, project)
+	}
+
+	// Pre-run config gate: fail fast on misconfiguration the way `corvex doctor`
+	// would, before spending any tokens. Warnings don't block; --skip-doctor
+	// bypasses entirely.
+	if !runSkipDoctor {
+		if gateErr := doctorGate(cfg, workDir); gateErr != nil {
+			return gateErr
+		}
+	}
+
+	// Cost preview + confirmation: corvex run spends real money. Show what will
+	// run and the ceilings, then confirm on an interactive TTY (auto-proceed for
+	// --yes or non-TTY/CI so pipes don't hang).
+	fmt.Fprintln(os.Stderr, runPreview(workDir, project, cfg))
+	if !confirmRun() {
+		return fmt.Errorf("aborted by user")
 	}
 
 	p, err := provider.NewProvider(cfg.Provider.Default, cfg)

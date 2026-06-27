@@ -74,14 +74,19 @@ func (r checkResult) statusString() string {
 	}
 }
 
+func allChecks(cfg *config.Config, workDir string) []checkResult {
+	results := runChecks(cfg)
+	results = append(results, checkMCPGitignore(cfg, workDir))
+	return results
+}
+
 func runDoctor(_ *cobra.Command, _ []string) error {
 	cfg, workDir, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
-	results := runChecks(cfg)
-	results = append(results, checkMCPGitignore(cfg, workDir))
+	results := allChecks(cfg, workDir)
 
 	var passed, warned, failed int
 	for _, r := range results {
