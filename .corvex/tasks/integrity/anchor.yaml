@@ -1,5 +1,5 @@
 project: integrity
-updated_at: "2026-06-27T00:36:40Z"
+updated_at: "2026-06-27T00:38:02Z"
 spec_hash: e2a4ca87ced09a62f9a3f4ee989e6faf4476afbc182b529a200b4824741c66d7
 intent: ""
 completed:
@@ -115,8 +115,30 @@ completed:
         - internal/orchestrator/orchestrator.go
         - internal/orchestrator/orchestrator_test.go
       decisions: []
+    - id: S04
+      title: Validate full build and test suite
+      summary: |-
+        I'll verify this task by locating the spec, reading it, checking the expected files, and running the build/test suite.Now let me check the tasks.md and run the build and test suite.`go build ./...` passed. Now let me run the full test suite and check the key files.All tests pass (cached). Let me force a fresh run specifically for the three key packages to avoid cache false positives.All three packages pass. Let me verify the expected files were actually modified with the correct changes from S01/S02/S03.All changes are in place. Let me do a final check to confirm the new tests added by S01/S02/S03 are present.All success criteria for S04 are fully met:
+
+        **Build:** `go build ./...` exits clean — no output, no errors.
+
+        **Tests:** `go test ./...` passes all 15 packages (fresh run with `-count=1` on the three critical packages confirms no cache masking):
+        - `internal/provider/claude` — 0.832s ok
+        - `internal/task` — 0.209s ok
+        - `internal/orchestrator` — 2.540s ok
+
+        **No regressions, and all three prior tasks' new code is present:**
+        - **S01 (claude.go):** `sawResult` flag tracked in both `ExecuteWithProgress` (line 87) and `ParseFullOutput` (line 476); error message "claude cli produced no result line (truncated output?)" returned on exit-0 + no result line; new tests at lines 655, 672, 686 cover both branches.
+        - **S02 (writer.go):** Uses `os.CreateTemp` in `filepath.Dir(path)` for same-filesystem atomicity, `os.Remove` cleanup on error, `Chmod(0644)` to restore perms before rename, `os.Rename` to atomically overwrite; `TestWriteTasksFile_NoTempFilesLeft` at line 141 verifies no leftover temps.
+        - **S03 (orchestrator.go):** `taskTotalCostUSD` accumulates per-attempt cost (nil-guarded at line 430); ceiling checks run on every attempt (pass and fail) at lines 432–436 and 461–465; test at line 930 confirms `MaxCostUSD` abort fires from failed-attempt accumulation.
+      files_created: []
+      files_modified:
+        - internal/provider/claude/claude.go
+        - internal/task/writer.go
+        - internal/orchestrator/orchestrator.go
+      decisions: []
 current_state:
     total_tasks: 4
-    completed_tasks: 3
-next_task: S04
+    completed_tasks: 4
+next_task: ""
 next_task_context: ""
