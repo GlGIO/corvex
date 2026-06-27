@@ -9,3 +9,6 @@
 {"ts":"2026-06-27T01:29:33.667246-03:00","type":"recovery_result","message":"working tree clean"}
 {"ts":"2026-06-27T01:29:33.667965-03:00","type":"dag_resolved"}
 {"ts":"2026-06-27T01:29:33.66829-03:00","type":"human_gate","task_id":"S01","message":"Approve deploy"}
+{"ts":"2026-06-27T01:29:33.760422-03:00","type":"checkpoint","task_id":"S01"}
+{"ts":"2026-06-27T01:29:33.760591-03:00","type":"task_complete","task_id":"S01","status":"PASSED"}
+{"ts":"2026-06-27T01:29:33.761136-03:00","type":"task_start","task_id":"S02"}

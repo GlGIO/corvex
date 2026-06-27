@@ -15,7 +15,7 @@ kind: human-gate
 
 ---
 
-## S02 — Deploy ⬜ PENDING
+## S02 — Deploy ✅ PASSED
 
 ```yaml
 type: general

@@ -9,8 +9,14 @@ completed:
       files_created: []
       files_modified: []
       decisions: []
+    - id: S02
+      title: Deploy
+      summary: 'ran command: echo "deploying"'
+      files_created: []
+      files_modified: []
+      decisions: []
 current_state:
     total_tasks: 2
-    completed_tasks: 1
-next_task: S02
+    completed_tasks: 2
+next_task: ""
 next_task_context: ""
