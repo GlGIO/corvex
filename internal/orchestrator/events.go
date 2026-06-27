@@ -20,6 +20,7 @@ const (
 	EventTaskStart      EventType = "task_start"
 	EventTaskStream     EventType = "task_stream"
 	EventTaskWarn       EventType = "task_warn"
+	EventTaskTimeout    EventType = "task_timeout"
 	EventTaskComplete   EventType = "task_complete"
 	EventReviewStart    EventType = "review_start"
 	EventReviewResult   EventType = "review_result"

@@ -13,8 +13,9 @@ import (
 type Action int
 
 const (
-	Continue  Action = 0
-	RetryTask Action = 1
+	Continue   Action = 0
+	RetryTask  Action = 1
+	AbortDirty Action = 2
 )
 
 func (a Action) String() string {
@@ -23,6 +24,8 @@ func (a Action) String() string {
 		return "continue"
 	case RetryTask:
 		return "retry"
+	case AbortDirty:
+		return "abort-dirty"
 	default:
 		return fmt.Sprintf("Action(%d)", int(a))
 	}
@@ -45,8 +48,45 @@ func NewManager(workDir string) *Manager {
 	return &Manager{WorkDir: workDir}
 }
 
+// Guard inspects the working tree WITHOUT modifying it. A clean tree yields
+// Continue; a dirty tree yields AbortDirty with the offending files. Use this
+// at the start of a run: a dirty tree there is the user's uncommitted work,
+// and Corvex must refuse rather than discard it (the run commits checkpoints
+// and a later crash-recovery reset could wipe the changes). The destructive
+// Check is reserved for the retry path, where the dirty state is the Worker's
+// own failed attempt.
+func (m *Manager) Guard() (*CheckResult, error) {
+	_, files, err := m.isDirty()
+	if err != nil {
+		return nil, fmt.Errorf("checking dirty state: %w", err)
+	}
+
+	// `.corvex/` is Corvex's own managed state (tasks.md, anchor.yaml,
+	// activity.jsonl, mcp.json, worktrees). It is dirtied by Corvex itself
+	// during a run — it is never the user's work — so it must not trip the
+	// guard. This mirrors Check's `-e .corvex` preservation.
+	userFiles := make([]string, 0, len(files))
+	for _, f := range files {
+		if f == ".corvex" || strings.HasPrefix(f, ".corvex/") {
+			continue
+		}
+		userFiles = append(userFiles, f)
+	}
+
+	if len(userFiles) == 0 {
+		return &CheckResult{Action: Continue, Message: "working tree clean"}, nil
+	}
+	return &CheckResult{
+		Action:     AbortDirty,
+		DirtyFiles: userFiles,
+		Message:    fmt.Sprintf("%d uncommitted change(s) in the working tree", len(userFiles)),
+	}, nil
+}
+
 // Check inspects the git working tree. A clean tree yields Continue;
-// a dirty tree is reset via checkout+clean and yields RetryTask.
+// a dirty tree is reset via checkout+clean and yields RetryTask. This is
+// DESTRUCTIVE and intended for the retry path only, where the dirty state is
+// the Worker's discarded attempt. For the run-start check use Guard.
 func (m *Manager) Check() (*CheckResult, error) {
 	dirty, files, err := m.isDirty()
 	if err != nil {

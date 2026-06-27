@@ -32,6 +32,7 @@ var (
 	runAB        string
 	runNoReplan  bool
 	runHere      bool
+	runForce     bool
 )
 
 var runCmd = &cobra.Command{
@@ -51,6 +52,7 @@ func init() {
 	runCmd.Flags().StringVar(&runAB, "ab", "", "A/B run two models against one task (e.g. --ab sonnet,opus); requires --task")
 	runCmd.Flags().BoolVar(&runNoReplan, "no-replan", false, "fail if spec.md drifted instead of auto-regenerating tasks.md (protects manual edits)")
 	runCmd.Flags().BoolVar(&runHere, "here", false, "run from the current directory even when a worktree exists for this project (rarely correct — usually you want to cd into the worktree)")
+	runCmd.Flags().BoolVar(&runForce, "force", false, "run even if the working tree is dirty, discarding uncommitted changes first (DESTRUCTIVE)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -121,6 +123,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		ABModels:   abModels,
 		Commands:   commands,
 		NoReplan:   runNoReplan,
+		Force:      runForce,
 	})
 
 	if !runPlain && isInteractive() {

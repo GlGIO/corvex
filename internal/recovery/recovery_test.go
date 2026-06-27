@@ -62,6 +62,56 @@ func TestActionString(t *testing.T) {
 	}
 }
 
+func TestGuardCleanRepo(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	result, err := mgr.Guard()
+	if err != nil {
+		t.Fatalf("Guard() error = %v", err)
+	}
+	if result.Action != Continue {
+		t.Errorf("Action = %v, want Continue", result.Action)
+	}
+}
+
+func TestGuardDirtyDoesNotDestroy(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	readme := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(readme, []byte("uncommitted work"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	untracked := filepath.Join(dir, "new.txt")
+	if err := os.WriteFile(untracked, []byte("draft"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := mgr.Guard()
+	if err != nil {
+		t.Fatalf("Guard() error = %v", err)
+	}
+	if result.Action != AbortDirty {
+		t.Errorf("Action = %v, want AbortDirty", result.Action)
+	}
+	if len(result.DirtyFiles) < 2 {
+		t.Errorf("DirtyFiles = %v, want at least 2", result.DirtyFiles)
+	}
+
+	// Guard must NOT touch the working tree.
+	content, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "uncommitted work" {
+		t.Errorf("README.md content = %q, want it preserved (Guard must not reset)", string(content))
+	}
+	if _, err := os.Stat(untracked); err != nil {
+		t.Errorf("untracked file removed by Guard: %v (Guard must be non-destructive)", err)
+	}
+}
+
 func TestCheckCleanRepo(t *testing.T) {
 	dir := initGitRepo(t)
 	mgr := NewManager(dir)

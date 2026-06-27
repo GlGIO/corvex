@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	charmbraceletlog "github.com/charmbracelet/log"
@@ -43,6 +44,11 @@ type Options struct {
 	// has changed, Run returns an actionable error instead of regenerating
 	// tasks.md. Use this to protect manual edits.
 	NoReplan bool
+	// Force lets the run proceed on a dirty working tree by discarding the
+	// uncommitted changes (destructive). When false (default), a dirty tree
+	// at run start aborts the run with an actionable hint instead of wiping
+	// the user's work.
+	Force bool
 }
 
 // Orchestrator coordinates task planning, execution, review, and recovery.
@@ -65,7 +71,9 @@ type Orchestrator struct {
 	skip       map[string]bool // task IDs skipped by the user at runtime
 	paused     bool            // toggled by Cmd{Pause,Resume}
 	noReplan   bool            // mirror of Options.NoReplan
+	force      bool            // mirror of Options.Force
 	ledger     *activity.Ledger
+	runCtx     context.Context // set at the start of Run; lets emit() abort on cancel
 }
 
 // New creates an Orchestrator from the given options.
@@ -88,11 +96,13 @@ func New(opts Options) *Orchestrator {
 		commands:   opts.Commands,
 		skip:       make(map[string]bool),
 		noReplan:   opts.NoReplan,
+		force:      opts.Force,
 	}
 }
 
 // Run executes the full orchestration loop for the given project.
 func (o *Orchestrator) Run(ctx context.Context, project string) error {
+	o.runCtx = ctx
 	specPath, tasksPath, anchorPath := o.projectPaths(project)
 
 	// Open the activity ledger early so every emitted event gets persisted.
@@ -118,11 +128,32 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 	}
 
 	o.emit(Event{Type: EventRecoveryCheck})
-	recResult, err := o.recovery.Check()
+	recResult, err := o.recovery.Guard()
 	if err != nil {
-		charmbraceletlog.Warn("recovery check failed", "err", err)
+		charmbraceletlog.Warn("recovery guard failed", "err", err)
 	}
-	if recResult != nil {
+	if recResult != nil && recResult.Action == recovery.AbortDirty {
+		if o.force {
+			// User opted in via --force: discard the dirty tree.
+			if _, derr := o.recovery.Check(); derr != nil {
+				return fmt.Errorf("--force: discarding dirty tree: %w", derr)
+			}
+			o.emit(Event{Type: EventRecoveryResult, Message: fmt.Sprintf("--force: discarded %d uncommitted change(s)", len(recResult.DirtyFiles))})
+		} else {
+			preview := recResult.DirtyFiles
+			if len(preview) > 10 {
+				preview = preview[:10]
+			}
+			return fmt.Errorf(
+				"working tree has %d uncommitted change(s):\n  %s\n\n"+
+					"Corvex won't run on a dirty tree: it commits a checkpoint after every task, "+
+					"and its crash-recovery reset could discard this work.\n"+
+					"→ commit or stash your changes, then re-run\n"+
+					"→ or pass --force to let corvex reset the tree first (DESTRUCTIVE — discards the changes above)",
+				len(recResult.DirtyFiles), strings.Join(preview, "\n  "),
+			)
+		}
+	} else if recResult != nil {
 		o.emit(Event{Type: EventRecoveryResult, Message: recResult.Message})
 	}
 
@@ -355,36 +386,40 @@ func (o *Orchestrator) executeTask(
 
 		// Stream per-chunk events from the worker so the TUI panel can show
 		// what the AI is doing (tool calls, intermediate text) instead of
-		// just "worker S03" for several minutes.
+		// just "worker S03" for several minutes. Each stream event also
+		// refreshes the liveness clock the watchdog reads.
 		taskID := t.ID
+		live := newLiveness()
 		o.worker.SetOnStream(func(se types.StreamEvent) {
+			live.touch(streamSummary(se))
 			ev := se
 			o.emit(Event{Type: EventTaskStream, TaskID: taskID, Stream: &ev})
 		})
 
-		// Watchdog: emit a warn event if the task is still running after
-		// task_warn_minutes. TUI surfaces this so the user can decide to
-		// pause or abort before hitting prod-relevant limits (e.g., Vercel
-		// cron 10min hard timeout).
+		// Watchdog: warn after task_warn_minutes, and CANCEL (not just warn)
+		// when the attempt blows the wall-clock ceiling or goes idle with no
+		// stream output — the signatures of a hung provider. Cancelling the
+		// derived context unblocks worker.Execute, which returns a ctx error
+		// and feeds the normal retry/fail path. A diagnostic event records
+		// where it stalled.
+		taskCtx, cancelTask := context.WithCancel(ctx)
 		watchDone := make(chan struct{})
-		if warnMin := o.cfg.Execution.TaskWarnMinutes; warnMin > 0 {
-			warnAt := time.Duration(warnMin) * time.Minute
-			go func() {
-				select {
-				case <-time.After(warnAt):
-					o.emit(Event{
-						Type:    EventTaskWarn,
-						TaskID:  taskID,
-						Message: fmt.Sprintf("task running > %dm — consider pausing if stuck", warnMin),
-					})
-				case <-watchDone:
-				}
-			}()
-		}
+		timedOut := newTimeoutFlag()
+		// Idle detection is only meaningful on the streaming path; a buffered
+		// sandbox produces no per-chunk events, so its idle clock would tick
+		// falsely. Buffered runs rely on the wall-clock ceiling.
+		streaming := isLocalOrNilSandbox(o.sandbox)
+		go o.watchTask(taskCtx, cancelTask, watchDone, taskID, live, timedOut, streaming)
 
-		result, err := o.worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+		result, err := o.worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
 		close(watchDone)
+		cancelTask()
 		o.worker.SetOnStream(nil)
+		if reason := timedOut.reason(); reason != "" && err != nil {
+			// Replace the opaque "context canceled" with the watchdog's
+			// diagnosis so retries and logs say *why* the attempt died.
+			err = fmt.Errorf("%s", reason)
+		}
 		if err != nil {
 			if attempt == maxRetries {
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
@@ -578,12 +613,19 @@ func (o *Orchestrator) emit(ev Event) {
 	if o.events == nil {
 		return
 	}
-	// Block until the consumer drains the channel. Previously this used a
-	// non-blocking `select { default: }` which silently dropped events when
-	// the buffer was full — and stream chunks from chatty workers fill it
-	// quickly. The TUI/log consumers are fast; transient backpressure here
-	// is far better than losing recovery events, retries, or task results.
-	o.events <- ev
+	// Block until the consumer drains the channel — but never forever. The
+	// previous unconditional `o.events <- ev` deadlocked the orchestrator if
+	// the consumer (e.g. the TUI) exited early and stopped draining: the send
+	// blocked, Run never returned, and ctx cancellation couldn't unwedge it.
+	// Selecting on the run context lets a cancelled run drain to completion.
+	var done <-chan struct{}
+	if o.runCtx != nil {
+		done = o.runCtx.Done()
+	}
+	select {
+	case o.events <- ev:
+	case <-done:
+	}
 }
 
 // ledgerEntryFromEvent translates an orchestration event into the compact

@@ -80,6 +80,21 @@ type ExecutionConfig struct {
 	// Default 5 — Vercel cron's free-tier limit is 10min so warning at 5
 	// gives time to abort before deploy-time tasks would fail in prod.
 	TaskWarnMinutes int `yaml:"task_warn_minutes"`
+
+	// TaskTimeoutMinutes is a hard wall-clock ceiling per task attempt. When a
+	// worker attempt runs longer than this, the orchestrator CANCELS it (not
+	// just warns) so a stuck provider can't hang the whole run forever. The
+	// cancelled attempt counts as a failure and feeds the retry loop. 0 = no
+	// limit. Default 20.
+	TaskTimeoutMinutes int `yaml:"task_timeout_minutes"`
+
+	// StreamIdleTimeoutSeconds cancels a worker attempt when no stream event
+	// (text, tool call, tool result) has arrived for this many seconds — the
+	// signature of a hung provider that opened a connection but stopped
+	// producing output. 0 = no idle detection. Default 180. Only effective on
+	// the streaming path (local/nil sandbox); buffered sandboxes rely on the
+	// wall-clock ceiling instead.
+	StreamIdleTimeoutSeconds int `yaml:"stream_idle_timeout_seconds"`
 }
 
 type ContextConfig struct {
@@ -248,12 +263,14 @@ func Default() *Config {
 			Type: "local",
 		},
 		Execution: ExecutionConfig{
-			MaxRetries:        2,
-			AutoCommit:        true,
-			InsightThreshold:  3,
-			MaxCostUSD:        25,
-			MaxCostPerTaskUSD: 5,
-			TaskWarnMinutes:   5,
+			MaxRetries:               2,
+			AutoCommit:               true,
+			InsightThreshold:         3,
+			MaxCostUSD:               25,
+			MaxCostPerTaskUSD:        5,
+			TaskWarnMinutes:          5,
+			TaskTimeoutMinutes:       20,
+			StreamIdleTimeoutSeconds: 180,
 		},
 	}
 }
