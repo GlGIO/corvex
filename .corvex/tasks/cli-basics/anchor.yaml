@@ -1,0 +1,21 @@
+project: ""
+updated_at: "2026-06-27T03:15:35Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: '`version` subcommand'
+      summary: Added `cmd/version.go` with a `versionCmd` cobra command that prints `corvex <version>` using `internal/types.Version`, registered via `init()`. Added `cmd/version_test.go` with `TestVersionCmd` that captures stdout and asserts the output contains `corvex <version>`.
+      files_created:
+        - cmd/version.go
+        - cmd/version_test.go
+      files_modified: []
+      decisions:
+        - Used `Run` (not `RunE`) since the command has no error path — just a `fmt.Printf`.
+        - Reused the existing `captureStdout` helper from `status_test.go` (same package, available to all `cmd` tests).
+        - Called `versionCmd.Run(versionCmd, nil)` directly in the test rather than going through cobra's Execute, keeping the test simple and avoiding the need for a temp directory.
+current_state:
+    total_tasks: 4
+    completed_tasks: 1
+next_task: S02
+next_task_context: cmd/version.go` exports `versionCmd` (package-level var) and `internal/types.Version` is the single source of truth for the version string. S02 (--no-color/NO_COLOR) should add a `PersistentPreRun` to `rootCmd` in `cmd/root.go` — there is no existing `PersistentPreRun` there, so it must be added fresh.
