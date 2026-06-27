@@ -36,7 +36,7 @@ vir de `internal/types`.Version. NÃO usar `Args` diferente de `cobra.NoArgs`
 
 ---
 
-## S02 — Respeitar NO_COLOR + flag global `--no-color` ⬜ PENDING
+## S02 — Respeitar NO_COLOR + flag global `--no-color` ✅ PASSED
 
 ```yaml
 type: backend

@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:15:35Z"
+updated_at: "2026-06-27T03:17:57Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -14,8 +14,19 @@ completed:
         - Used `Run` (not `RunE`) since the command has no error path — just a `fmt.Printf`.
         - Reused the existing `captureStdout` helper from `status_test.go` (same package, available to all `cmd` tests).
         - Called `versionCmd.Run(versionCmd, nil)` directly in the test rather than going through cobra's Execute, keeping the test simple and avoiding the need for a temp directory.
+    - id: S02
+      title: Respeitar NO_COLOR + flag global `--no-color`
+      summary: Added a persistent `--no-color` flag to `rootCmd` and a `PersistentPreRun` hook that disables color (via `lipgloss.SetColorProfile(termenv.Ascii)` and `charmlog.SetColorProfile(termenv.Ascii)`) when either `--no-color` is set or `NO_COLOR` env var is non-empty. Added `cmd/root_test.go` with two tests covering the flag path and the env path.
+      files_created:
+        - cmd/root_test.go
+      files_modified:
+        - cmd/root.go
+      decisions:
+        - Used `cmd.Flags().GetBool("no-color")` (not `rootCmd.PersistentFlags()`) inside `PersistentPreRun` so the lookup works correctly when cobra resolves the flag on the executing command's merged flag set.
+        - Condition is OR (flag OR env non-empty), matching spec and no-color.org standard — empty `NO_COLOR` does not disable color.
+        - Used `charmlog` alias for the charmbracelet/log import to avoid collision with the standard `log` package used elsewhere in the cmd package.
 current_state:
     total_tasks: 4
-    completed_tasks: 1
-next_task: S02
-next_task_context: cmd/version.go` exports `versionCmd` (package-level var) and `internal/types.Version` is the single source of truth for the version string. S02 (--no-color/NO_COLOR) should add a `PersistentPreRun` to `rootCmd` in `cmd/root.go` — there is no existing `PersistentPreRun` there, so it must be added fresh.
+    completed_tasks: 2
+next_task: S03
+next_task_context: rootCmd` now has a `PersistentPreRun`; any subcommand that also defines `PersistentPreRun` will shadow this one (cobra does not chain `PersistentPreRun` by default). If future subcommands need their own `PersistentPreRun`, they must call `rootCmd.PersistentPreRun` (or the equivalent) explicitly, or switch to `PersistentPreRunE` + manual chaining. The `--no-color` flag is persistent and available to all subcommands (S03 "did you mean" work in cmd/helpers.go and cmd/run.go is unaffected).
