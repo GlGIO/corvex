@@ -125,7 +125,7 @@ func TestPlan_WritesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantContent := "---\ngenerated_by: test\n---\n\n## S01 — Task"
+	wantContent := "---\ngenerated_by: test\ndag:\n  S01: []\n---\n\n## S01 — Task ⬜ PENDING\n\n### O que fazer\nDo it."
 	mock := &mockProvider{
 		executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
 			return &types.ExecuteResult{Output: wantContent}, nil
@@ -156,7 +156,7 @@ func TestPlan_AllowedToolsEnforcement(t *testing.T) {
 
 	mock := &mockProvider{
 		executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
-			return &types.ExecuteResult{Output: "---\n---"}, nil
+			return &types.ExecuteResult{Output: "---\ngenerated_by: test\ndag:\n  S01: []\n---\n\n## S01 — Task ⬜ PENDING\n\n### O que fazer\nDo it."}, nil
 		},
 	}
 
@@ -231,7 +231,7 @@ func TestPlan_ModelPassedThrough(t *testing.T) {
 
 	mock := &mockProvider{
 		executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
-			return &types.ExecuteResult{Output: "---\n---"}, nil
+			return &types.ExecuteResult{Output: "---\ngenerated_by: test\ndag:\n  S01: []\n---\n\n## S01 — Task ⬜ PENDING\n\n### O que fazer\nDo it."}, nil
 		},
 	}
 
