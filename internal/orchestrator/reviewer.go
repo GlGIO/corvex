@@ -39,22 +39,30 @@ type Reviewer struct {
 	provider provider.Provider
 	model    string
 	workDir  string
+	skill    string // optional repo skill to guide the review
 }
 
 // NewReviewer creates a Reviewer bound to the given provider and model.
-func NewReviewer(p provider.Provider, model, workDir string) *Reviewer {
-	return &Reviewer{provider: p, model: model, workDir: workDir}
+// skill (optional) is a repo skill the Reviewer is told to use; when set, the
+// Skill tool is allowed so it can be invoked.
+func NewReviewer(p provider.Provider, model, workDir, skill string) *Reviewer {
+	return &Reviewer{provider: p, model: model, workDir: workDir, skill: skill}
 }
 
 // Review executes the AI reviewer for the given task and parses the verdict.
 func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, error) {
-	prompt := buildReviewerPrompt(t)
+	prompt := buildReviewerPrompt(t, r.skill)
+
+	allowedTools := []string{"Read", "Glob", "Grep", "Bash"}
+	if r.skill != "" {
+		allowedTools = append(allowedTools, "Skill")
+	}
 
 	result, err := r.runStep(ctx, r.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        r.model,
 		WorkDir:      r.workDir,
-		AllowedTools: []string{"Read", "Glob", "Grep", "Bash"},
+		AllowedTools: allowedTools,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
@@ -68,7 +76,7 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 	return rr, nil
 }
 
-func buildReviewerPrompt(t *types.Task) string {
+func buildReviewerPrompt(t *types.Task, skill string) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, `You are a code reviewer for Corvex. Verify that this task was completed correctly.
@@ -82,6 +90,10 @@ func buildReviewerPrompt(t *types.Task) string {
 ### Success Criteria
 
 `, t.ID, t.Title, t.Description)
+
+	if skill != "" {
+		fmt.Fprintf(&b, "Use the `%s` skill (via the Skill tool) to guide your review.\n\n", skill)
+	}
 
 	for _, c := range t.Criteria {
 		fmt.Fprintf(&b, "- %s\n", c)

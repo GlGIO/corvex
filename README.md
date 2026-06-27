@@ -224,8 +224,9 @@ bind-mounted root).
     SKILL.md      # name + description frontmatter; the Worker uses it when relevant
 ```
 
-Only the **Worker** can invoke skills (the Planner and Reviewer run with a
-restricted tool set). An existing `.claude/skills/<name>` is never overwritten.
+The **Worker** can invoke skills; the **Reviewer** also gets the skill routed to
+the `review` type (so it reviews against your house rules). The Planner runs
+without skills. An existing `.claude/skills/<name>` is never overwritten.
 `corvex doctor` lists the repo skills available to the Worker.
 
 To make skill use **intentional** rather than opportunistic, route a task type
@@ -237,8 +238,10 @@ skill_routing:
   database: sql-review
 ```
 
-The Worker prompt for a routed task type instructs it to invoke that skill.
-`corvex doctor` warns if a routed skill isn't available under `.corvex/skills/`.
+The Worker prompt for a routed task type instructs it to invoke that skill, and
+the orchestrator **Reviewer** uses the skill routed to `review` to judge every
+task against it. `corvex doctor` warns if a routed skill isn't available under
+`.corvex/skills/`.
 
 ## Configuration
 

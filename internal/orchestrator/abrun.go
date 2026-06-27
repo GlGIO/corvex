@@ -141,7 +141,7 @@ func (o *Orchestrator) runABSide(
 		return abRunResult{Model: model, Worktree: wt, Err: fmt.Errorf("worker: %w", err)}
 	}
 
-	reviewer := NewReviewer(o.provider, o.cfg.Provider.Models.Reviewer, wt.Path)
+	reviewer := NewReviewer(o.provider, o.cfg.Provider.Models.Reviewer, wt.Path, o.cfg.SkillRouting["review"])
 	reviewResult, err := reviewer.Review(ctx, t)
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Worker: workerResult, Err: fmt.Errorf("reviewer: %w", err)}

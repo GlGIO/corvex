@@ -192,7 +192,7 @@ func TestBuildReviewerPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := buildReviewerPrompt(task)
+	prompt := buildReviewerPrompt(task, "")
 
 	checks := []struct {
 		label string
@@ -221,7 +221,7 @@ func TestReview_Pass(t *testing.T) {
 			return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
 		},
 	}
-	r := NewReviewer(mock, "test-model", "/tmp")
+	r := NewReviewer(mock, "test-model", "/tmp", "")
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := r.Review(context.Background(), task)
@@ -233,6 +233,33 @@ func TestReview_Pass(t *testing.T) {
 	}
 }
 
+func TestReview_WithSkill(t *testing.T) {
+	t.Parallel()
+	var gotTools []string
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			gotTools = req.AllowedTools
+			if !strings.Contains(req.Prompt, "go-diff-review") {
+				t.Errorf("reviewer prompt missing the routed skill instruction:\n%s", req.Prompt)
+			}
+			return &types.ExecuteResult{Output: "ok.\nVERDICT: PASS"}, nil
+		},
+	}
+	r := NewReviewer(mock, "test-model", "/tmp", "go-diff-review")
+	if _, err := r.Review(context.Background(), &types.Task{ID: "S01", Title: "T", Description: "d"}); err != nil {
+		t.Fatal(err)
+	}
+	hasSkill := false
+	for _, tool := range gotTools {
+		if tool == "Skill" {
+			hasSkill = true
+		}
+	}
+	if !hasSkill {
+		t.Errorf("AllowedTools = %v, want it to include Skill when a review skill is set", gotTools)
+	}
+}
+
 func TestReview_Fail(t *testing.T) {
 	t.Parallel()
 	mock := &mockProvider{
@@ -240,7 +267,7 @@ func TestReview_Fail(t *testing.T) {
 			return &types.ExecuteResult{Output: "Missing files.\nVERDICT: FAIL"}, nil
 		},
 	}
-	r := NewReviewer(mock, "test-model", "/tmp")
+	r := NewReviewer(mock, "test-model", "/tmp", "")
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := r.Review(context.Background(), task)
@@ -259,7 +286,7 @@ func TestReview_AllowedToolsEnforcement(t *testing.T) {
 			return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
 		},
 	}
-	r := NewReviewer(mock, "test-model", "/tmp")
+	r := NewReviewer(mock, "test-model", "/tmp", "")
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	if _, err := r.Review(context.Background(), task); err != nil {
@@ -289,7 +316,7 @@ func TestReview_ProviderError(t *testing.T) {
 			return nil, fmt.Errorf("provider unavailable")
 		},
 	}
-	r := NewReviewer(mock, "test-model", "/tmp")
+	r := NewReviewer(mock, "test-model", "/tmp", "")
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	_, err := r.Review(context.Background(), task)
