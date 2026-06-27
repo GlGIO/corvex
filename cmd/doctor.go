@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/spf13/cobra"
 )
 
@@ -77,7 +78,18 @@ func (r checkResult) statusString() string {
 func allChecks(cfg *config.Config, workDir string) []checkResult {
 	results := runChecks(cfg)
 	results = append(results, checkMCPGitignore(cfg, workDir))
+	results = append(results, checkSkills(workDir))
 	return results
+}
+
+// checkSkills reports the repo-local skills under .corvex/skills/ that the
+// Worker will be able to invoke (corvex symlinks them into .claude/skills/).
+func checkSkills(workDir string) checkResult {
+	names := orchestrator.RepoSkills(workDir)
+	if len(names) == 0 {
+		return checkResult{"skills", checkPass, "no repo skills (add .corvex/skills/<name>/SKILL.md to expose some to the worker)"}
+	}
+	return checkResult{"skills", checkPass, fmt.Sprintf("%d repo skill(s) available to the worker: %s", len(names), strings.Join(names, ", "))}
 }
 
 func runDoctor(_ *cobra.Command, _ []string) error {

@@ -209,6 +209,25 @@ holds, up to a cap:
 With `until` omitted, the command's own exit code is the loop condition (i.e.
 retry the command until it succeeds, up to `max`).
 
+### Skills (repo-local)
+
+Drop [Claude Code skills](https://docs.claude.com) the Worker can invoke under
+`.corvex/skills/<name>/SKILL.md`. Before each run, Corvex symlinks them into
+`.claude/skills/` (the location the Claude CLI auto-discovers, including in the
+headless mode the Worker uses), and removes the links when the run ends. They
+travel with the repo and into the Docker sandbox (both dirs live under the
+bind-mounted root).
+
+```
+.corvex/skills/
+  my-convention/
+    SKILL.md      # name + description frontmatter; the Worker uses it when relevant
+```
+
+Only the **Worker** can invoke skills (the Planner and Reviewer run with a
+restricted tool set). An existing `.claude/skills/<name>` is never overwritten.
+`corvex doctor` lists the repo skills available to the Worker.
+
 ## Configuration
 
 After `corvex init`, edit `.corvex/config.yaml`:

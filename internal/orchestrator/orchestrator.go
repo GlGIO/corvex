@@ -199,6 +199,10 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		o.emit(Event{Type: EventRecoveryResult, Message: recResult.Message})
 	}
 
+	// Expose repo-local skills (.corvex/skills/*) to the Worker via
+	// .claude/skills/ for this run; cleaned up when Run returns.
+	defer o.materializeSkills()()
+
 	anchorState, err := anchor.Load(anchorPath)
 	if err != nil {
 		charmbraceletlog.Warn("loading anchor", "err", err)
