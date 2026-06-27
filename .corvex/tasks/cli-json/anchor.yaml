@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:56:18Z"
+updated_at: "2026-06-27T04:02:14Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -37,8 +37,22 @@ completed:
         - dependsOn` is explicitly set to `[]string{}` when `t.DependsOn` is nil so it marshals as `[]` rather than `null`.
         - The JSON tasks array follows the same topological order as the human output (DAG resolution order, falling back to parse order on cycle).
         - statusJSON *bool` is declared at package level (matches `listJSON` pattern from S02) so `runStatus` can read it without needing the cobra `*Command` argument.
+    - id: S04
+      title: '`corvex inspect <project> --json`'
+      summary: Added `--json` flag to `corvex inspect <project>` that outputs aggregated timeline/metrics as JSON instead of raw activity entries. Extracted a `buildInspectData` helper that both the JSON and human paths share, added JSON struct tags to `TaskMetric` and `Summary` in `internal/activity/ledger.go`, and added 4 table-driven tests covering JSON shape, per-task metrics (duration, retries, cost, tokens), total cost aggregation, and that human output is unaffected.
+      files_created:
+        - cmd/inspect_test.go
+      files_modified:
+        - cmd/inspect.go
+        - internal/activity/ledger.go
+      decisions:
+        - Replaced the old `--json` behavior (raw `[]activity.Entry` dump) with the aggregated `inspectOutput` struct matching what `printSummary` renders to humans — this is the "reuse the existing aggregation" the spec asked for.
+        - Changed `inspectJSON bool` to `inspectJSON *bool` via `addJSONFlag` for consistency with the S02/S03 pattern.
+        - Extracted `buildInspectData` so `printSummary` calls it internally — single source of truth for the stat aggregation, eliminating the local `stat` struct duplication.
+        - --task --json` still dumps filtered raw `[]activity.Entry` (unchanged from old behavior) since the spec doesn't address that combination.
+        - Added JSON struct tags to `TaskMetric` and `Summary` in `internal/activity` as the task required, using snake_case keys matching the existing `Entry` tag style.
 current_state:
     total_tasks: 6
-    completed_tasks: 3
-next_task: S04
-next_task_context: 'statusJSON *bool` and `statusOutput`/`statusTask` structs live in `cmd/status.go`. S04 (`inspect --json`) and S05 (`doctor --json`) follow the identical pattern: package-level `*bool`, `addJSONFlag` in `init()`, early-return JSON branch in `RunE`. The `captureStdout` helper is in `cmd/status_test.go` and available to all `package cmd` tests.'
+    completed_tasks: 4
+next_task: S05
+next_task_context: 'S05 (`doctor --json`) follows the identical pattern as S02/S03: package-level `*bool` from `addJSONFlag` in `init()`, early-return JSON branch in `RunE` using `printJSON(os.Stdout, ...)`. The `captureStdout` helper and the `setupXxx` fixture pattern are available in `package cmd` tests. The `inspectOutput`/`inspectTaskStat` structs live in `cmd/inspect.go` and serve as the reference shape for any future inspect-related consumers.'

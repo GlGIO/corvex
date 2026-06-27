@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,8 +16,30 @@ import (
 
 var (
 	inspectTask string
-	inspectJSON bool
+	inspectJSON *bool
 )
+
+// inspectOutput is the JSON shape emitted by `corvex inspect <project> --json`.
+type inspectOutput struct {
+	Project      string            `json:"project"`
+	Intent       string            `json:"intent,omitempty"`
+	Total        int               `json:"total"`
+	Completed    int               `json:"completed"`
+	TotalCostUSD float64           `json:"totalCostUSD"`
+	Tasks        []inspectTaskStat `json:"tasks"`
+}
+
+// inspectTaskStat carries per-task metrics aggregated from the activity ledger.
+type inspectTaskStat struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	Status     string  `json:"status"`
+	DurationMs int64   `json:"durationMs"`
+	Retries    int     `json:"retries"`
+	CostUSD    float64 `json:"costUSD"`
+	TokensIn   int     `json:"tokensIn"`
+	TokensOut  int     `json:"tokensOut"`
+}
 
 var inspectCmd = &cobra.Command{
 	Use:   "inspect <project>",
@@ -32,7 +53,7 @@ into a single task's event stream, or --json for raw output.`,
 
 func init() {
 	inspectCmd.Flags().StringVar(&inspectTask, "task", "", "show detailed events for a single task ID (e.g. S05)")
-	inspectCmd.Flags().BoolVar(&inspectJSON, "json", false, "print raw JSON instead of a formatted table")
+	inspectJSON = addJSONFlag(inspectCmd)
 	rootCmd.AddCommand(inspectCmd)
 }
 
@@ -56,19 +77,21 @@ func runInspect(_ *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if inspectJSON {
-		filtered := entries
+	if *inspectJSON {
 		if inspectTask != "" {
-			filtered = filtered[:0]
+			filtered := make([]activity.Entry, 0)
 			for _, e := range entries {
 				if e.TaskID == inspectTask {
 					filtered = append(filtered, e)
 				}
 			}
+			return printJSON(os.Stdout, filtered)
 		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(filtered)
+		out, err := buildInspectData(workDir, project, entries)
+		if err != nil {
+			return err
+		}
+		return printJSON(os.Stdout, out)
 	}
 
 	if inspectTask != "" {
@@ -78,26 +101,27 @@ func runInspect(_ *cobra.Command, args []string) error {
 	return printSummary(workDir, project, entries)
 }
 
-func printSummary(workDir, project string, entries []activity.Entry) error {
-	// Load tasks.md + anchor for current statuses (ledger only has events).
+// buildInspectData aggregates activity entries and task metadata into the
+// inspectOutput shape used by both --json and the human summary renderer.
+func buildInspectData(workDir, project string, entries []activity.Entry) (inspectOutput, error) {
 	tasksPath := filepath.Join(projectDir(workDir, project), "tasks.md")
 	tasks, _, err := task.ParseTasksFile(tasksPath)
 	if err != nil {
-		return fmt.Errorf("reading tasks: %w", err)
+		return inspectOutput{}, fmt.Errorf("reading tasks: %w", err)
 	}
 
 	anchorPath := filepath.Join(projectDir(workDir, project), "anchor.yaml")
 	anchorState, _ := anchor.Load(anchorPath)
 
 	type stat struct {
-		taskID    string
-		status    types.TaskStatus
-		title     string
-		duration  time.Duration
-		retries   int
-		costUSD   float64
-		tokensIn  int
-		tokensOut int
+		taskID     string
+		status     types.TaskStatus
+		title      string
+		durationMs int64
+		retries    int
+		costUSD    float64
+		tokensIn   int
+		tokensOut  int
 	}
 
 	statsByID := map[string]*stat{}
@@ -112,7 +136,7 @@ func printSummary(workDir, project string, entries []activity.Entry) error {
 		}
 		switch e.Type {
 		case "task_complete":
-			s.duration = time.Duration(e.DurationMs) * time.Millisecond
+			s.durationMs = e.DurationMs
 			s.costUSD = e.CostUSD
 			s.tokensIn = e.TokensIn
 			s.tokensOut = e.TokensOut
@@ -121,86 +145,105 @@ func printSummary(workDir, project string, entries []activity.Entry) error {
 		}
 	}
 
-	// Render summary header.
-	var totalCost float64
-	completed := 0
-	for _, s := range statsByID {
-		totalCost += s.costUSD
-		if s.status == types.StatusPassed {
-			completed++
-		}
-	}
-
-	fmt.Printf("Project: %s\n", project)
-	if anchorState.Intent != "" {
-		fmt.Printf("Intent:  %s\n", anchorState.Intent)
-	}
-	fmt.Printf("Tasks:   %d/%d done   ·   $%.2f total\n\n", completed, len(tasks), totalCost)
-
-	// Render per-task table sorted by ID.
 	ids := make([]string, 0, len(statsByID))
 	for id := range statsByID {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 
-	fmt.Printf("%-5s %-8s %-10s %-7s %-8s %s\n", "ID", "STATUS", "DURATION", "RETRIES", "COST", "TITLE")
+	var totalCost float64
+	completed := 0
+	statList := make([]inspectTaskStat, 0, len(ids))
 	for _, id := range ids {
 		s := statsByID[id]
-		statusGlyph := glyphFor(s.status)
+		totalCost += s.costUSD
+		if s.status == types.StatusPassed {
+			completed++
+		}
+		statList = append(statList, inspectTaskStat{
+			ID:         s.taskID,
+			Title:      s.title,
+			Status:     string(s.status),
+			DurationMs: s.durationMs,
+			Retries:    s.retries,
+			CostUSD:    s.costUSD,
+			TokensIn:   s.tokensIn,
+			TokensOut:  s.tokensOut,
+		})
+	}
+
+	return inspectOutput{
+		Project:      project,
+		Intent:       anchorState.Intent,
+		Total:        len(tasks),
+		Completed:    completed,
+		TotalCostUSD: totalCost,
+		Tasks:        statList,
+	}, nil
+}
+
+func printSummary(workDir, project string, entries []activity.Entry) error {
+	out, err := buildInspectData(workDir, project, entries)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Project: %s\n", out.Project)
+	if out.Intent != "" {
+		fmt.Printf("Intent:  %s\n", out.Intent)
+	}
+	fmt.Printf("Tasks:   %d/%d done   ·   $%.2f total\n\n", out.Completed, out.Total, out.TotalCostUSD)
+
+	fmt.Printf("%-5s %-8s %-10s %-7s %-8s %s\n", "ID", "STATUS", "DURATION", "RETRIES", "COST", "TITLE")
+	for _, s := range out.Tasks {
+		statusGlyph := glyphFor(types.TaskStatus(s.Status))
 		dur := "—"
-		if s.duration > 0 {
-			dur = humanDuration(s.duration)
+		if s.DurationMs > 0 {
+			dur = humanDuration(time.Duration(s.DurationMs) * time.Millisecond)
 		}
 		cost := "—"
-		if s.costUSD > 0 {
-			cost = fmt.Sprintf("$%.2f", s.costUSD)
+		if s.CostUSD > 0 {
+			cost = fmt.Sprintf("$%.2f", s.CostUSD)
 		}
-		title := s.title
+		title := s.Title
 		if len(title) > 50 {
 			title = title[:49] + "…"
 		}
-		fmt.Printf("%-5s %-8s %-10s %-7d %-8s %s\n", id, statusGlyph, dur, s.retries, cost, title)
+		fmt.Printf("%-5s %-8s %-10s %-7d %-8s %s\n", s.ID, statusGlyph, dur, s.Retries, cost, title)
 	}
 
-	// Highlights — slowest and most expensive.
-	if len(statsByID) > 0 {
-		all := make([]*stat, 0, len(statsByID))
-		for _, s := range statsByID {
-			all = append(all, s)
-		}
-
-		slowest := make([]*stat, len(all))
-		copy(slowest, all)
-		sort.Slice(slowest, func(i, j int) bool { return slowest[i].duration > slowest[j].duration })
-		expensive := make([]*stat, len(all))
-		copy(expensive, all)
-		sort.Slice(expensive, func(i, j int) bool { return expensive[i].costUSD > expensive[j].costUSD })
+	if len(out.Tasks) > 0 {
+		slowest := make([]inspectTaskStat, len(out.Tasks))
+		copy(slowest, out.Tasks)
+		sort.Slice(slowest, func(i, j int) bool { return slowest[i].DurationMs > slowest[j].DurationMs })
+		expensive := make([]inspectTaskStat, len(out.Tasks))
+		copy(expensive, out.Tasks)
+		sort.Slice(expensive, func(i, j int) bool { return expensive[i].CostUSD > expensive[j].CostUSD })
 
 		fmt.Println()
-		if len(slowest) > 0 && slowest[0].duration > 0 {
+		if slowest[0].DurationMs > 0 {
 			fmt.Print("Slowest:    ")
 			for i, s := range slowest[:min(3, len(slowest))] {
-				if s.duration == 0 {
+				if s.DurationMs == 0 {
 					break
 				}
 				if i > 0 {
 					fmt.Print(", ")
 				}
-				fmt.Printf("%s (%s)", s.taskID, humanDuration(s.duration))
+				fmt.Printf("%s (%s)", s.ID, humanDuration(time.Duration(s.DurationMs)*time.Millisecond))
 			}
 			fmt.Println()
 		}
-		if len(expensive) > 0 && expensive[0].costUSD > 0 {
+		if expensive[0].CostUSD > 0 {
 			fmt.Print("Expensive:  ")
 			for i, s := range expensive[:min(3, len(expensive))] {
-				if s.costUSD == 0 {
+				if s.CostUSD == 0 {
 					break
 				}
 				if i > 0 {
 					fmt.Print(", ")
 				}
-				fmt.Printf("%s ($%.2f)", s.taskID, s.costUSD)
+				fmt.Printf("%s ($%.2f)", s.ID, s.CostUSD)
 			}
 			fmt.Println()
 		}
@@ -276,4 +319,3 @@ func humanDuration(d time.Duration) string {
 	secs := int(d.Seconds()) - mins*60
 	return fmt.Sprintf("%dm%02ds", mins, secs)
 }
-

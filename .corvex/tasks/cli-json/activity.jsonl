@@ -17,3 +17,9 @@
 {"ts":"2026-06-27T00:54:03.299138-03:00","type":"task_start","task_id":"S03","message":"`corvex status \u003cproject\u003e --json`"}
 {"ts":"2026-06-27T00:55:44.592313-03:00","type":"review_start","task_id":"S03"}
 {"ts":"2026-06-27T00:56:18.342424-03:00","type":"review_result","task_id":"S03","message":"PASS"}
+{"ts":"2026-06-27T00:56:18.474784-03:00","type":"checkpoint","task_id":"S03"}
+{"ts":"2026-06-27T00:56:18.474923-03:00","type":"task_complete","task_id":"S03","duration_ms":131713,"cost_usd":0.5555015999999999,"status":"PASSED"}
+{"ts":"2026-06-27T00:56:18.475671-03:00","type":"task_start","task_id":"S04","message":"`corvex inspect \u003cproject\u003e --json`"}
+{"ts":"2026-06-27T01:01:18.485539-03:00","type":"task_warn","task_id":"S04","message":"task running \u003e 5m0s — consider pausing if stuck"}
+{"ts":"2026-06-27T01:01:33.380776-03:00","type":"review_start","task_id":"S04"}
+{"ts":"2026-06-27T01:02:14.228051-03:00","type":"review_result","task_id":"S04","message":"PASS"}

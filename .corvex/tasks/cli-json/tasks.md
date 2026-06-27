@@ -89,7 +89,7 @@ to compute `total`, `passed`, `failed`, `pending` and each task's `id`, `title`,
 
 ---
 
-## S04 — `corvex inspect <project> --json` ⬜ PENDING
+## S04 — `corvex inspect <project> --json` ✅ PASSED
 
 ```yaml
 type: backend

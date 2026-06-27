@@ -112,11 +112,11 @@ func Read(workDir, project string) ([]Entry, error) {
 // TaskMetric carries the per-task metrics needed to seed the TUI when
 // resuming a project that has tasks already completed in previous runs.
 type TaskMetric struct {
-	TaskID     string
-	DurationMs int64
-	CostUSD    float64
-	TokensIn   int
-	TokensOut  int
+	TaskID     string  `json:"task_id"`
+	DurationMs int64   `json:"duration_ms"`
+	CostUSD    float64 `json:"cost_usd"`
+	TokensIn   int     `json:"tokens_in"`
+	TokensOut  int     `json:"tokens_out"`
 }
 
 // Summary aggregates activity.jsonl into the shape the TUI needs on
@@ -129,10 +129,10 @@ type TaskMetric struct {
 // produce multiple task_complete entries for the same task_id, and we
 // want the metrics matching the run that actually stuck.
 type Summary struct {
-	PerTask        map[string]TaskMetric
-	TotalCostUSD   float64
-	TotalTokensIn  int
-	TotalTokensOut int
+	PerTask        map[string]TaskMetric `json:"per_task"`
+	TotalCostUSD   float64               `json:"total_cost_usd"`
+	TotalTokensIn  int                   `json:"total_tokens_in"`
+	TotalTokensOut int                   `json:"total_tokens_out"`
 }
 
 // Summarize reads the activity ledger and returns a Summary. Missing
