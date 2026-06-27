@@ -1,0 +1,16 @@
+project: ""
+updated_at: "2026-06-27T04:48:20Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Retry until ready
+      summary: 'ran command: c=$(cat /tmp/corvex_ctr 2>/dev/null||echo 0);c=$((c+1));echo $c>/tmp/corvex_ctr;echo attempt $c;[ $c -ge 2 ] (passed on iteration 2/4)'
+      files_created: []
+      files_modified: []
+      decisions: []
+current_state:
+    total_tasks: 1
+    completed_tasks: 1
+next_task: ""
+next_task_context: ""
