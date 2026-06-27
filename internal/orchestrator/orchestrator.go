@@ -543,6 +543,17 @@ func (o *Orchestrator) executeTask(
 			return nil
 		}
 
+		if reviewResult.Verdict == VerdictIndeterminate {
+			if attempt == maxRetries {
+				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+					charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
+				}
+				return fmt.Errorf("task %s reviewer never produced a verdict after %d attempts", t.ID, maxRetries+1)
+			}
+			diagnosis = "reviewer produced no parseable verdict on the previous attempt"
+			continue
+		}
+
 		diagnosis = reviewResult.Summary
 		hookEnv.Status = "failed"
 		o.runHook(ctx, hooks.OnFailure, hookEnv, t.ID)

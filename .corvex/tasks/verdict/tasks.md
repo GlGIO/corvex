@@ -55,7 +55,7 @@ Keep its summary assertion intact.
 
 ---
 
-## S02 — Indeterminate verdict handled as transient in executeTask ⬜ PENDING
+## S02 — Indeterminate verdict handled as transient in executeTask ✅ PASSED
 
 ```yaml
 type: backend

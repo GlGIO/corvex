@@ -963,6 +963,115 @@ func TestRun_FailedAttemptsCostTriggersAbort(t *testing.T) {
 	}
 }
 
+const singleTaskMD = `---
+generated_by: test
+generated_at: "2026-01-01T00:00:00Z"
+dag:
+  S01: []
+---
+
+## S01 — Only Task ⬜ PENDING
+
+` + "```yaml\n" +
+	`type: general
+depends_on: []
+` + "```\n" + `
+### O que fazer
+Do the thing.
+
+### Critérios de sucesso
+- [ ] Criterion passes
+
+### Arquivos
+- **Criar:** ` + "`out.txt`" + `
+`
+
+func TestRun_IndeterminateVerdictRetriesAndEventuallyFails(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-indeterminate-fail"
+	setupProject(t, dir, project, singleTaskMD)
+	gitCommitAll(t, dir, "add task")
+
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				// return empty output — no verdict line → VerdictIndeterminate
+				return &types.ExecuteResult{Output: "I looked at the code."}, nil
+			}
+			return &types.ExecuteResult{Output: "task done"}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.MaxRetries = 1
+	cfg.Execution.AutoCommit = false
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir})
+
+	err := orch.Run(context.Background(), project)
+	if err == nil {
+		t.Fatal("expected error when reviewer never produces a verdict, got nil")
+	}
+	if !strings.Contains(err.Error(), "reviewer never produced a verdict") {
+		t.Errorf("error %q should contain 'reviewer never produced a verdict'", err.Error())
+	}
+}
+
+func TestRun_IndeterminateVerdictRetryDiagnosisPassedToWorker(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-indeterminate-retry"
+	setupProject(t, dir, project, singleTaskMD)
+	gitCommitAll(t, dir, "add task")
+
+	var mu sync.Mutex
+	var workerPrompts []string
+	reviewerCall := 0
+
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				mu.Lock()
+				n := reviewerCall
+				reviewerCall++
+				mu.Unlock()
+				if n == 0 {
+					return &types.ExecuteResult{Output: "I looked at the code."}, nil
+				}
+				return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
+			}
+			mu.Lock()
+			workerPrompts = append(workerPrompts, req.Prompt)
+			mu.Unlock()
+			return &types.ExecuteResult{Output: "task done"}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.MaxRetries = 2
+	cfg.Execution.AutoCommit = false
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir})
+
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	mu.Lock()
+	prompts := workerPrompts
+	mu.Unlock()
+
+	if len(prompts) < 2 {
+		t.Fatalf("expected at least 2 worker calls (initial + retry), got %d", len(prompts))
+	}
+	if !strings.Contains(prompts[1], "parseable verdict") {
+		t.Errorf("second worker prompt %q should contain 'parseable verdict' diagnosis", prompts[1])
+	}
+}
+
 // helpers
 
 func hashFileContent(path string) (string, error) {
