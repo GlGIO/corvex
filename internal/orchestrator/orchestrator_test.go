@@ -219,6 +219,188 @@ func gitCommitAll(t *testing.T, dir, msg string) {
 	}
 }
 
+// diamondTasksMD models a diamond DAG: S01 → {S02, S03} → S04. S02 and S03 are
+// independent of each other; S04 depends on both. Used to prove that a failure
+// in S02 skips only S04 (its dependent) while S03 still runs.
+const diamondTasksMD = `---
+generated_by: test
+generated_at: "2026-01-01T00:00:00Z"
+dag:
+  S01: []
+  S02: [S01]
+  S03: [S01]
+  S04: [S02, S03]
+---
+
+## S01 — Root ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: []
+` + "```\n" + `
+### O que fazer
+Root task.
+
+---
+
+## S02 — Left (will fail) ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+Left branch.
+
+---
+
+## S03 — Right (independent) ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+Right branch.
+
+---
+
+## S04 — Join (depends on both) ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S02, S03]
+` + "```\n" + `
+### O que fazer
+Join branch.
+`
+
+func TestRun_DependencyFailureSkipsDependentsContinuesIndependent(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-diamond"
+	setupProject(t, dir, project, diamondTasksMD)
+	gitCommitAll(t, dir, "add diamond tasks")
+
+	events := make(chan Event, 200)
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				// S02 always fails review; everything else passes.
+				if strings.Contains(req.Prompt, "## Task: S02 ") {
+					return &types.ExecuteResult{Output: "Broken.\nCATEGORY: incomplete\nVERDICT: FAIL"}, nil
+				}
+				return &types.ExecuteResult{Output: "Looks good.\nVERDICT: PASS"}, nil
+			}
+			return &types.ExecuteResult{Output: "task completed"}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	// AutoCommit on: each PASS checkpoints, so the retry-time recovery reset
+	// can't revert prior tasks' committed statuses.
+	cfg.Execution.AutoCommit = true
+	cfg.Execution.MaxRetries = 1
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+
+	err := orch.Run(context.Background(), project)
+	close(events)
+
+	if err == nil {
+		t.Fatal("expected a summary failure error, got nil")
+	}
+	if !strings.Contains(err.Error(), "S02") {
+		t.Errorf("error %q should name the failed task S02", err)
+	}
+	if !strings.Contains(err.Error(), "S04") {
+		t.Errorf("error %q should name the skipped dependent S04", err)
+	}
+
+	// Independent branch S03 must have run; dependent S04 must have been skipped.
+	var s03Passed, s04Skipped bool
+	for ev := range events {
+		if ev.Type == EventTaskComplete && ev.TaskID == "S03" && ev.Status == types.StatusPassed {
+			s03Passed = true
+		}
+		if ev.Type == EventTaskComplete && ev.TaskID == "S04" && ev.Status == types.StatusSkipped {
+			s04Skipped = true
+		}
+	}
+	if !s03Passed {
+		t.Error("independent task S03 should have run to PASSED despite S02 failing")
+	}
+	if !s04Skipped {
+		t.Error("S04 (depends on failed S02) should have been SKIPPED")
+	}
+
+	// Final on-disk statuses.
+	tasks, _, perr := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	if perr != nil {
+		t.Fatalf("parse tasks: %v", perr)
+	}
+	statuses := map[string]types.TaskStatus{}
+	for _, tk := range tasks {
+		statuses[tk.ID] = tk.Status
+	}
+	if statuses["S01"] != types.StatusPassed {
+		t.Errorf("S01 = %s, want PASSED", statuses["S01"])
+	}
+	if statuses["S02"] != types.StatusFailed {
+		t.Errorf("S02 = %s, want FAILED", statuses["S02"])
+	}
+	if statuses["S03"] != types.StatusPassed {
+		t.Errorf("S03 = %s, want PASSED", statuses["S03"])
+	}
+	if statuses["S04"] != types.StatusSkipped {
+		t.Errorf("S04 = %s, want SKIPPED", statuses["S04"])
+	}
+}
+
+func TestRun_CostCeilingAbortsImmediately(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-cost-abort"
+	setupProject(t, dir, project, testTasksMD) // S01 → S02
+	gitCommitAll(t, dir, "add tasks")
+
+	events := make(chan Event, 100)
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
+			}
+			// Worker burns more than the ceiling on the very first task.
+			return &types.ExecuteResult{Output: "done", CostUSD: 10}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = false
+	cfg.Execution.MaxCostUSD = 5 // first task's $10 blows this
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+
+	err := orch.Run(context.Background(), project)
+	close(events)
+
+	if err == nil {
+		t.Fatal("expected cost-ceiling abort error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ceiling") {
+		t.Errorf("error %q should mention the cost ceiling", err)
+	}
+	// A fatal cost abort must NOT be downgraded to the skippable-failure summary.
+	if strings.Contains(err.Error(), "run completed with failures") {
+		t.Errorf("cost ceiling breach was swallowed as a task failure: %q", err)
+	}
+
+	// Only S01 should have been attempted before the abort.
+	for ev := range events {
+		if ev.Type == EventTaskStart && ev.TaskID == "S02" {
+			t.Error("S02 should never start after a cost-ceiling abort on S01")
+		}
+	}
+}
+
 func TestRun_FullFlow(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

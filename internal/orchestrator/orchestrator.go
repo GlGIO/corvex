@@ -248,8 +248,29 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 
 	var totalCostUSD float64
 
+	// terminal holds every task that must never be re-scheduled: PASSED ones
+	// satisfy dependencies (they live in `completed`), while FAILED and SKIPPED
+	// ones do not — but all three are done. Without tracking FAILED/SKIPPED
+	// separately, NextReady (which only consults `completed`) would hand a
+	// failed task back every iteration and spin forever.
+	terminal := make(map[string]bool, len(completed))
+	for id := range completed {
+		terminal[id] = true
+	}
+	var failedTasks, skippedTasks []string
+	var failureDetails []string
+
 	for {
 		ready := d.NextReady(completed)
+		// Drop tasks already terminal (failed before, or skipped because an
+		// upstream task failed). If nothing runnable remains, we're done.
+		runnable := ready[:0:0]
+		for _, id := range ready {
+			if !terminal[id] {
+				runnable = append(runnable, id)
+			}
+		}
+		ready = runnable
 		if len(ready) == 0 {
 			break
 		}
@@ -316,17 +337,61 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 					return err
 				}
 				completed[t.ID] = true
+				terminal[t.ID] = true
 				if err := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); err != nil {
 					charmbraceletlog.Warn("updating task status to passed after a/b", "task", t.ID, "err", err)
 				}
 			} else if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d, &totalCostUSD); err != nil {
-				return err
+				// Fatal errors (cost ceiling, human-prompt escalation) and
+				// context cancellation abort the whole run immediately. A
+				// targeted/single run also surfaces the error directly. Any
+				// other error is a task-level failure: record it, skip the
+				// tasks that transitively depend on it, and keep executing the
+				// independent branches of the DAG.
+				if isFatal(err) || ctx.Err() != nil || o.targetTask != "" || o.singleTask {
+					return err
+				}
+				terminal[t.ID] = true
+				failedTasks = append(failedTasks, t.ID)
+				failureDetails = append(failureDetails, err.Error())
+				charmbraceletlog.Warn("task failed; skipping its dependents and continuing independent branches", "task", t.ID, "err", err)
+				for _, dep := range d.TransitiveDependents(t.ID) {
+					if terminal[dep] {
+						continue
+					}
+					terminal[dep] = true
+					skippedTasks = append(skippedTasks, dep)
+					if statusErr := task.UpdateTaskStatus(tasksPath, dep, types.StatusSkipped); statusErr != nil {
+						charmbraceletlog.Warn("marking dependent skipped", "task", dep, "err", statusErr)
+					}
+					o.emit(Event{
+						Type:    EventTaskComplete,
+						TaskID:  dep,
+						Status:  types.StatusSkipped,
+						Message: fmt.Sprintf("skipped: depends on failed task %s", t.ID),
+					})
+				}
+			} else {
+				terminal[t.ID] = true
 			}
 		}
 
 		if o.targetTask != "" || o.singleTask {
 			break
 		}
+	}
+
+	if len(failedTasks) > 0 {
+		msg := fmt.Sprintf("run completed with failures: %d task(s) failed (%s)",
+			len(failedTasks), strings.Join(failedTasks, ", "))
+		if len(skippedTasks) > 0 {
+			msg += fmt.Sprintf("; %d dependent task(s) skipped (%s)",
+				len(skippedTasks), strings.Join(skippedTasks, ", "))
+		}
+		// Preserve each task's specific failure reason so the summary stays
+		// diagnosable (e.g. "reviewer never produced a verdict").
+		msg += "\n  - " + strings.Join(failureDetails, "\n  - ")
+		return fmt.Errorf("%s", msg)
 	}
 
 	if threshold := o.cfg.Execution.InsightThreshold; threshold != 0 && o.targetTask == "" && !o.singleTask {
