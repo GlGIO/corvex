@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:17:57Z"
+updated_at: "2026-06-27T03:22:02Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -25,8 +25,23 @@ completed:
         - Used `cmd.Flags().GetBool("no-color")` (not `rootCmd.PersistentFlags()`) inside `PersistentPreRun` so the lookup works correctly when cobra resolves the flag on the executing command's merged flag set.
         - Condition is OR (flag OR env non-empty), matching spec and no-color.org standard — empty `NO_COLOR` does not disable color.
         - Used `charmlog` alias for the charmbracelet/log import to avoid collision with the standard `log` package used elsewhere in the cmd package.
+    - id: S03
+      title: Helpers compartilhados `projectNames` e `suggestProject`
+      summary: Added `projectNames(workDir string) []string` and `suggestProject(workDir, name string) string` (with inline Levenshtein DP) to `cmd/helpers.go`. Refactored `cmd/list.go` to use `projectNames` with no output behavior change. Updated `cmd/run.go` to check project existence early and return a structured error listing available projects and a "did you mean?" suggestion when applicable. Added table-driven tests in `cmd/helpers_test.go`.
+      files_created:
+        - cmd/helpers_test.go
+      files_modified:
+        - cmd/helpers.go
+        - cmd/list.go
+        - cmd/run.go
+      decisions:
+        - projectNames` uses OR semantics (spec.md OR tasks.md) exactly as spec'd; a dir with neither is excluded (minor behavior change in `list` for phantom dirs, considered acceptable per spec intent).
+        - suggestProject` tries prefix/substring first, then Levenshtein <= 2; returns the first alphabetical match from `os.ReadDir` ordering (which is lexicographic).
+        - Levenshtein implemented inline with the Go 1.24 `min` built-in — no new dependencies.
+        - Project existence check in `run.go` is placed immediately after `requireCorvexDir` (before worktree check and dry-run branch) so the helpful error fires first regardless of flags.
+        - Used `fmt.Errorf("%s", sb.String())` to keep the multi-line error message without importing `errors`.
 current_state:
     total_tasks: 4
-    completed_tasks: 2
-next_task: S03
-next_task_context: rootCmd` now has a `PersistentPreRun`; any subcommand that also defines `PersistentPreRun` will shadow this one (cobra does not chain `PersistentPreRun` by default). If future subcommands need their own `PersistentPreRun`, they must call `rootCmd.PersistentPreRun` (or the equivalent) explicitly, or switch to `PersistentPreRunE` + manual chaining. The `--no-color` flag is persistent and available to all subcommands (S03 "did you mean" work in cmd/helpers.go and cmd/run.go is unaffected).
+    completed_tasks: 3
+next_task: S04
+next_task_context: projectNames` and `suggestProject` are unexported package-level helpers in `cmd/`. Any future command (status, logs, reset) wanting "did you mean?" can call the same two helpers identically to how `runRun` does. The `levenshtein` helper is also unexported in `cmd/`. No changes to public APIs or internal packages.

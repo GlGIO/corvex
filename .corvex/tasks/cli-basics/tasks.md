@@ -70,7 +70,7 @@ desabilita se a env for **não-vazia** (presença com conteúdo). NÃO remover o
 
 ---
 
-## S03 — Helpers compartilhados `projectNames` e `suggestProject` ⬜ PENDING
+## S03 — Helpers compartilhados `projectNames` e `suggestProject` ✅ PASSED
 
 ```yaml
 type: backend

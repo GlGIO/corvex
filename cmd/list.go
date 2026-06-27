@@ -30,23 +30,14 @@ func runList(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	tasksDir := filepath.Join(workDir, ".corvex", "tasks")
-	entries, err := os.ReadDir(tasksDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No projects found. Create a spec in .corvex/tasks/<project>/spec.md")
-			return nil
-		}
-		return fmt.Errorf("reading tasks directory: %w", err)
+	names := projectNames(workDir)
+	if len(names) == 0 {
+		fmt.Println("No projects found. Create a spec in .corvex/tasks/<project>/spec.md")
+		return nil
 	}
 
-	projects := 0
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
+	tasksDir := filepath.Join(workDir, ".corvex", "tasks")
+	for _, name := range names {
 		specExists := false
 		tasksExist := false
 
@@ -65,11 +56,6 @@ func runList(_ *cobra.Command, _ []string) error {
 		}
 
 		fmt.Printf("  %s (%s)\n", name, status)
-		projects++
-	}
-
-	if projects == 0 {
-		fmt.Println("No projects found. Create a spec in .corvex/tasks/<project>/spec.md")
 	}
 
 	return nil

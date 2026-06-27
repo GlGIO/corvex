@@ -68,6 +68,22 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Fail early with a helpful message when the project does not exist.
+	pDir := projectDir(workDir, project)
+	if _, err1 := os.Stat(filepath.Join(pDir, "spec.md")); os.IsNotExist(err1) {
+		if _, err2 := os.Stat(filepath.Join(pDir, "tasks.md")); os.IsNotExist(err2) {
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "project %q not found", project)
+			if names := projectNames(workDir); len(names) > 0 {
+				fmt.Fprintf(&sb, "\n\navailable projects: %s", strings.Join(names, ", "))
+			}
+			if suggestion := suggestProject(workDir, project); suggestion != "" {
+				fmt.Fprintf(&sb, "\n\ndid you mean %q?", suggestion)
+			}
+			return fmt.Errorf("%s", sb.String())
+		}
+	}
+
 	// `corvex start <proj>` creates a sibling worktree at <repo>-<proj>.
 	// If that worktree exists but the user is invoking `run` from somewhere
 	// else (typically the main repo where they ran `start`), the run would
