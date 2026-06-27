@@ -1,5 +1,5 @@
 project: integrity
-updated_at: "2026-06-27T00:29:42Z"
+updated_at: "2026-06-27T00:36:40Z"
 spec_hash: e2a4ca87ced09a62f9a3f4ee989e6faf4476afbc182b529a200b4824741c66d7
 intent: ""
 completed:
@@ -75,8 +75,48 @@ completed:
         - internal/task/writer.go
         - internal/task/writer_test.go
       decisions: []
+    - id: S03
+      title: Cost ceilings cover failed attempts and retries
+      summary: |-
+        I'll locate the spec, read the relevant sections, and then examine the implementation.Now let me read the spec and the current state of the orchestrator files.Now let me read the relevant section of the orchestrator to see the full implementation context.Now let me look at the test to understand its logic, and then run the tests.Now let me run the tests to verify correctness.All tests pass. Let me now do a thorough analysis against the spec.
+
+        **Spec requirements (Objective C) vs implementation:**
+
+        1. **`var taskTotalCostUSD float64` introduced outside the loop** — ✅ Line 365, before `for attempt :=`.
+
+        2. **Cost accumulated exactly once per attempt, regardless of pass/fail** — ✅ Two accumulation sites, mutually exclusive:
+           - Worker failure path (`if err != nil`): accumulates `workerCost` only (reviewer never ran)
+           - Worker success path: accumulates `workerCost + reviewerCost` after the reviewer runs (before checking pass/fail verdict)
+
+        3. **Guard against nil result (cost 0)** — ✅ `var workerCost float64; if result != nil { workerCost = result.CostUSD }` at lines 425–428.
+
+        4. **Both ceilings checked after each attempt, returning existing actionable error strings** — ✅ Ceiling checks appear after both accumulation sites. Error messages match verbatim: `"task %s cost $%.2f exceeded per-task ceiling..."` and `"run aborted: cumulative cost..."`.
+
+        5. **No double-counting on PASS** — ✅ The old PASS block's `taskCost := result.CostUSD + reviewResult.CostUSD; *totalCostUSD += taskCost` and ceiling checks are fully removed. The PASS block now only uses the already-accumulated `attemptCost` for the `EventTaskComplete` emission.
+
+        6. **PASS returns nil after bookkeeping** — ✅ `return nil` remains at line 543 with unchanged bookkeeping behavior.
+
+        7. **New test proves failed-attempt cost triggers `MaxCostUSD` abort** — ✅ `TestRun_FailedAttemptsCostTriggersAbort` sets ceiling $0.05, per-attempt cost $0.04; after attempt 1 total = $0.08 > $0.05, triggers `"run aborted: cumulative cost"`.
+
+        8. **`go build ./...` passes** — ✅ confirmed.
+
+        9. **`go test ./...` passes** — ✅ all 14 packages green, no regressions.
+
+        **Anti-pattern checks:**
+        - No double-counting: ✅ old accumulation in PASS block removed
+        - No nil dereference: ✅ guarded
+        - Error strings verbatim: ✅
+        - `EventTaskComplete`/checkpoint not moved: ✅
+        - Strictly `> cap` (not `>=`): ✅ `cap > 0 && taskTotalCostUSD > cap`
+
+        The implementation satisfies every requirement from spec.md §Objective C with no missing edge cases.
+      files_created: []
+      files_modified:
+        - internal/orchestrator/orchestrator.go
+        - internal/orchestrator/orchestrator_test.go
+      decisions: []
 current_state:
     total_tasks: 4
-    completed_tasks: 2
-next_task: S03
+    completed_tasks: 3
+next_task: S04
 next_task_context: ""

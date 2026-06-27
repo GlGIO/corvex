@@ -362,6 +362,8 @@ func (o *Orchestrator) executeTask(
 	originalWorkerModel := o.worker.model
 	defer func() { o.worker.model = originalWorkerModel }()
 
+	var taskTotalCostUSD float64
+
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			o.emit(Event{Type: EventRetry, TaskID: t.ID, Attempt: attempt, Message: diagnosis})
@@ -420,7 +422,19 @@ func (o *Orchestrator) executeTask(
 			// diagnosis so retries and logs say *why* the attempt died.
 			err = fmt.Errorf("%s", reason)
 		}
+		var workerCost float64
+		if result != nil {
+			workerCost = result.CostUSD
+		}
 		if err != nil {
+			taskTotalCostUSD += workerCost
+			*totalCostUSD += workerCost
+			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
+				return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap)
+			}
+			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
+				return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
+			}
 			if attempt == maxRetries {
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
@@ -437,6 +451,19 @@ func (o *Orchestrator) executeTask(
 
 		o.emit(Event{Type: EventReviewStart, TaskID: t.ID})
 		reviewResult, reviewErr := o.reviewer.Review(ctx, t)
+		var reviewerCost float64
+		if reviewErr == nil && reviewResult != nil {
+			reviewerCost = reviewResult.CostUSD
+		}
+		attemptCost := workerCost + reviewerCost
+		taskTotalCostUSD += attemptCost
+		*totalCostUSD += attemptCost
+		if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
+			return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap)
+		}
+		if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
+			return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
+		}
 		if reviewErr != nil {
 			if attempt == maxRetries {
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
@@ -504,23 +531,15 @@ func (o *Orchestrator) executeTask(
 
 			completed[t.ID] = true
 			o.emit(Event{Type: EventCheckpoint, TaskID: t.ID})
-			taskCost := result.CostUSD + reviewResult.CostUSD
 			o.emit(Event{
 				Type:       EventTaskComplete,
 				TaskID:     t.ID,
 				Status:     types.StatusPassed,
-				CostUSD:    taskCost,
+				CostUSD:    attemptCost,
 				TokensIn:   result.TokensIn + reviewResult.TokensIn,
 				TokensOut:  result.TokensOut + reviewResult.TokensOut,
 				DurationMs: result.DurationMs + reviewResult.DurationMs,
 			})
-			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskCost > cap {
-				return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskCost, cap)
-			}
-			*totalCostUSD += taskCost
-			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
-				return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
-			}
 			return nil
 		}
 

@@ -131,7 +131,7 @@ Passos:
 
 ---
 
-## S03 — Cost ceilings cover failed attempts and retries ⬜ PENDING
+## S03 — Cost ceilings cover failed attempts and retries ✅ PASSED
 
 ```yaml
 type: backend

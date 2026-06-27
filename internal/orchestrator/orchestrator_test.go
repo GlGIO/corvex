@@ -924,6 +924,45 @@ func TestRun_SandboxEventsEmitted(t *testing.T) {
 	}
 }
 
+func TestRun_FailedAttemptsCostTriggersAbort(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-cost-abort"
+	setupProject(t, dir, project, testTasksMD)
+	gitCommitAll(t, dir, "add tasks")
+
+	// Worker returns success with $0.02; reviewer returns FAIL with $0.02.
+	// Per-attempt cost = $0.04. After attempt 1 total = $0.08 > $0.05 ceiling.
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "VERDICT: FAIL", CostUSD: 0.02}, nil
+			}
+			return &types.ExecuteResult{Output: "task work done", CostUSD: 0.02}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = false
+	cfg.Execution.MaxCostUSD = 0.05
+	cfg.Execution.MaxRetries = 5
+
+	orch := New(Options{
+		Config:   cfg,
+		Provider: mock,
+		WorkDir:  dir,
+	})
+
+	err := orch.Run(context.Background(), project)
+	if err == nil {
+		t.Fatal("expected cost ceiling error, got nil")
+	}
+	if !strings.Contains(err.Error(), "run aborted: cumulative cost") {
+		t.Errorf("error %q should contain 'run aborted: cumulative cost'", err.Error())
+	}
+}
+
 // helpers
 
 func hashFileContent(path string) (string, error) {
