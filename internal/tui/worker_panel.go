@@ -6,8 +6,14 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/giovannialves/corvex/internal/types"
 )
+
+// maxStreamLines bounds the worker panel's retained stream lines so a long
+// task can't grow memory (and viewport content) without limit. Older lines
+// slide out of the window.
+const maxStreamLines = 2000
 
 // WorkerPanel renders stream output from Worker or Reviewer in a scrollable viewport.
 type WorkerPanel struct {
@@ -143,6 +149,10 @@ func (w WorkerPanel) AppendStream(ev *types.StreamEvent) WorkerPanel {
 	lines := make([]string, len(w.lines)+1)
 	copy(lines, w.lines)
 	lines[len(w.lines)] = line
+	// Ring buffer: keep only the most recent maxStreamLines entries.
+	if len(lines) > maxStreamLines {
+		lines = lines[len(lines)-maxStreamLines:]
+	}
 	w.lines = lines
 
 	w.syncContent()
@@ -173,9 +183,16 @@ func (w *WorkerPanel) syncContent() {
 	}
 }
 
+// truncate shortens s to at most max display columns, appending "…" when it
+// cuts. It is rune- and ANSI-aware: it never splits a multibyte rune or an
+// ANSI escape sequence, and it counts visible width (not bytes), so styled
+// and CJK/emoji text truncate correctly.
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	if max <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) <= max {
 		return s
 	}
-	return s[:max-1] + "…"
+	return ansi.Truncate(s, max, "…")
 }

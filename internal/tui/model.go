@@ -228,6 +228,39 @@ func pauseToggle(paused bool) orchestrator.CommandType {
 	return orchestrator.CmdResume
 }
 
+// layoutDims holds the computed vertical budget for the main panels.
+type layoutDims struct {
+	mainHeight   int
+	dagHeight    int
+	workerHeight int
+}
+
+// computeLayout is the single source of truth for the vertical layout budget,
+// used by both View (to render) and resize (to size sub-panels) so the two can
+// never drift. DAG gets ~40% of the space, capped to [4,12] rows; the worker
+// panel takes the rest minus a separator line.
+func computeLayout(width, height int) layoutDims {
+	mainHeight := height - 3 // header + status divider + status body
+	if mainHeight < 6 {
+		mainHeight = 6
+	}
+	dagHeight := mainHeight * 40 / 100
+	if dagHeight < 4 {
+		dagHeight = 4
+	}
+	if dagHeight > 12 {
+		dagHeight = 12
+	}
+	if dagHeight > mainHeight-3 {
+		dagHeight = mainHeight - 3
+	}
+	workerHeight := mainHeight - dagHeight - 1 // 1 line for separator
+	if workerHeight < 1 {
+		workerHeight = 1
+	}
+	return layoutDims{mainHeight: mainHeight, dagHeight: dagHeight, workerHeight: workerHeight}
+}
+
 // View renders the full TUI layout.
 func (m Model) View() string {
 	if !m.ready {
@@ -240,25 +273,9 @@ func (m Model) View() string {
 	header := m.renderHeader()
 	statusView := m.status.View()
 
-	// 1 header + status (2 lines: divider + body) = 3 lines; remainder for main.
-	mainHeight := m.height - 3
-	if mainHeight < 6 {
-		mainHeight = 6
-	}
-
-	// DAG gets ~40% of remaining height, capped at 12 rows for readability.
-	dagHeight := mainHeight * 40 / 100
-	if dagHeight < 4 {
-		dagHeight = 4
-	}
-	if dagHeight > 12 {
-		dagHeight = 12
-	}
-	if dagHeight > mainHeight-3 {
-		dagHeight = mainHeight - 3
-	}
-
-	workerHeight := mainHeight - dagHeight - 1 // 1 line for separator
+	dims := computeLayout(m.width, m.height)
+	dagHeight := dims.dagHeight
+	workerHeight := dims.workerHeight
 
 	// MaxHeight is the twin of Height that *truncates* overflow instead of
 	// padding. Without it, if either panel's View() ever returns more lines
@@ -305,6 +322,9 @@ func (m Model) renderHeader() string {
 
 	left := HeaderTitle.Render("corvex") + TextMuted.Render(" · ") +
 		Chip.Render(m.project)
+	if m.done {
+		left += TextMuted.Render(" · ") + StatusPassed.Render("✓ complete — press q to exit")
+	}
 
 	right := fmt.Sprintf("%s%s%s",
 		TextMuted.Render(fmt.Sprintf("%d/%d", completed, total)),
@@ -323,24 +343,9 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) resize() Model {
-	mainHeight := m.height - 3
-	if mainHeight < 6 {
-		mainHeight = 6
-	}
-	dagHeight := mainHeight * 40 / 100
-	if dagHeight < 4 {
-		dagHeight = 4
-	}
-	if dagHeight > 12 {
-		dagHeight = 12
-	}
-	if dagHeight > mainHeight-3 {
-		dagHeight = mainHeight - 3
-	}
-	workerHeight := mainHeight - dagHeight - 1
-
-	m.dag = m.dag.SetSize(m.width, dagHeight)
-	m.worker = m.worker.SetSize(m.width, workerHeight)
+	dims := computeLayout(m.width, m.height)
+	m.dag = m.dag.SetSize(m.width, dims.dagHeight)
+	m.worker = m.worker.SetSize(m.width, dims.workerHeight)
 	m.status = m.status.SetSize(m.width)
 	return m
 }
