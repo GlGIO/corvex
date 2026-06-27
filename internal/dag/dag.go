@@ -221,6 +221,35 @@ func (d *DAG) Levels() ([][]string, error) {
 	return levels, nil
 }
 
+// TransitiveDependents returns all task IDs that transitively depend on id,
+// i.e. every node reachable from id via the dependents edges. The result
+// excludes id itself, is de-duplicated, and is sorted.
+func (d *DAG) TransitiveDependents(id string) []string {
+	if _, ok := d.nodes[id]; !ok {
+		return []string{}
+	}
+
+	visited := make(map[string]bool)
+	queue := []string{id}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, dep := range d.nodes[cur].dependents {
+			if !visited[dep] {
+				visited[dep] = true
+				queue = append(queue, dep)
+			}
+		}
+	}
+
+	result := make([]string, 0, len(visited))
+	for id := range visited {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
+}
+
 // Size returns the number of nodes in the graph.
 func (d *DAG) Size() int {
 	return len(d.nodes)

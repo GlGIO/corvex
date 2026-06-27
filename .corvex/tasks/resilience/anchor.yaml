@@ -1,0 +1,39 @@
+project: ""
+updated_at: "2026-06-27T00:59:38Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Add `TransitiveDependents` helper to the DAG
+      summary: |-
+        I'll review this task by reading the spec, the implementation, and running the tests.All checks pass. Here's my analysis:
+
+        **Spec alignment**: The spec (`.corvex/tasks/resilience/spec.md §DAG support`) states: *"You may add a helper to `internal/dag/dag.go` such as `Dependents(id string) []string` or `TransitiveDependents(id string) []string` to compute the set of tasks reachable from a failed node via the dependents edges (the `node.dependents` adjacency already exists). Add a unit test for it."*
+
+        **Implementation review**:
+
+        - `TransitiveDependents(id string) []string` is exported and added to `internal/dag/dag.go` ✓
+        - Uses BFS traversal over `node.dependents` edges ✓
+        - Excludes `id` itself from the result (the starting node is never added to `visited`) ✓
+        - De-duplicates via the `visited` map ✓
+        - Returns `sort.Strings`-sorted result, consistent with `NextReady`/`Resolve`/`Levels` ✓
+        - Returns empty slice (not nil) for unknown id ✓
+        - Returns empty slice for a leaf node ✓
+
+        **Test review** (`TestDAG_TransitiveDependents`):
+
+        - Uses `t.Parallel()` at both the top level and each subtest ✓
+        - Table-driven style matching `TestDAG_NextReady_Progression` ✓
+        - Covers: linear chain (two cases), diamond (de-duplication), leaf node, unknown id ✓
+        - All 5 subtests pass ✓
+        - Full `go build ./...` and `go test ./...` pass ✓
+
+        The implementation is correct, complete, and well-tested. The BFS avoids revisiting nodes, the `visited` map handles diamonds correctly, and the return value matches the sorted-slice convention of the rest of the file.
+      files_created: []
+      files_modified: []
+      decisions: []
+current_state:
+    total_tasks: 4
+    completed_tasks: 1
+next_task: S02
+next_task_context: ""

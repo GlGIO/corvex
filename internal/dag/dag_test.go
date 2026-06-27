@@ -383,3 +383,54 @@ func TestDAG_NextReady_NilCompleted(t *testing.T) {
 		t.Errorf("NextReady(nil) = %v, want %v", ready, want)
 	}
 }
+
+func TestDAG_TransitiveDependents(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		tasks []types.Task
+		id    string
+		want  []string
+	}{
+		{
+			name:  "linear chain A→B→C, dependents of A",
+			tasks: []types.Task{task("A"), task("B", "A"), task("C", "B")},
+			id:    "A",
+			want:  []string{"B", "C"},
+		},
+		{
+			name:  "linear chain A→B→C, dependents of B",
+			tasks: []types.Task{task("A"), task("B", "A"), task("C", "B")},
+			id:    "B",
+			want:  []string{"C"},
+		},
+		{
+			name:  "diamond A→{B,C}→D, dependents of A",
+			tasks: []types.Task{task("A"), task("B", "A"), task("C", "A"), task("D", "B", "C")},
+			id:    "A",
+			want:  []string{"B", "C", "D"},
+		},
+		{
+			name:  "leaf node has no dependents",
+			tasks: []types.Task{task("A"), task("B", "A"), task("C", "B")},
+			id:    "C",
+			want:  []string{},
+		},
+		{
+			name:  "unknown id returns empty",
+			tasks: []types.Task{task("A"), task("B", "A")},
+			id:    "Z",
+			want:  []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := NewDAG(tt.tasks)
+			got := d.TransitiveDependents(tt.id)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("TransitiveDependents(%q) = %v, want %v", tt.id, got, tt.want)
+			}
+		})
+	}
+}

@@ -1,0 +1,9 @@
+{"ts":"2026-06-26T21:57:13.510567-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-26T21:57:13.510978-03:00","type":"recovery_check"}
+{"ts":"2026-06-26T21:57:13.538124-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-26T21:57:13.538313-03:00","type":"plan_start","message":"Planning tasks..."}
+{"ts":"2026-06-26T21:58:38.549218-03:00","type":"plan_complete"}
+{"ts":"2026-06-26T21:58:38.550374-03:00","type":"dag_resolved"}
+{"ts":"2026-06-26T21:58:38.551792-03:00","type":"task_start","task_id":"S01"}
+{"ts":"2026-06-26T21:59:13.259889-03:00","type":"review_start","task_id":"S01"}
+{"ts":"2026-06-26T21:59:38.638926-03:00","type":"review_result","task_id":"S01","message":"PASS"}
