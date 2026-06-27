@@ -185,6 +185,15 @@ corvex recipe ship-endpoint   # compiles → .corvex/tasks/ship-endpoint/tasks.m
 corvex run ship-endpoint      # executes the fixed DAG (no Planner)
 ```
 
+Each stage has a `kind`:
+
+- `task` (default) — an AI worker task (planned/implemented/reviewed as usual).
+- `command` — runs `command:` as a shell step (exit 0 = pass, non-zero = fail);
+  no LLM, no cost. Great for `go test`/`go build`/lint gates inside a pipeline.
+- `human-gate` — pauses the pipeline for approval. Reaching a gate stops the run
+  with an actionable message; re-run with `corvex run <name> --approve-gates` to
+  proceed past it.
+
 ## Configuration
 
 After `corvex init`, edit `.corvex/config.yaml`:

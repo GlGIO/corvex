@@ -51,6 +51,10 @@ type Options struct {
 	// at run start aborts the run with an actionable hint instead of wiping
 	// the user's work.
 	Force bool
+	// ApproveGates auto-approves recipe "human-gate" stages. When false
+	// (default), reaching a gate stops the run with an actionable message
+	// instead of blocking; re-run with this set to proceed past the gate.
+	ApproveGates bool
 }
 
 // Orchestrator coordinates task planning, execution, review, and recovery.
@@ -72,9 +76,10 @@ type Orchestrator struct {
 	commands   <-chan Command
 	skip       map[string]bool // task IDs skipped by the user at runtime
 	paused     bool            // toggled by Cmd{Pause,Resume}
-	noReplan   bool            // mirror of Options.NoReplan
-	force      bool            // mirror of Options.Force
-	ledger     *activity.Ledger
+	noReplan     bool          // mirror of Options.NoReplan
+	force        bool          // mirror of Options.Force
+	approveGates bool          // mirror of Options.ApproveGates
+	ledger       *activity.Ledger
 	runCtx     context.Context // set at the start of Run; lets emit() abort on cancel
 	// mu guards the shared scheduler state (completed/terminal sets,
 	// cumulative cost, anchorState) and serialises tasks.md/anchor.yaml writes
@@ -130,9 +135,10 @@ func New(opts Options) *Orchestrator {
 		singleTask: opts.SingleTask,
 		abModels:   opts.ABModels,
 		commands:   opts.Commands,
-		skip:       make(map[string]bool),
-		noReplan:   opts.NoReplan,
-		force:      opts.Force,
+		skip:         make(map[string]bool),
+		noReplan:     opts.NoReplan,
+		force:        opts.Force,
+		approveGates: opts.ApproveGates,
 	}
 }
 
@@ -557,6 +563,9 @@ func (o *Orchestrator) executeTask(
 	if t.Kind == "command" {
 		return o.runCommandStage(ctx, t, tasksPath, anchorPath, anchorState, completed, d)
 	}
+	if t.Kind == "human-gate" {
+		return o.runHumanGate(ctx, t, tasksPath, anchorPath, anchorState, completed, d)
+	}
 
 	maxRetries := o.cfg.Execution.MaxRetries
 	if maxRetries <= 0 {
@@ -953,10 +962,25 @@ func (o *Orchestrator) runCommandStage(
 		return fmt.Errorf("task %s command failed: %w (output: %s)", t.ID, runErr, strings.TrimSpace(string(out)))
 	}
 
-	// PASS bookkeeping, serialised like executeTask's git+state writes.
+	o.markStagePassed(t, tasksPath, anchorPath, anchorState, completed, d, "ran command: "+t.Command, elapsed.Milliseconds())
+	return nil
+}
+
+// markStagePassed records a non-AI stage (command, approved human-gate) as
+// PASSED with the serialised git+state bookkeeping that executeTask uses, then
+// emits the checkpoint + completion events. Concurrency-safe.
+func (o *Orchestrator) markStagePassed(
+	t *types.Task,
+	tasksPath, anchorPath string,
+	anchorState *types.AnchorState,
+	completed map[string]bool,
+	d *dag.DAG,
+	summary string,
+	durationMs int64,
+) {
 	o.mu.Lock()
 	if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); statusErr != nil {
-		charmbraceletlog.Warn("updating command task status to passed", "task", t.ID, "err", statusErr)
+		charmbraceletlog.Warn("updating stage status to passed", "task", t.ID, "err", statusErr)
 	}
 	nextCompleted := make(map[string]bool, len(completed)+1)
 	for k, v := range completed {
@@ -968,11 +992,7 @@ func (o *Orchestrator) runCommandStage(
 		nextTask = nr[0]
 	}
 	*anchorState = anchor.Update(*anchorState, anchor.TaskResult{
-		Completed: types.CompletedTask{
-			ID:      t.ID,
-			Title:   t.Title,
-			Summary: "ran command: " + t.Command,
-		},
+		Completed:  types.CompletedTask{ID: t.ID, Title: t.Title, Summary: summary},
 		NextTask:   nextTask,
 		TotalTasks: d.Size(),
 	})
@@ -988,13 +1008,27 @@ func (o *Orchestrator) runCommandStage(
 	o.mu.Unlock()
 
 	o.emit(Event{Type: EventCheckpoint, TaskID: t.ID})
-	o.emit(Event{
-		Type:       EventTaskComplete,
-		TaskID:     t.ID,
-		Status:     types.StatusPassed,
-		DurationMs: elapsed.Milliseconds(),
-	})
-	return nil
+	o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusPassed, DurationMs: durationMs})
+}
+
+// runHumanGate handles a recipe "human-gate" stage. With --approve-gates it is
+// auto-approved and passes; otherwise it stops the run with an actionable
+// message, leaving the gate PENDING so a re-run with approval proceeds past it.
+func (o *Orchestrator) runHumanGate(
+	_ context.Context,
+	t *types.Task,
+	tasksPath, anchorPath string,
+	anchorState *types.AnchorState,
+	completed map[string]bool,
+	d *dag.DAG,
+) error {
+	o.emit(Event{Type: EventHumanGate, TaskID: t.ID, Message: t.Title})
+	if o.approveGates {
+		charmbraceletlog.Info("human-gate auto-approved (--approve-gates)", "task", t.ID)
+		o.markStagePassed(t, tasksPath, anchorPath, anchorState, completed, d, "human-gate approved: "+t.Title, 0)
+		return nil
+	}
+	return fatal(fmt.Errorf("human-gate %q (%s) reached — review the work so far, then re-run with --approve-gates to proceed past it", t.ID, t.Title))
 }
 
 func (o *Orchestrator) projectPaths(project string) (specPath, tasksPath, anchorPath string) {

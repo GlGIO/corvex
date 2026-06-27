@@ -21,6 +21,7 @@ const (
 	EventTaskStream     EventType = "task_stream"
 	EventTaskWarn       EventType = "task_warn"
 	EventTaskTimeout    EventType = "task_timeout"
+	EventHumanGate      EventType = "human_gate"
 	EventTaskComplete   EventType = "task_complete"
 	EventReviewStart    EventType = "review_start"
 	EventReviewResult   EventType = "review_result"

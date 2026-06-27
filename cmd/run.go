@@ -32,8 +32,9 @@ var (
 	runNoReplan  bool
 	runHere       bool
 	runForce      bool
-	runYes        bool
-	runSkipDoctor bool
+	runYes          bool
+	runSkipDoctor   bool
+	runApproveGates bool
 )
 
 var runCmd = &cobra.Command{
@@ -57,6 +58,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runForce, "force", false, "run even if the working tree is dirty, discarding uncommitted changes first (DESTRUCTIVE)")
 	runCmd.Flags().BoolVarP(&runYes, "yes", "y", false, "skip the cost-preview confirmation prompt (for CI/scripts)")
 	runCmd.Flags().BoolVar(&runSkipDoctor, "skip-doctor", false, "skip the pre-run config checks (corvex doctor)")
+	runCmd.Flags().BoolVar(&runApproveGates, "approve-gates", false, "auto-approve recipe human-gate stages (otherwise a gate stops the run)")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -159,8 +161,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 		Sandbox:    sb,
 		ABModels:   abModels,
 		Commands:   commands,
-		NoReplan:   runNoReplan,
-		Force:      runForce,
+		NoReplan:     runNoReplan,
+		Force:        runForce,
+		ApproveGates: runApproveGates,
 	})
 
 	if !runPlain && isInteractive() {

@@ -105,6 +105,10 @@ func (r *PlainRenderer) render(ev orchestrator.Event) {
 		g := r.coloured("✓", "+", tui.StatusPassed)
 		fmt.Fprintf(r.w, "%s done\n", g)
 
+	case orchestrator.EventHumanGate:
+		g := r.coloured("⏸", "||", tui.StatusRunning)
+		fmt.Fprintf(r.w, "%s %s  human-gate: %s\n", g, ev.TaskID, ev.Message)
+
 	case orchestrator.EventError:
 		g := r.coloured("✗", "!", tui.StatusFailed)
 		fmt.Fprintf(r.w, "%s %s\n", g, ev.Message)

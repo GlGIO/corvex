@@ -580,6 +580,81 @@ func TestRun_CommandStage_FailsAndSkipsDependents(t *testing.T) {
 	}
 }
 
+func gateTasksMD() string {
+	return "---\ndag:\n  S01: []\n  S02: [S01]\n---\n\n" +
+		"## S01 — Approve release ⬜ PENDING\n\n```yaml\ntype: general\nkind: human-gate\n```\n\n### O que fazer\ngate\n\n---\n\n" +
+		"## S02 — Ship ⬜ PENDING\n\n```yaml\ntype: general\nkind: command\ncommand: \"true\"\ndepends_on: [S01]\n```\n\n### O que fazer\nship\n"
+}
+
+func TestRun_HumanGate_StopsWithoutApproval(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-gate-stop"
+	setupProject(t, dir, project, gateTasksMD())
+	gitCommitAll(t, dir, "add gate tasks")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events})
+	err := orch.Run(context.Background(), project)
+	close(events)
+	if err == nil || !strings.Contains(err.Error(), "human-gate") {
+		t.Fatalf("expected a human-gate stop error, got %v", err)
+	}
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	st := map[string]types.TaskStatus{}
+	for _, tk := range tasks {
+		st[tk.ID] = tk.Status
+	}
+	// Gate stays PENDING (so a re-run with --approve-gates proceeds); S02 never ran.
+	if st["S01"] != types.StatusPending {
+		t.Errorf("gate S01 = %s, want PENDING (left for re-run)", st["S01"])
+	}
+	if st["S02"] != types.StatusPending {
+		t.Errorf("S02 = %s, want PENDING (gate not passed)", st["S02"])
+	}
+}
+
+func TestRun_HumanGate_ApprovedProceeds(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-gate-go"
+	setupProject(t, dir, project, gateTasksMD())
+	gitCommitAll(t, dir, "add gate tasks")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events, ApproveGates: true})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() with ApproveGates error = %v", err)
+	}
+	close(events)
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	for _, tk := range tasks {
+		if tk.Status != types.StatusPassed {
+			t.Errorf("task %s = %s, want PASSED (gate approved)", tk.ID, tk.Status)
+		}
+	}
+}
+
 func TestRun_MissingHandoffFailsTask(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
