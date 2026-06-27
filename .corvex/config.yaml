@@ -38,3 +38,4 @@ agent_routing: {}
 skill_routing:
   backend: go-corvex-conventions
   general: go-corvex-conventions
+  review: go-diff-review
