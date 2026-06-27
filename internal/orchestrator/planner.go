@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/provider"
+	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -75,6 +76,19 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 
 	if err := os.WriteFile(tasksPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("writing tasks %s: %w", tasksPath, err)
+	}
+
+	// Validate what we just wrote. The model is told to output ONLY the
+	// tasks.md content, but it sometimes narrates ("I'll now write the
+	// tasks...") instead — that prose gets persisted and parses to zero tasks,
+	// which the run loop would otherwise treat as "nothing to do" and report a
+	// silent false success. Fail loudly here so the caller can re-plan/retry.
+	parsed, _, perr := task.ParseTasksFile(tasksPath)
+	if perr != nil {
+		return fmt.Errorf("planner produced an unparseable tasks.md (the model likely narrated instead of emitting the file): %w", perr)
+	}
+	if len(parsed) == 0 {
+		return fmt.Errorf("planner produced no tasks — the model output did not contain any '## S<n> — … ⬜ PENDING' headings (it likely narrated instead of emitting tasks.md content). Re-run planning")
 	}
 
 	return nil

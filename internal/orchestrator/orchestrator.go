@@ -197,6 +197,13 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 	if err != nil {
 		return fmt.Errorf("parsing tasks: %w", err)
 	}
+	// A tasks.md that parses to zero tasks must never be reported as a
+	// successful empty run. It means planning failed to produce structured
+	// output (e.g. the model narrated instead of emitting the file). Fail
+	// loudly with a path so the user can inspect and re-plan.
+	if len(tasks) == 0 {
+		return fmt.Errorf("no tasks to run: %s parsed to zero tasks (planning may have produced prose instead of a tasks.md). Inspect the file and re-run `corvex plan %s`", tasksPath, project)
+	}
 
 	d := dag.NewDAG(tasks)
 	if err := d.Validate(); err != nil {
