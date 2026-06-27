@@ -31,11 +31,12 @@ type Recipe struct {
 type Stage struct {
 	ID          string   `yaml:"id"`
 	Title       string   `yaml:"title"`
-	Kind        string   `yaml:"kind"`        // "task" (default); reserved: "command", "human-gate"
-	Type        string   `yaml:"type"`        // task type for routing (backend, frontend, ...)
+	Kind        string   `yaml:"kind"`    // "task" (default), "command"; reserved: "human-gate"
+	Type        string   `yaml:"type"`    // task type for routing (backend, frontend, ...)
 	DependsOn   []string `yaml:"depends_on"`
 	Description string   `yaml:"description"`
 	Criteria    []string `yaml:"criteria"`
+	Command     string   `yaml:"command"` // shell command run when Kind == "command"
 }
 
 // knownKinds enumerates the stage kinds the compiler accepts today. Only "task"
@@ -78,6 +79,12 @@ func (r *Recipe) Validate() error {
 		}
 		if !knownKinds[s.Kind] {
 			return fmt.Errorf("recipe %q: stage %q has unknown kind %q (known: task, command, human-gate)", r.Name, s.ID, s.Kind)
+		}
+		if s.Kind == "command" && strings.TrimSpace(s.Command) == "" {
+			return fmt.Errorf("recipe %q: command stage %q must set a non-empty `command`", r.Name, s.ID)
+		}
+		if s.Kind != "command" && strings.TrimSpace(s.Command) != "" {
+			return fmt.Errorf("recipe %q: stage %q sets `command` but is not a command stage (kind: %q)", r.Name, s.ID, s.Kind)
 		}
 		ids[s.ID] = true
 	}
@@ -166,6 +173,8 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 			DependsOn:   deps,
 			Description: s.Description,
 			Criteria:    s.Criteria,
+			Kind:        s.Kind,
+			Command:     s.Command,
 		})
 		dag.Dependencies[s.ID] = deps
 	}

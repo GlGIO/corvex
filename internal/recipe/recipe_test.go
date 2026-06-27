@@ -56,6 +56,24 @@ func TestParseAndCompile(t *testing.T) {
 	}
 }
 
+func TestCompile_CommandStage(t *testing.T) {
+	y := "name: pipe\nstages:\n  - id: S01\n    title: Test\n    kind: command\n    command: go test ./...\n"
+	r, err := Parse([]byte(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, _, err := r.Compile()
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if tasks[0].Kind != "command" {
+		t.Errorf("Kind = %q, want command", tasks[0].Kind)
+	}
+	if tasks[0].Command != "go test ./..." {
+		t.Errorf("Command = %q", tasks[0].Command)
+	}
+}
+
 func TestValidate_Errors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -68,6 +86,8 @@ func TestValidate_Errors(t *testing.T) {
 		{"unknown dep", "name: x\nstages:\n  - id: S01\n    depends_on: [S99]\n", "unknown stage"},
 		{"unknown kind", "name: x\nstages:\n  - id: S01\n    kind: magic\n", "unknown kind"},
 		{"cycle", "name: x\nstages:\n  - id: S01\n    depends_on: [S02]\n  - id: S02\n    depends_on: [S01]\n", "cycle"},
+		{"command without command", "name: x\nstages:\n  - id: S01\n    kind: command\n", "must set a non-empty"},
+		{"command on non-command", "name: x\nstages:\n  - id: S01\n    command: echo hi\n", "not a command stage"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

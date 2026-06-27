@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -551,6 +552,12 @@ func (o *Orchestrator) executeTask(
 	d *dag.DAG,
 	totalCostUSD *float64,
 ) error {
+	// Command stages run a shell step instead of an AI worker — no LLM, no
+	// reviewer, no TASK-REPORT. Dispatch early so the AI path stays clean.
+	if t.Kind == "command" {
+		return o.runCommandStage(ctx, t, tasksPath, anchorPath, anchorState, completed, d)
+	}
+
 	maxRetries := o.cfg.Execution.MaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 2
@@ -890,6 +897,104 @@ func buildInvestigationPrompt(t *types.Task, reviewerSummary string) string {
 	b.WriteString("2. A recommended fix approach: what specific changes should be made?\n\n")
 	b.WriteString("Be concise and actionable. Your output will guide the next implementation attempt.\n")
 	return b.String()
+}
+
+// runCommandStage executes a recipe "command" stage: it runs the stage's shell
+// command as a deterministic pipeline step. Exit 0 → PASSED; non-zero → FAILED
+// (a task-level failure, so dependents are skipped per CH-07). No LLM, no
+// reviewer, no TASK-REPORT, no cost. Concurrency-safe like executeTask.
+func (o *Orchestrator) runCommandStage(
+	ctx context.Context,
+	t *types.Task,
+	tasksPath, anchorPath string,
+	anchorState *types.AnchorState,
+	completed map[string]bool,
+	d *dag.DAG,
+) error {
+	if strings.TrimSpace(t.Command) == "" {
+		if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+			charmbraceletlog.Warn("updating command task status to failed", "task", t.ID, "err", statusErr)
+		}
+		o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "command stage has no command"})
+		return fmt.Errorf("task %s: command stage has no command", t.ID)
+	}
+
+	if statusErr := o.setStatus(tasksPath, t.ID, types.StatusRunning); statusErr != nil {
+		charmbraceletlog.Warn("updating command task status to running", "task", t.ID, "err", statusErr)
+	}
+	o.emit(Event{Type: EventTaskStart, TaskID: t.ID})
+	o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: "$ " + t.Command}})
+
+	// Reuse the per-task wall-clock ceiling so a hung command can't stall the run.
+	cmdCtx := ctx
+	if mins := o.cfg.Execution.TaskTimeoutMinutes; mins > 0 {
+		var cancel context.CancelFunc
+		cmdCtx, cancel = context.WithTimeout(ctx, time.Duration(mins)*time.Minute)
+		defer cancel()
+	}
+
+	start := time.Now()
+	cmd := exec.CommandContext(cmdCtx, "sh", "-c", t.Command)
+	cmd.Dir = o.workDir
+	out, runErr := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+
+	if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
+		ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
+		o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &ev})
+	}
+
+	if runErr != nil {
+		if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+			charmbraceletlog.Warn("updating command task status to failed", "task", t.ID, "err", statusErr)
+		}
+		msg := fmt.Sprintf("command failed: %v", runErr)
+		o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: msg})
+		return fmt.Errorf("task %s command failed: %w (output: %s)", t.ID, runErr, strings.TrimSpace(string(out)))
+	}
+
+	// PASS bookkeeping, serialised like executeTask's git+state writes.
+	o.mu.Lock()
+	if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); statusErr != nil {
+		charmbraceletlog.Warn("updating command task status to passed", "task", t.ID, "err", statusErr)
+	}
+	nextCompleted := make(map[string]bool, len(completed)+1)
+	for k, v := range completed {
+		nextCompleted[k] = v
+	}
+	nextCompleted[t.ID] = true
+	nextTask := ""
+	if nr := d.NextReady(nextCompleted); len(nr) > 0 {
+		nextTask = nr[0]
+	}
+	*anchorState = anchor.Update(*anchorState, anchor.TaskResult{
+		Completed: types.CompletedTask{
+			ID:      t.ID,
+			Title:   t.Title,
+			Summary: "ran command: " + t.Command,
+		},
+		NextTask:   nextTask,
+		TotalTasks: d.Size(),
+	})
+	if err := anchor.Save(anchorPath, *anchorState); err != nil {
+		charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)
+	}
+	if o.cfg.Execution.AutoCommit {
+		if err := o.recovery.MarkCheckpoint(t.ID); err != nil {
+			charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
+		}
+	}
+	completed[t.ID] = true
+	o.mu.Unlock()
+
+	o.emit(Event{Type: EventCheckpoint, TaskID: t.ID})
+	o.emit(Event{
+		Type:       EventTaskComplete,
+		TaskID:     t.ID,
+		Status:     types.StatusPassed,
+		DurationMs: elapsed.Milliseconds(),
+	})
+	return nil
 }
 
 func (o *Orchestrator) projectPaths(project string) (specPath, tasksPath, anchorPath string) {

@@ -78,6 +78,12 @@ type Task struct {
 	Description string
 	Criteria    []string
 	Files       TaskFiles
+	// Kind selects how the task executes. Empty or "task" → an AI worker task
+	// (the default). "command" → run Command as a shell step (exit 0 = pass,
+	// no LLM). Reserved: "human-gate".
+	Kind string
+	// Command is the shell command run when Kind == "command".
+	Command string
 }
 
 type TaskFiles struct {

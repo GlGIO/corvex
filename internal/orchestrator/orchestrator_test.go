@@ -498,6 +498,88 @@ func TestRun_ParallelExecution(t *testing.T) {
 	}
 }
 
+func commandTasksMD(cmd1, cmd2 string) string {
+	return "---\ndag:\n  S01: []\n  S02: [S01]\n---\n\n" +
+		"## S01 — Gate ⬜ PENDING\n\n```yaml\ntype: general\nkind: command\ncommand: " + cmd1 + "\n```\n\n### O que fazer\ngate\n\n---\n\n" +
+		"## S02 — After ⬜ PENDING\n\n```yaml\ntype: general\nkind: command\ncommand: " + cmd2 + "\ndepends_on: [S01]\n```\n\n### O que fazer\nafter\n"
+}
+
+func TestRun_CommandStage_Passes(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-cmd-pass"
+	setupProject(t, dir, project, commandTasksMD(`"true"`, `"true"`))
+	gitCommitAll(t, dir, "add cmd tasks")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+	mock := &mockProvider{} // must NOT be called for command stages
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	mock.mu.Lock()
+	calls := len(mock.calls)
+	mock.mu.Unlock()
+	if calls != 0 {
+		t.Errorf("command stages must not call the LLM provider, got %d calls", calls)
+	}
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	for _, tk := range tasks {
+		if tk.Status != types.StatusPassed {
+			t.Errorf("task %s = %s, want PASSED", tk.ID, tk.Status)
+		}
+	}
+}
+
+func TestRun_CommandStage_FailsAndSkipsDependents(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-cmd-fail"
+	setupProject(t, dir, project, commandTasksMD(`"exit 1"`, `"true"`))
+	gitCommitAll(t, dir, "add cmd tasks")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events})
+	err := orch.Run(context.Background(), project)
+	close(events)
+	if err == nil {
+		t.Fatal("expected failure when a command stage exits non-zero")
+	}
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	st := map[string]types.TaskStatus{}
+	for _, tk := range tasks {
+		st[tk.ID] = tk.Status
+	}
+	if st["S01"] != types.StatusFailed {
+		t.Errorf("S01 = %s, want FAILED", st["S01"])
+	}
+	if st["S02"] != types.StatusSkipped {
+		t.Errorf("S02 = %s, want SKIPPED (depends on failed S01)", st["S02"])
+	}
+}
+
 func TestRun_MissingHandoffFailsTask(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

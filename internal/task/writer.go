@@ -102,10 +102,16 @@ func writeTask(b *strings.Builder, task types.Task) {
 	emoji := statusEmoji[task.Status]
 	fmt.Fprintf(b, "## %s — %s %s %s\n", task.ID, task.Title, emoji, task.Status)
 
-	if task.Type != "" || len(task.DependsOn) > 0 {
+	if task.Type != "" || len(task.DependsOn) > 0 || task.Kind != "" || task.Command != "" {
 		b.WriteString("\n```yaml\n")
 		if task.Type != "" {
 			fmt.Fprintf(b, "type: %s\n", task.Type)
+		}
+		if task.Kind != "" {
+			fmt.Fprintf(b, "kind: %s\n", task.Kind)
+		}
+		if task.Command != "" {
+			fmt.Fprintf(b, "command: %q\n", task.Command)
 		}
 		if len(task.DependsOn) > 0 {
 			fmt.Fprintf(b, "depends_on: [%s]\n", strings.Join(task.DependsOn, ", "))

@@ -51,6 +51,8 @@ type frontmatter struct {
 type inlineYAML struct {
 	Type      string   `yaml:"type"`
 	DependsOn []string `yaml:"depends_on"`
+	Kind      string   `yaml:"kind"`
+	Command   string   `yaml:"command"`
 }
 
 // ParseTasksFile reads a tasks.md file and returns the parsed tasks and DAG specification.
@@ -251,6 +253,8 @@ func extractInlineYAML(lines []string, task *types.Task) {
 
 	task.Type = types.TaskType(iy.Type)
 	task.DependsOn = iy.DependsOn
+	task.Kind = iy.Kind
+	task.Command = iy.Command
 }
 
 func splitSections(lines []string) map[string]string {
