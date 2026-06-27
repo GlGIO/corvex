@@ -112,7 +112,7 @@ output unaffected.
 
 ---
 
-## S05 — `corvex doctor --json` (mantém exit code) ⬜ PENDING
+## S05 — `corvex doctor --json` (mantém exit code) ✅ PASSED
 
 ```yaml
 type: backend

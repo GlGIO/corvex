@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T04:02:14Z"
+updated_at: "2026-06-27T04:04:52Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -51,8 +51,21 @@ completed:
         - Extracted `buildInspectData` so `printSummary` calls it internally — single source of truth for the stat aggregation, eliminating the local `stat` struct duplication.
         - --task --json` still dumps filtered raw `[]activity.Entry` (unchanged from old behavior) since the spec doesn't address that combination.
         - Added JSON struct tags to `TaskMetric` and `Summary` in `internal/activity` as the task required, using snake_case keys matching the existing `Entry` tag style.
+    - id: S05
+      title: '`corvex doctor --json` (mantém exit code)'
+      summary: Added `--json` flag to `corvex doctor`. When set, it prints a `{"checks":[...],"passed":N,"warnings":N,"failed":N}` JSON object to stdout and still exits non-zero when any check failed. Human output is unchanged when `--json` is not set.
+      files_created: []
+      files_modified:
+        - cmd/doctor.go
+        - cmd/doctor_test.go
+      decisions:
+        - 'Used the standard S02/S03 pattern: package-level `doctorJSON *bool` assigned from `addJSONFlag` in `init()`, early-return JSON branch at the start of the JSON path in `runDoctor`.'
+        - Refactored `runDoctor` to count pass/warn/fail before the human print loop so both paths share the same counting logic without duplication.
+        - Added `statusString()` method to `checkResult` (returns `"pass"`, `"warn"`, `"fail"`) rather than inline switches — keeps the struct self-contained and the JSON mapping close to the type definition.
+        - doctorOutput.Warnings` uses the JSON key `"warnings"` (plural) to match the spec shape exactly (`"warnings":0`).
+        - 'Added 3 table-driven tests: JSON shape correctness (all checks have valid name/status, counts sum to len(checks)), failed check still returns non-nil error with `--json`, and human output unchanged without `--json`.'
 current_state:
     total_tasks: 6
-    completed_tasks: 4
-next_task: S05
-next_task_context: 'S05 (`doctor --json`) follows the identical pattern as S02/S03: package-level `*bool` from `addJSONFlag` in `init()`, early-return JSON branch in `RunE` using `printJSON(os.Stdout, ...)`. The `captureStdout` helper and the `setupXxx` fixture pattern are available in `package cmd` tests. The `inspectOutput`/`inspectTaskStat` structs live in `cmd/inspect.go` and serve as the reference shape for any future inspect-related consumers.'
+    completed_tasks: 5
+next_task: S06
+next_task_context: none

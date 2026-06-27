@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
@@ -292,5 +294,113 @@ func TestCheckCostCeilings(t *testing.T) {
 				t.Errorf("checkCostCeilings() status = %v, want %v; msg = %q", r.status, tt.wantStatus, r.msg)
 			}
 		})
+	}
+}
+
+func validDoctorConfigYAML() string {
+	return `
+provider:
+  default: claude-cli
+  models:
+    planner: opus
+    worker: sonnet
+    reviewer: sonnet
+sandbox:
+  type: local
+execution:
+  max_cost_usd: 25
+  max_cost_per_task_usd: 5
+`
+}
+
+func TestDoctorJSONShape(t *testing.T) {
+	_, cleanup := setupDoctorProject(t, validDoctorConfigYAML())
+	defer cleanup()
+	t.Setenv("CORVEX_CLAUDE_BIN", os.Args[0])
+
+	b := true
+	doctorJSON = &b
+	defer func() { f := false; doctorJSON = &f }()
+
+	output, _ := captureStdout(t, func() error {
+		return runDoctor(nil, nil)
+	})
+
+	var out doctorOutput
+	if err := json.Unmarshal([]byte(output), &out); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput:\n%s", err, output)
+	}
+	if len(out.Checks) == 0 {
+		t.Error("checks array must not be empty")
+	}
+	for _, c := range out.Checks {
+		if c.Name == "" {
+			t.Error("check name must not be empty")
+		}
+		if c.Status != "pass" && c.Status != "warn" && c.Status != "fail" {
+			t.Errorf("check %q has unexpected status %q", c.Name, c.Status)
+		}
+	}
+	if out.Passed+out.Warnings+out.Failed != len(out.Checks) {
+		t.Errorf("passed+warnings+failed (%d) != len(checks) (%d)", out.Passed+out.Warnings+out.Failed, len(out.Checks))
+	}
+}
+
+func TestDoctorJSONFailExitCode(t *testing.T) {
+	badConfig := `
+provider:
+  default: bad-provider
+  models:
+    planner: opus
+    worker: sonnet
+    reviewer: sonnet
+sandbox:
+  type: local
+execution:
+  max_cost_usd: 25
+  max_cost_per_task_usd: 5
+`
+	_, cleanup := setupDoctorProject(t, badConfig)
+	defer cleanup()
+
+	b := true
+	doctorJSON = &b
+	defer func() { f := false; doctorJSON = &f }()
+
+	output, err := captureStdout(t, func() error {
+		return runDoctor(nil, nil)
+	})
+	if err == nil {
+		t.Error("runDoctor --json with failed check should return non-nil error")
+	}
+
+	var out doctorOutput
+	if jsonErr := json.Unmarshal([]byte(output), &out); jsonErr != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput:\n%s", jsonErr, output)
+	}
+	if out.Failed == 0 {
+		t.Error("failed count should be > 0 for bad provider config")
+	}
+}
+
+func TestDoctorJSONHumanUnchanged(t *testing.T) {
+	_, cleanup := setupDoctorProject(t, validDoctorConfigYAML())
+	defer cleanup()
+	t.Setenv("CORVEX_CLAUDE_BIN", os.Args[0])
+
+	f := false
+	doctorJSON = &f
+
+	output, err := captureStdout(t, func() error {
+		return runDoctor(nil, nil)
+	})
+	if err != nil {
+		t.Fatalf("runDoctor human failed: %v", err)
+	}
+	if len(output) > 0 && output[0] == '{' {
+		t.Error("human output should not start with '{' (looks like JSON)")
+	}
+	if !strings.Contains(output, "doctor:") {
+		t.Error("human output should contain 'doctor:' summary line")
 	}
 }

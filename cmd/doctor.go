@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var doctorJSON *bool
+
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check the config and local environment for common misconfigurations",
@@ -19,6 +21,7 @@ var doctorCmd = &cobra.Command{
 }
 
 func init() {
+	doctorJSON = addJSONFlag(doctorCmd)
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -36,6 +39,19 @@ type checkResult struct {
 	msg    string
 }
 
+type checkJSON struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type doctorOutput struct {
+	Checks   []checkJSON `json:"checks"`
+	Passed   int         `json:"passed"`
+	Warnings int         `json:"warnings"`
+	Failed   int         `json:"failed"`
+}
+
 func (r checkResult) prefix() string {
 	switch r.status {
 	case checkPass:
@@ -44,6 +60,17 @@ func (r checkResult) prefix() string {
 		return "⚠"
 	default:
 		return "✗"
+	}
+}
+
+func (r checkResult) statusString() string {
+	switch r.status {
+	case checkPass:
+		return "pass"
+	case checkWarn:
+		return "warn"
+	default:
+		return "fail"
 	}
 }
 
@@ -58,7 +85,6 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 	var passed, warned, failed int
 	for _, r := range results {
-		fmt.Printf("%s %s: %s\n", r.prefix(), r.name, r.msg)
 		switch r.status {
 		case checkPass:
 			passed++
@@ -67,6 +93,34 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		case checkFail:
 			failed++
 		}
+	}
+
+	if doctorJSON != nil && *doctorJSON {
+		checks := make([]checkJSON, len(results))
+		for i, r := range results {
+			checks[i] = checkJSON{
+				Name:    r.name,
+				Status:  r.statusString(),
+				Message: r.msg,
+			}
+		}
+		out := doctorOutput{
+			Checks:   checks,
+			Passed:   passed,
+			Warnings: warned,
+			Failed:   failed,
+		}
+		if err := printJSON(os.Stdout, out); err != nil {
+			return err
+		}
+		if failed > 0 {
+			return fmt.Errorf("doctor: %d check(s) failed", failed)
+		}
+		return nil
+	}
+
+	for _, r := range results {
+		fmt.Printf("%s %s: %s\n", r.prefix(), r.name, r.msg)
 	}
 
 	total := passed + warned + failed
