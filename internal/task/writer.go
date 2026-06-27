@@ -113,6 +113,12 @@ func writeTask(b *strings.Builder, task types.Task) {
 		if task.Command != "" {
 			fmt.Fprintf(b, "command: %q\n", task.Command)
 		}
+		if task.LoopUntil != "" {
+			fmt.Fprintf(b, "loop_until: %q\n", task.LoopUntil)
+		}
+		if task.LoopMax > 0 {
+			fmt.Fprintf(b, "loop_max: %d\n", task.LoopMax)
+		}
 		if len(task.DependsOn) > 0 {
 			fmt.Fprintf(b, "depends_on: [%s]\n", strings.Join(task.DependsOn, ", "))
 		}

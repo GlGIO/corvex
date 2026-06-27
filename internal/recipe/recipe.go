@@ -37,6 +37,14 @@ type Stage struct {
 	Description string   `yaml:"description"`
 	Criteria    []string `yaml:"criteria"`
 	Command     string   `yaml:"command"` // shell command run when Kind == "command"
+	Loop        *Loop    `yaml:"loop"`    // optional loop-with-policy (command stages)
+}
+
+// Loop is a command stage's loop-with-policy: re-run the command until Until
+// (a shell condition) exits 0, or until Max iterations.
+type Loop struct {
+	Until string `yaml:"until"` // optional; empty → the command's own exit governs
+	Max   int    `yaml:"max"`   // max iterations (default 3)
 }
 
 // knownKinds enumerates the stage kinds the compiler accepts today. Only "task"
@@ -85,6 +93,14 @@ func (r *Recipe) Validate() error {
 		}
 		if s.Kind != "command" && strings.TrimSpace(s.Command) != "" {
 			return fmt.Errorf("recipe %q: stage %q sets `command` but is not a command stage (kind: %q)", r.Name, s.ID, s.Kind)
+		}
+		if s.Loop != nil {
+			if s.Kind != "command" {
+				return fmt.Errorf("recipe %q: stage %q has a `loop` but only command stages support loops (kind: %q)", r.Name, s.ID, s.Kind)
+			}
+			if s.Loop.Max < 0 {
+				return fmt.Errorf("recipe %q: stage %q loop.max must be >= 0", r.Name, s.ID)
+			}
 		}
 		ids[s.ID] = true
 	}
@@ -165,7 +181,7 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 		if deps == nil {
 			deps = []string{}
 		}
-		tasks = append(tasks, types.Task{
+		t := types.Task{
 			ID:          s.ID,
 			Title:       s.Title,
 			Status:      types.StatusPending,
@@ -175,7 +191,15 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 			Criteria:    s.Criteria,
 			Kind:        s.Kind,
 			Command:     s.Command,
-		})
+		}
+		if s.Loop != nil {
+			t.LoopUntil = s.Loop.Until
+			t.LoopMax = s.Loop.Max
+			if t.LoopMax == 0 {
+				t.LoopMax = 3 // default loop cap
+			}
+		}
+		tasks = append(tasks, t)
 		dag.Dependencies[s.ID] = deps
 	}
 

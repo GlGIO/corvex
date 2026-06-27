@@ -655,6 +655,72 @@ func TestRun_HumanGate_ApprovedProceeds(t *testing.T) {
 	}
 }
 
+func loopTaskMD(yamlExtra string) string {
+	return "---\ndag:\n  S01: []\n---\n\n" +
+		"## S01 — Loop ⬜ PENDING\n\n```yaml\ntype: general\nkind: command\n" + yamlExtra + "```\n\n### O que fazer\nloop\n"
+}
+
+func TestRun_CommandLoop_PassesAfterRetries(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-loop-pass"
+	// Command increments a counter and succeeds only once it reaches 2.
+	yaml := "command: \"c=$(cat .ctr 2>/dev/null||echo 0);c=$((c+1));echo $c>.ctr;[ $c -ge 2 ]\"\nloop_max: 3\n"
+	setupProject(t, dir, project, loopTaskMD(yaml))
+	gitCommitAll(t, dir, "add loop task")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v (loop should pass within 3 iterations)", err)
+	}
+	close(events)
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	if tasks[0].Status != types.StatusPassed {
+		t.Errorf("S01 = %s, want PASSED (loop should succeed on iteration 2)", tasks[0].Status)
+	}
+}
+
+func TestRun_CommandLoop_FailsAfterMax(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-loop-fail"
+	setupProject(t, dir, project, loopTaskMD("command: \"false\"\nloop_max: 2\n"))
+	gitCommitAll(t, dir, "add loop task")
+
+	events := make(chan Event, 100)
+	go func() {
+		for range events {
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events})
+	err := orch.Run(context.Background(), project)
+	close(events)
+	if err == nil {
+		t.Fatal("expected failure when the loop never passes within max iterations")
+	}
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	if tasks[0].Status != types.StatusFailed {
+		t.Errorf("S01 = %s, want FAILED", tasks[0].Status)
+	}
+}
+
 func TestRun_MissingHandoffFailsTask(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

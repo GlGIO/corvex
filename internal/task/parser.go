@@ -53,6 +53,8 @@ type inlineYAML struct {
 	DependsOn []string `yaml:"depends_on"`
 	Kind      string   `yaml:"kind"`
 	Command   string   `yaml:"command"`
+	LoopUntil string   `yaml:"loop_until"`
+	LoopMax   int      `yaml:"loop_max"`
 }
 
 // ParseTasksFile reads a tasks.md file and returns the parsed tasks and DAG specification.
@@ -255,6 +257,8 @@ func extractInlineYAML(lines []string, task *types.Task) {
 	task.DependsOn = iy.DependsOn
 	task.Kind = iy.Kind
 	task.Command = iy.Command
+	task.LoopUntil = iy.LoopUntil
+	task.LoopMax = iy.LoopMax
 }
 
 func splitSections(lines []string) map[string]string {

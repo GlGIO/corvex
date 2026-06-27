@@ -932,7 +932,6 @@ func (o *Orchestrator) runCommandStage(
 		charmbraceletlog.Warn("updating command task status to running", "task", t.ID, "err", statusErr)
 	}
 	o.emit(Event{Type: EventTaskStart, TaskID: t.ID})
-	o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: "$ " + t.Command}})
 
 	// Reuse the per-task wall-clock ceiling so a hung command can't stall the run.
 	cmdCtx := ctx
@@ -942,28 +941,72 @@ func (o *Orchestrator) runCommandStage(
 		defer cancel()
 	}
 
+	// Loop-with-policy: run the command up to maxIter times; the success
+	// condition is LoopUntil (when set) or the command's own exit code. maxIter
+	// is 1 for a plain command stage (no loop).
+	maxIter := t.LoopMax
+	if maxIter < 1 {
+		maxIter = 1
+	}
+
 	start := time.Now()
-	cmd := exec.CommandContext(cmdCtx, "sh", "-c", t.Command)
-	cmd.Dir = o.workDir
-	out, runErr := cmd.CombinedOutput()
-	elapsed := time.Since(start)
-
-	if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
-		ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
-		o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &ev})
-	}
-
-	if runErr != nil {
-		if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
-			charmbraceletlog.Warn("updating command task status to failed", "task", t.ID, "err", statusErr)
+	var lastErr error
+	for iter := 1; iter <= maxIter; iter++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		msg := fmt.Sprintf("command failed: %v", runErr)
-		o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: msg})
-		return fmt.Errorf("task %s command failed: %w (output: %s)", t.ID, runErr, strings.TrimSpace(string(out)))
+		label := "$ " + t.Command
+		if maxIter > 1 {
+			label = fmt.Sprintf("[%d/%d] %s", iter, maxIter, label)
+		}
+		o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
+
+		out, runErr := o.runShell(cmdCtx, t.Command)
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
+			o.emit(Event{Type: EventTaskStream, TaskID: t.ID, Stream: &ev})
+		}
+
+		// Decide success for this iteration.
+		ok := runErr == nil
+		if strings.TrimSpace(t.LoopUntil) != "" {
+			// The until-condition governs; the command is the work that may
+			// make it pass over successive iterations.
+			_, untilErr := o.runShell(cmdCtx, t.LoopUntil)
+			ok = untilErr == nil
+			lastErr = untilErr
+		} else {
+			lastErr = runErr
+		}
+
+		if ok {
+			summary := "ran command: " + t.Command
+			if maxIter > 1 {
+				summary += fmt.Sprintf(" (passed on iteration %d/%d)", iter, maxIter)
+			}
+			o.markStagePassed(t, tasksPath, anchorPath, anchorState, completed, d, summary, time.Since(start).Milliseconds())
+			return nil
+		}
 	}
 
-	o.markStagePassed(t, tasksPath, anchorPath, anchorState, completed, d, "ran command: "+t.Command, elapsed.Milliseconds())
-	return nil
+	if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+		charmbraceletlog.Warn("updating command task status to failed", "task", t.ID, "err", statusErr)
+	}
+	cond := "command exit"
+	if strings.TrimSpace(t.LoopUntil) != "" {
+		cond = fmt.Sprintf("loop condition %q", t.LoopUntil)
+	}
+	msg := fmt.Sprintf("%s did not pass after %d iteration(s): %v", cond, maxIter, lastErr)
+	o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: msg})
+	return fmt.Errorf("task %s: %s", t.ID, msg)
+}
+
+// runShell runs a shell command in the workDir and returns combined output.
+func (o *Orchestrator) runShell(ctx context.Context, command string) (string, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Dir = o.workDir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // markStagePassed records a non-AI stage (command, approved human-gate) as

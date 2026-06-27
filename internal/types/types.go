@@ -84,6 +84,13 @@ type Task struct {
 	Kind string
 	// Command is the shell command run when Kind == "command".
 	Command string
+	// LoopUntil, when set on a command stage, is a shell condition re-evaluated
+	// each iteration; the stage loops until it exits 0 (or LoopMax is reached).
+	// When empty, the command's own exit code is the loop condition.
+	LoopUntil string
+	// LoopMax caps loop iterations for a command stage. 0 or 1 → run once (no
+	// loop).
+	LoopMax int
 }
 
 type TaskFiles struct {

@@ -194,6 +194,21 @@ Each stage has a `kind`:
   with an actionable message; re-run with `corvex run <name> --approve-gates` to
   proceed past it.
 
+A `command` stage can also **loop with a policy** — repeat until a condition
+holds, up to a cap:
+
+```yaml
+  - id: S02
+    kind: command
+    command: ./flaky-step.sh        # the work, re-run each iteration
+    loop:
+      until: go test ./...          # optional; success when this exits 0
+      max: 5                        # iteration cap (default 3)
+```
+
+With `until` omitted, the command's own exit code is the loop condition (i.e.
+retry the command until it succeeds, up to `max`).
+
 ## Configuration
 
 After `corvex init`, edit `.corvex/config.yaml`:
