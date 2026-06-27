@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T00:54:20Z"
+updated_at: "2026-06-27T00:56:27Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -83,8 +83,50 @@ completed:
       files_created: []
       files_modified: []
       decisions: []
+    - id: S04
+      title: Validation & cross-objective consistency review
+      summary: |-
+        I'll start by locating the spec and running the build/tests in parallel.Build and tests both pass. Now let me verify the specific implementation details.Good — no "not yet implemented" in any Go source file. Now let me check for the spawn-investigation test.Let me check for a `decisions.md` and run the tests fresh (not cached).All targeted tests pass. Here is the full analysis:
+
+        ---
+
+        ## Analysis
+
+        ### Build & full test suite
+
+        - `go build ./...`: clean, no output.
+        - `go test ./...`: all packages pass (no failures, no skips with tests).
+
+        ### Objective A — `VerdictIndeterminate` (S01/S02)
+
+        - **Constant introduced**: `VerdictIndeterminate ReviewVerdict = "INDETERMINATE"` at `reviewer.go:18`. ✅
+        - **`parseVerdict` defaults to `VerdictIndeterminate`**: `verdict := VerdictIndeterminate` at `reviewer.go:170`; only overwritten when a recognizable line is found. ✅
+        - **Not counted toward escalation**: The `VerdictIndeterminate` branch at `orchestrator.go:546-555` does `continue` before the `categoryCounts[cat]++` / escalation logic. ✅
+        - **Retried as transient**: diagnosis set to `"reviewer produced no parseable verdict on the previous attempt"` and the loop continues. ✅
+        - **Persists → clear error**: `"reviewer never produced a verdict after %d attempts"` at `orchestrator.go:551`. ✅
+        - Tests: `TestRun_IndeterminateVerdictRetriesAndEventuallyFails` and `TestRun_IndeterminateVerdictRetryDiagnosisPassedToWorker` — both pass.
+
+        ### Objective B — Tolerant verdict parsing (S01)
+
+        - `stripMarkup` at `reviewer.go:161-165` trims leading `" *_#>\` + backtick and trailing `" .*_`+backtick, then uppercases. Matches spec's exact character set. ✅
+        - Same `stripMarkup` applied to `CATEGORY:` lines at `reviewer.go:200-203`. ✅
+        - `TestParseVerdict_Tolerant` covers: bold-wrapped, trailing period, blockquote prefix, backtick-wrapped (both PASS and FAIL), and no-verdict-line → Indeterminate. All 9 subtests pass. ✅
+
+        ### Objective C — Honest spawn-investigation (S03)
+
+        - `ActionSpawnInvestigation` now calls `o.runInvestigation(ctx, t, reviewResult.Summary)` at `orchestrator.go:591`. ✅
+        - `runInvestigation` calls `o.provider.Execute` with a prompt built by `buildInvestigationPrompt` that includes task ID/title/description, success criteria, reviewer summary, and asks for root-cause + recommended fix. ✅
+        - The investigation diagnosis is written back to `diagnosis` at `orchestrator.go:592`, feeding the next worker attempt. ✅
+        - An `EventRetry` is emitted with `"spawn-investigation: " + investigationDiagnosis` at `orchestrator.go:593-598`. ✅
+        - No `"not yet implemented"` string anywhere in Go source files. ✅
+        - `TestRun_SpawnInvestigationProducesDiagnosisForNextWorker` verifies the investigation output reaches the second worker prompt (`strings.Contains(prompts[1], "root-cause")`). Passes. ✅
+
+        ### All success criteria met
+      files_created: []
+      files_modified: []
+      decisions: []
 current_state:
     total_tasks: 4
-    completed_tasks: 3
-next_task: S04
+    completed_tasks: 4
+next_task: ""
 next_task_context: ""
