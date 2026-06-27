@@ -1,0 +1,9 @@
+{"ts":"2026-06-27T02:28:30.09593-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-27T02:28:30.096868-03:00","type":"recovery_check"}
+{"ts":"2026-06-27T02:28:30.118052-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-27T02:28:30.119568-03:00","type":"plan_start","message":"Planning tasks..."}
+{"ts":"2026-06-27T02:29:28.467022-03:00","type":"plan_complete"}
+{"ts":"2026-06-27T02:29:28.467751-03:00","type":"dag_resolved"}
+{"ts":"2026-06-27T02:29:28.469482-03:00","type":"task_start","task_id":"S01","message":"Add `--json` flag to the version command"}
+{"ts":"2026-06-27T02:31:14.98905-03:00","type":"review_start","task_id":"S01"}
+{"ts":"2026-06-27T02:32:07.641406-03:00","type":"review_result","task_id":"S01","message":"PASS"}

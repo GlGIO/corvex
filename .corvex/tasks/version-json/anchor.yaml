@@ -1,0 +1,22 @@
+project: ""
+updated_at: "2026-06-27T05:32:07Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Add `--json` flag to the version command
+      summary: Added a `--json` boolean flag to `cmd/version.go` using the existing `addJSONFlag`/`printJSON` helpers already present in `cmd/helpers.go`. When `--json` is set, the command serializes `{"version":"<v>"}` via a typed struct with a `json:"version"` tag and writes indented JSON to stdout; without the flag, the original `fmt.Printf("corvex %s\n", types.Version)` output is preserved byte-for-byte. The existing test was replaced with a table-driven test covering both the human and JSON output paths.
+      files_created: []
+      files_modified:
+        - cmd/version.go
+        - cmd/version_test.go
+      decisions:
+        - Used the existing `addJSONFlag` and `printJSON` helpers rather than inlining `encoding/json` calls directly, matching the pattern established by `inspect.go` and `list.go`.
+        - Changed `Run` to `RunE` to allow returning errors from `printJSON`, consistent with how all other JSON-capable commands are structured.
+        - Declared a package-level `var versionJSON *bool` (same pattern as `inspectJSON`) so the flag pointer is accessible from both `init()` and `runVersion`.
+        - printJSON` uses `json.MarshalIndent` (2-space indent), which satisfies the spec's "using encoding/json" requirement and is consistent with every other `--json` command in the codebase.
+current_state:
+    total_tasks: 2
+    completed_tasks: 1
+next_task: S02
+next_task_context: none
