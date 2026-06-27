@@ -1,0 +1,44 @@
+project: integrity
+updated_at: "2026-06-27T00:27:46Z"
+spec_hash: e2a4ca87ced09a62f9a3f4ee989e6faf4476afbc182b529a200b4824741c66d7
+intent: ""
+completed:
+    - id: S01
+      title: Fail on truncated provider output (no result line)
+      summary: |-
+        I'll review this task by reading the spec, the implementation, and running the tests.Now let me verify the key implementation details against the spec requirements:All checks complete. Here's my analysis:
+
+        **spec.md §Objective A requirements vs. implementation:**
+
+        1. **Track `sawResult` in `ExecuteWithProgress`** — `sawResult = true` is set at line 117 when `raw.Type == "result"`, correctly outside the inner `json.Unmarshal` for `resultLine` fields. ✓
+
+        2. **Error on exit 0 + no result line** — lines 145-147 return the exact error message `"claude cli produced no result line (truncated output?)"` only after confirming `waitErr == nil`. ✓
+
+        3. **Non-zero exit preserves existing behavior** — the `waitErr != nil` branch (lines 138-143) returns the old error before the `!sawResult` check is reached. ✓
+
+        4. **Same logic in `ParseFullOutput`** — `sawResult = true` at line 494 (outside inner unmarshal), guarded by `exitCode == 0 && !sawResult` at line 508. ✓
+
+        5. **Anti-pattern: `sawResult` not inside inner unmarshal** — confirmed, it's set at the outer `raw.Type == "result"` check. ✓
+
+        6. **Anti-pattern: `exitCode != 0` does not get the new error** — `ParseFullOutput` only errors when `exitCode == 0 && !sawResult`. ✓
+
+        7. **Tests cover required paths:**
+           - `TestParseFullOutput_NoResultLine_ReturnsError` — exit 0, no result line → error ✓
+           - `TestParseFullOutput_NoResultLine_NonZeroExitNoNewError` — exit 1, no result line → no new error ✓
+           - `TestExecuteWithProgress_NoResultLine_ReturnsError` — exit 0, no result line → error ✓
+           - `TestParseFullOutput_ValidNDJSON` updated to include a result line → success ✓
+           - `TestParseFullOutput_EmptyOutput` updated to use exitCode=1 to preserve old behavior ✓
+
+        8. **`go build ./...` and `go test ./...`** — both pass with no failures. ✓
+
+        The implementation precisely matches spec.md §Objective A with no gaps or anti-pattern violations.
+      files_created: []
+      files_modified:
+        - internal/provider/claude/claude.go
+        - internal/provider/claude/claude_test.go
+      decisions: []
+current_state:
+    total_tasks: 4
+    completed_tasks: 1
+next_task: S02
+next_task_context: ""

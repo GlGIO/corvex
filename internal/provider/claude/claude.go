@@ -84,6 +84,7 @@ func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRe
 
 	result := &types.ExecuteResult{}
 	var outputParts []string
+	var sawResult bool
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -113,6 +114,7 @@ func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRe
 
 		var raw rawLine
 		if json.Unmarshal(line, &raw) == nil && raw.Type == "result" {
+			sawResult = true
 			var res resultLine
 			if json.Unmarshal(line, &res) == nil {
 				result.TokensIn = res.TotalInputTokens
@@ -138,6 +140,10 @@ func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRe
 			result.ExitCode = exitErr.ExitCode()
 		}
 		return result, fmt.Errorf("claude cli exited with error: %w (stderr: %s)", waitErr, strings.TrimSpace(stderr.String()))
+	}
+
+	if !sawResult {
+		return result, fmt.Errorf("claude cli produced no result line (truncated output?)")
 	}
 
 	return result, nil
@@ -467,6 +473,7 @@ func (c *ClaudeCLI) ParseFullOutput(stdout string, exitCode int, elapsed time.Du
 		DurationMs: elapsed.Milliseconds(),
 	}
 	var outputParts []string
+	var sawResult bool
 
 	for _, line := range strings.Split(stdout, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -484,6 +491,7 @@ func (c *ClaudeCLI) ParseFullOutput(stdout string, exitCode int, elapsed time.Du
 		}
 		var raw rawLine
 		if json.Unmarshal([]byte(trimmed), &raw) == nil && raw.Type == "result" {
+			sawResult = true
 			var res resultLine
 			if json.Unmarshal([]byte(trimmed), &res) == nil {
 				result.TokensIn = res.TotalInputTokens
@@ -497,6 +505,9 @@ func (c *ClaudeCLI) ParseFullOutput(stdout string, exitCode int, elapsed time.Du
 	}
 
 	result.Output = strings.Join(outputParts, "")
+	if exitCode == 0 && !sawResult {
+		return result, fmt.Errorf("claude cli produced no result line (truncated output?)")
+	}
 	return result, nil
 }
 

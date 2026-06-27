@@ -652,6 +652,64 @@ func TestExecuteWithProgress_InvokesCallback(t *testing.T) {
 	}
 }
 
+func TestParseFullOutput_NoResultLine_ReturnsError(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cli := New(cfg)
+
+	// exit 0 but no result line → error
+	stdout := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"partial"}]}}`
+
+	_, err := cli.ParseFullOutput(stdout, 0, time.Second)
+	if err == nil {
+		t.Fatal("expected error when exit 0 and no result line, got nil")
+	}
+	if !strings.Contains(err.Error(), "no result line") {
+		t.Errorf("error %q does not mention 'no result line'", err.Error())
+	}
+}
+
+func TestParseFullOutput_NoResultLine_NonZeroExitNoNewError(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cli := New(cfg)
+
+	// exit non-zero and no result line → existing behavior (no new error)
+	stdout := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"partial"}]}}`
+
+	_, err := cli.ParseFullOutput(stdout, 1, time.Second)
+	if err != nil {
+		t.Fatalf("expected nil error for non-zero exit without result line, got %v", err)
+	}
+}
+
+func TestExecuteWithProgress_NoResultLine_ReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script not available on Windows")
+	}
+
+	cfg := config.Default()
+	cli := New(cfg)
+
+	// emit assistant text but no result line; exit 0
+	canned := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"partial"}]}}`
+
+	cli.cmdRunner = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "printf", "%s\n", canned)
+	}
+
+	_, err := cli.ExecuteWithProgress(context.Background(),
+		types.ExecuteRequest{Prompt: "x", Model: "sonnet"},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected error when exit 0 and no result line, got nil")
+	}
+	if !strings.Contains(err.Error(), "no result line") {
+		t.Errorf("error %q does not mention 'no result line'", err.Error())
+	}
+}
+
 func TestBuildCommand_BasicArgs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
@@ -912,6 +970,7 @@ func TestParseFullOutput_ValidNDJSON(t *testing.T) {
 	stdout := strings.Join([]string{
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]}}`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" World"}]}}`,
+		`{"type":"result","subtype":"success","result":"done","total_cost_usd":0,"total_input_tokens":0,"total_output_tokens":0,"duration_ms":0}`,
 	}, "\n")
 
 	result, err := cli.ParseFullOutput(stdout, 0, 5*time.Second)
@@ -964,7 +1023,8 @@ func TestParseFullOutput_EmptyOutput(t *testing.T) {
 	cfg := config.Default()
 	cli := New(cfg)
 
-	result, err := cli.ParseFullOutput("", 0, time.Second)
+	// exitCode=1: non-zero exit preserves existing behavior (no "no result line" error).
+	result, err := cli.ParseFullOutput("", 1, time.Second)
 	if err != nil {
 		t.Fatalf("ParseFullOutput() error = %v", err)
 	}
@@ -972,8 +1032,8 @@ func TestParseFullOutput_EmptyOutput(t *testing.T) {
 	if result.Output != "" {
 		t.Errorf("Output = %q, want empty", result.Output)
 	}
-	if result.ExitCode != 0 {
-		t.Errorf("ExitCode = %d, want 0", result.ExitCode)
+	if result.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", result.ExitCode)
 	}
 }
 
@@ -987,6 +1047,7 @@ func TestParseFullOutput_MalformedLines(t *testing.T) {
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"valid"}]}}`,
 		`{broken json`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" output"}]}}`,
+		`{"type":"result","subtype":"success","result":"done","total_cost_usd":0,"total_input_tokens":0,"total_output_tokens":0,"duration_ms":0}`,
 	}, "\n")
 
 	result, err := cli.ParseFullOutput(stdout, 0, time.Second)
