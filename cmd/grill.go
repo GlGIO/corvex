@@ -101,6 +101,7 @@ func runGrillLoop(ctx context.Context, griller *orchestrator.Griller, reader *bu
 		switch action {
 		case answerDone:
 			fmt.Printf("\n✓ Stopped early. %d decision(s) recorded, $%.2f spent.\n", answered, totalCost)
+			fmt.Printf("  Next: corvex plan %s\n", project)
 			return nil
 		case answerSkip:
 			if err := appendDecision(decisionsPath, step.Question, "(skipped — leave to planner)"); err != nil {

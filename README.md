@@ -115,6 +115,75 @@ corvex grill my-feature
 | `corvex review [project]` | List pending escalations awaiting human review |
 | `corvex validate <project>` | Run integration validation against the live stack |
 | `corvex list` | List all projects |
+| `corvex doctor` | Validate config + environment before a run (preflight checks) |
+| `corvex recipe <name>` | Compile a declarative recipe into a runnable task DAG (no AI planning) |
+| `corvex version` | Print the corvex version (same as `--version`) |
+| `corvex completion <shell>` | Emit a shell completion script (bash/zsh/fish/powershell) |
+
+### Global flags
+
+Available on every command:
+
+- `--no-color` — disable colored output (also honored via the `NO_COLOR` env var).
+- `-q, --quiet` — with `--plain`, print only failures/errors and the final summary.
+- `--json` — on `list`, `status`, `inspect`, and `doctor`: emit a single
+  machine-readable JSON document instead of human output (great for scripts/CI).
+
+### `corvex run` flags
+
+Beyond `--task`, `--single`, `--dry-run`, `--plain`, `--ab`:
+
+- `-y, --yes` — skip the cost-preview confirmation prompt (CI/scripts; non-TTY
+  runs auto-proceed).
+- `--skip-doctor` — skip the pre-run config checks.
+- `--no-replan` — fail if `spec.md` drifted instead of auto-regenerating tasks.md.
+- `--force` — run on a dirty working tree, discarding uncommitted changes first.
+
+Before running, `corvex run` prints a cost preview (pending task count + the
+configured ceilings) and, on an interactive terminal, asks for confirmation. It
+also runs the `doctor` checks and refuses to start on a failing config.
+
+### Shell completion
+
+```bash
+# zsh (add to ~/.zshrc, or load once)
+source <(corvex completion zsh)
+
+# bash
+source <(corvex completion bash)
+```
+
+The `<project>` argument of `run`, `status`, `logs`, and `reset` completes to
+your real project names.
+
+### Recipes — deterministic pipelines
+
+When you already know the exact pipeline, skip AI planning with a declarative
+recipe at `.corvex/recipes/<name>.yaml`:
+
+```yaml
+name: ship-endpoint
+description: scaffold → implement → review
+stages:
+  - id: S01
+    title: Scaffold the handler
+    type: backend
+    description: create the route skeleton and wiring
+    criteria: [it builds]
+  - id: S02
+    title: Implement the logic
+    type: backend
+    depends_on: [S01]
+  - id: S03
+    title: Review
+    type: review
+    depends_on: [S02]
+```
+
+```bash
+corvex recipe ship-endpoint   # compiles → .corvex/tasks/ship-endpoint/tasks.md
+corvex run ship-endpoint      # executes the fixed DAG (no Planner)
+```
 
 ## Configuration
 
@@ -141,9 +210,15 @@ sandbox:
     - "--dangerously-skip-permissions"
 
 execution:
-  max_retries: 2         # Retry failed tasks
-  auto_commit: true      # Git commit after each task
-  parallel: true         # Run independent tasks in parallel
+  max_retries: 2                 # Retry failed tasks
+  auto_commit: true              # Git commit after each task
+  parallel: true                 # Run independent DAG levels concurrently
+  max_parallel: 4                # Max tasks running at once when parallel (0 → 4)
+  max_cost_usd: 25               # Abort the run past this cumulative LLM spend (0 → no cap)
+  max_cost_per_task_usd: 5       # Abort a task past this spend (0 → no cap)
+  task_warn_minutes: 5           # Warn when a task runs longer than this
+  task_timeout_minutes: 20       # Hard wall-clock ceiling per attempt; cancels a stuck task (0 → off)
+  stream_idle_timeout_seconds: 180 # Cancel an attempt with no provider output for this long (0 → off)
 
 review:
   # Escalate after repeated rejections of the same category (Reviewer emits

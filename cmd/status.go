@@ -164,5 +164,10 @@ func runStatus(_ *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
+	if pending > 0 {
+		fmt.Printf("%d task(s) pending — run: corvex run %s\n", pending, project)
+	} else if len(tasks) > 0 {
+		fmt.Println("All tasks complete.")
+	}
 	return nil
 }

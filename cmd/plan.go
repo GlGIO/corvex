@@ -78,5 +78,6 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving anchor: %w", err)
 	}
 
+	fmt.Printf("Next: corvex run %s\n", project)
 	return nil
 }
