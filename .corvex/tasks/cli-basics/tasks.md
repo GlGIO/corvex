@@ -109,7 +109,7 @@ sensível a maiúsculas. `projectNames` inclui diretório com `spec.md` **OU**
 
 ---
 
-## S04 — "did you mean" para projeto inexistente em `run` ⬜ PENDING
+## S04 — "did you mean" para projeto inexistente em `run` ✅ PASSED
 
 ```yaml
 type: backend

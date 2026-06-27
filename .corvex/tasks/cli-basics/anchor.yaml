@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:22:02Z"
+updated_at: "2026-06-27T03:24:43Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -40,8 +40,17 @@ completed:
         - Levenshtein implemented inline with the Go 1.24 `min` built-in — no new dependencies.
         - Project existence check in `run.go` is placed immediately after `requireCorvexDir` (before worktree check and dry-run branch) so the helpful error fires first regardless of flags.
         - Used `fmt.Errorf("%s", sb.String())` to keep the multi-line error message without importing `errors`.
+    - id: S04
+      title: '"did you mean" para projeto inexistente em `run`'
+      summary: S04 was already implemented as part of S03's changes to `cmd/run.go` (lines 71–85). The "did you mean" error path correctly lists available projects via `projectNames` and appends a suggestion from `suggestProject` only when non-empty. All builds and tests pass with no changes required.
+      files_created: []
+      files_modified: []
+      decisions:
+        - No code changes were needed — the implementation was delivered during S03 when `run.go` was modified to add the project existence check
+        - 'Verified that the anti-pattern conditions are met: "did you mean" is only shown when `suggestProject` returns a non-empty string; success path is untouched'
+        - go build ./...` and `go test ./...` both pass clean
 current_state:
     total_tasks: 4
-    completed_tasks: 3
-next_task: S04
-next_task_context: projectNames` and `suggestProject` are unexported package-level helpers in `cmd/`. Any future command (status, logs, reset) wanting "did you mean?" can call the same two helpers identically to how `runRun` does. The `levenshtein` helper is also unexported in `cmd/`. No changes to public APIs or internal packages.
+    completed_tasks: 4
+next_task: ""
+next_task_context: The `projectNames` and `suggestProject` helpers in `cmd/helpers.go` are ready for any future command (status, logs, reset) that needs the same "did you mean" behavior — call them identically to how `runRun` does. No public API changes were made.
