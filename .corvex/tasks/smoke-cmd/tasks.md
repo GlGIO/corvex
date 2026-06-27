@@ -16,7 +16,7 @@ command: "echo \"hello from command stage\""
 
 ---
 
-## S02 — Build check ⬜ PENDING
+## S02 — Build check ✅ PASSED
 
 ```yaml
 type: general
