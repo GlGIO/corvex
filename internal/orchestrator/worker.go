@@ -27,6 +27,18 @@ func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox) *
 	return &Worker{provider: p, model: model, workDir: workDir, sandbox: sb}
 }
 
+// clone returns a copy of the Worker with its own mutable fields (model,
+// onStream). Parallel execution gives each task its own clone so escalation's
+// model upgrade and the per-task stream callback never race across goroutines.
+func (w *Worker) clone() *Worker {
+	return &Worker{
+		provider: w.provider,
+		model:    w.model,
+		workDir:  w.workDir,
+		sandbox:  w.sandbox,
+	}
+}
+
 // SetOnStream installs a callback that receives streaming events from the
 // provider while a task runs. Pass nil to clear. The callback is invoked
 // synchronously on the provider's goroutine, so it should be cheap (e.g.

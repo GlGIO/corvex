@@ -406,6 +406,98 @@ func TestRun_CostCeilingAbortsImmediately(t *testing.T) {
 	}
 }
 
+// fanOutTasksMD: S01 root, then S02/S03/S04 all depend only on S01 — a single
+// wide level that exercises the parallel scheduler.
+const fanOutTasksMD = `---
+generated_by: test
+dag:
+  S01: []
+  S02: [S01]
+  S03: [S01]
+  S04: [S01]
+---
+
+## S01 — Root ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: []
+` + "```\n" + `
+### O que fazer
+Root.
+
+---
+
+## S02 — A ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+A.
+
+---
+
+## S03 — B ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+B.
+
+---
+
+## S04 — C ⬜ PENDING
+
+` + "```yaml\n" + `type: general
+depends_on: [S01]
+` + "```\n" + `
+### O que fazer
+C.
+`
+
+func TestRun_ParallelExecution(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-parallel"
+	setupProject(t, dir, project, fanOutTasksMD)
+	gitCommitAll(t, dir, "add fan-out tasks")
+
+	events := make(chan Event, 500)
+	go func() { // drain so emit never blocks
+		for range events {
+		}
+	}()
+
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "Good.\nVERDICT: PASS"}, nil
+			}
+			return &types.ExecuteResult{Output: "done" + taskReportBlock, CostUSD: 0.01}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+	cfg.Execution.Parallel = true
+	cfg.Execution.MaxParallel = 3
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("parallel Run() error = %v", err)
+	}
+	close(events)
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	for _, tk := range tasks {
+		if tk.Status != types.StatusPassed {
+			t.Errorf("task %s = %s, want PASSED", tk.ID, tk.Status)
+		}
+	}
+}
+
 func TestRun_MissingHandoffFailsTask(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

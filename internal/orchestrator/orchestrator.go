@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	charmbraceletlog "github.com/charmbracelet/log"
@@ -74,6 +75,40 @@ type Orchestrator struct {
 	force      bool            // mirror of Options.Force
 	ledger     *activity.Ledger
 	runCtx     context.Context // set at the start of Run; lets emit() abort on cancel
+	// mu guards the shared scheduler state (completed/terminal sets,
+	// cumulative cost, anchorState) and serialises tasks.md/anchor.yaml writes
+	// when tasks run in parallel. The expensive LLM calls (worker, reviewer)
+	// run OUTSIDE the lock — only the fast bookkeeping is serialised.
+	mu sync.Mutex
+	// emitMu serialises ledger appends so parallel tasks don't interleave
+	// bytes in activity.jsonl. The events channel send is already goroutine-safe.
+	emitMu sync.Mutex
+}
+
+// setStatus serialises tasks.md rewrites (a whole-file read-modify-write) so
+// concurrent tasks can't clobber each other's status updates.
+func (o *Orchestrator) setStatus(tasksPath, id string, status types.TaskStatus) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return task.UpdateTaskStatus(tasksPath, id, status)
+}
+
+// addCost accumulates an attempt's cost into the per-task and run totals under
+// the lock and returns both updated totals for ceiling checks.
+func (o *Orchestrator) addCost(taskTotal, runTotal *float64, c float64) (taskT, runT float64) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	*taskTotal += c
+	*runTotal += c
+	return *taskTotal, *runTotal
+}
+
+// anchorContext builds the prompt context from the shared anchor under the
+// lock (parallel tasks may be updating it concurrently).
+func (o *Orchestrator) anchorContext(state *types.AnchorState, taskID string) string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return anchor.GenerateContext(*state, taskID)
 }
 
 // New creates an Orchestrator from the given options.
@@ -219,7 +254,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		if tasks[i].Status == types.StatusRunning {
 			charmbraceletlog.Warn("task left RUNNING from a previous run; resetting to PENDING for re-execution", "task", tasks[i].ID)
 			tasks[i].Status = types.StatusPending
-			if err := task.UpdateTaskStatus(tasksPath, tasks[i].ID, types.StatusPending); err != nil {
+			if err := o.setStatus(tasksPath, tasks[i].ID, types.StatusPending); err != nil {
 				charmbraceletlog.Warn("persisting RUNNING→PENDING reset", "task", tasks[i].ID, "err", err)
 			}
 		}
@@ -309,6 +344,98 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 			ready = ready[:1]
 		}
 
+		// Parallel branch: when enabled and not in targeted/single/AB mode, run
+		// the whole ready batch (one DAG level) concurrently. executeTask is
+		// concurrency-safe (per-task worker clone + mutex-guarded state/writes),
+		// so the LLM calls overlap while bookkeeping stays serialised. Results
+		// are processed after the barrier on this single scheduler goroutine.
+		if o.cfg.Execution.Parallel && o.targetTask == "" && !o.singleTask && len(o.abModels) != 2 {
+			o.drainCommands(ctx, tasksPath, tasks, completed)
+			if err := o.waitWhilePaused(ctx, tasksPath, tasks, completed); err != nil {
+				return err
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			type batchResult struct {
+				t   *types.Task
+				err error
+			}
+			results := make([]batchResult, 0, len(ready))
+			var wg sync.WaitGroup
+			var resMu sync.Mutex
+			// Bound concurrency so a wide DAG level doesn't spawn dozens of
+			// expensive provider processes at once.
+			maxParallel := o.cfg.Execution.MaxParallel
+			if maxParallel <= 0 {
+				maxParallel = 4
+			}
+			sem := make(chan struct{}, maxParallel)
+			for _, taskID := range ready {
+				if o.skip[taskID] {
+					if err := o.setStatus(tasksPath, taskID, types.StatusSkipped); err != nil {
+						charmbraceletlog.Warn("updating task status to skipped", "task", taskID, "err", err)
+					}
+					o.mu.Lock()
+					completed[taskID] = true
+					o.mu.Unlock()
+					terminal[taskID] = true
+					o.emit(Event{Type: EventTaskComplete, TaskID: taskID, Status: types.StatusSkipped, Message: "skipped by user"})
+					continue
+				}
+				var t *types.Task
+				for i := range tasks {
+					if tasks[i].ID == taskID {
+						t = &tasks[i]
+						break
+					}
+				}
+				if t == nil {
+					return fmt.Errorf("task %s not found in parsed tasks", taskID)
+				}
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(t *types.Task) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d, &totalCostUSD)
+					resMu.Lock()
+					results = append(results, batchResult{t: t, err: err})
+					resMu.Unlock()
+				}(t)
+			}
+			wg.Wait()
+
+			// Post-barrier: no worker goroutines are running, so the scheduler
+			// state (terminal/failed/skipped) is mutated single-threaded here.
+			for _, r := range results {
+				if r.err == nil {
+					terminal[r.t.ID] = true
+					continue
+				}
+				if isFatal(r.err) || ctx.Err() != nil {
+					return r.err
+				}
+				terminal[r.t.ID] = true
+				failedTasks = append(failedTasks, r.t.ID)
+				failureDetails = append(failureDetails, r.err.Error())
+				charmbraceletlog.Warn("task failed; skipping its dependents and continuing independent branches", "task", r.t.ID, "err", r.err)
+				for _, dep := range d.TransitiveDependents(r.t.ID) {
+					if terminal[dep] {
+						continue
+					}
+					terminal[dep] = true
+					skippedTasks = append(skippedTasks, dep)
+					if statusErr := o.setStatus(tasksPath, dep, types.StatusSkipped); statusErr != nil {
+						charmbraceletlog.Warn("marking dependent skipped", "task", dep, "err", statusErr)
+					}
+					o.emit(Event{Type: EventTaskComplete, TaskID: dep, Status: types.StatusSkipped, Message: fmt.Sprintf("skipped: depends on failed task %s", r.t.ID)})
+				}
+			}
+			continue
+		}
+
 		for _, taskID := range ready {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -320,7 +447,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 			}
 
 			if o.skip[taskID] {
-				if err := task.UpdateTaskStatus(tasksPath, taskID, types.StatusSkipped); err != nil {
+				if err := o.setStatus(tasksPath, taskID, types.StatusSkipped); err != nil {
 					charmbraceletlog.Warn("updating task status to skipped", "task", taskID, "err", err)
 				}
 				completed[taskID] = true
@@ -345,7 +472,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 				}
 				completed[t.ID] = true
 				terminal[t.ID] = true
-				if err := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); err != nil {
+				if err := o.setStatus(tasksPath, t.ID, types.StatusPassed); err != nil {
 					charmbraceletlog.Warn("updating task status to passed after a/b", "task", t.ID, "err", err)
 				}
 			} else if err := o.executeTask(ctx, t, tasksPath, anchorPath, &anchorState, completed, d, &totalCostUSD); err != nil {
@@ -368,7 +495,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 					}
 					terminal[dep] = true
 					skippedTasks = append(skippedTasks, dep)
-					if statusErr := task.UpdateTaskStatus(tasksPath, dep, types.StatusSkipped); statusErr != nil {
+					if statusErr := o.setStatus(tasksPath, dep, types.StatusSkipped); statusErr != nil {
 						charmbraceletlog.Warn("marking dependent skipped", "task", dep, "err", statusErr)
 					}
 					o.emit(Event{
@@ -431,8 +558,9 @@ func (o *Orchestrator) executeTask(
 
 	diagnosis := ""
 	categoryCounts := make(map[string]int)
-	originalWorkerModel := o.worker.model
-	defer func() { o.worker.model = originalWorkerModel }()
+	// Per-task worker clone: escalation upgrades this clone's model and sets
+	// its stream callback, so parallel tasks never race on shared worker state.
+	worker := o.worker.clone()
 
 	var taskTotalCostUSD float64
 
@@ -455,14 +583,14 @@ func (o *Orchestrator) executeTask(
 			charmbraceletlog.Warn("pre-task hook", "task", t.ID, "err", err)
 		}
 
-		if err := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusRunning); err != nil {
+		if err := o.setStatus(tasksPath, t.ID, types.StatusRunning); err != nil {
 			charmbraceletlog.Warn("updating task status to running", "task", t.ID, "err", err)
 		}
 		o.emit(Event{Type: EventTaskStart, TaskID: t.ID, Attempt: attempt})
 
 		contextDocs := loadContextDocs(o.workDir, o.cfg.Context.AlwaysInclude)
 		agentPrompt := loadAgentPrompt(o.workDir, o.cfg.AgentRouting, t.Type)
-		anchorCtx := anchor.GenerateContext(*anchorState, t.ID)
+		anchorCtx := o.anchorContext(anchorState, t.ID)
 
 		// Stream per-chunk events from the worker so the TUI panel can show
 		// what the AI is doing (tool calls, intermediate text) instead of
@@ -470,7 +598,7 @@ func (o *Orchestrator) executeTask(
 		// refreshes the liveness clock the watchdog reads.
 		taskID := t.ID
 		live := newLiveness()
-		o.worker.SetOnStream(func(se types.StreamEvent) {
+		worker.SetOnStream(func(se types.StreamEvent) {
 			live.touch(streamSummary(se))
 			ev := se
 			o.emit(Event{Type: EventTaskStream, TaskID: taskID, Stream: &ev})
@@ -491,10 +619,10 @@ func (o *Orchestrator) executeTask(
 		streaming := isLocalOrNilSandbox(o.sandbox)
 		go o.watchTask(taskCtx, cancelTask, watchDone, taskID, live, timedOut, streaming)
 
-		result, err := o.worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+		result, err := worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, diagnosis)
 		close(watchDone)
 		cancelTask()
-		o.worker.SetOnStream(nil)
+		worker.SetOnStream(nil)
 		if reason := timedOut.reason(); reason != "" && err != nil {
 			// Replace the opaque "context canceled" with the watchdog's
 			// diagnosis so retries and logs say *why* the attempt died.
@@ -505,16 +633,15 @@ func (o *Orchestrator) executeTask(
 			workerCost = result.CostUSD
 		}
 		if err != nil {
-			taskTotalCostUSD += workerCost
-			*totalCostUSD += workerCost
-			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
-				return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap))
+			tt, rt := o.addCost(&taskTotalCostUSD, totalCostUSD, workerCost)
+			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && tt > cap {
+				return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, tt, cap))
 			}
-			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
-				return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap))
+			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && rt > cap {
+				return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", rt, cap))
 			}
 			if attempt == maxRetries {
-				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+				if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 				}
 				hookEnv.Status = "failed"
@@ -534,17 +661,16 @@ func (o *Orchestrator) executeTask(
 			reviewerCost = reviewResult.CostUSD
 		}
 		attemptCost := workerCost + reviewerCost
-		taskTotalCostUSD += attemptCost
-		*totalCostUSD += attemptCost
-		if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
-			return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap))
+		tt, rt := o.addCost(&taskTotalCostUSD, totalCostUSD, attemptCost)
+		if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && tt > cap {
+			return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, tt, cap))
 		}
-		if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
-			return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap))
+		if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && rt > cap {
+			return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", rt, cap))
 		}
 		if reviewErr != nil {
 			if attempt == maxRetries {
-				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+				if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 				}
 				return fmt.Errorf("task %s review failed: %w", t.ID, reviewErr)
@@ -562,10 +688,12 @@ func (o *Orchestrator) executeTask(
 		if reviewResult.Verdict == VerdictPass {
 			// Determine the next task first — it decides whether a HANDOFF is
 			// required (the last task in the DAG has nothing to hand off to).
+			o.mu.Lock()
 			nextCompleted := make(map[string]bool, len(completed)+1)
 			for k, v := range completed {
 				nextCompleted[k] = v
 			}
+			o.mu.Unlock()
 			nextCompleted[t.ID] = true
 
 			nextReady := d.NextReady(nextCompleted)
@@ -584,7 +712,7 @@ func (o *Orchestrator) executeTask(
 			if !hasReport || missingHandoff {
 				diagnosis = "your previous response passed review but was missing the required TASK-REPORT block (with a non-empty HANDOFF). Re-do the task and end your response with the TASK-REPORT block: SUMMARY, DECISIONS, HANDOFF."
 				if attempt == maxRetries {
-					if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+					if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 						charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 					}
 					o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "passed review but never produced a TASK-REPORT/HANDOFF"})
@@ -598,32 +726,30 @@ func (o *Orchestrator) executeTask(
 			o.runHook(ctx, hooks.OnSuccess, hookEnv, t.ID)
 			o.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
 
-			// Write all state files BEFORE the commit so they're captured
-			// in the checkpoint. The previous order (commit first, write
-			// later) left tasks.md/anchor.yaml dirty after every task —
-			// and the next run's `git checkout .` recovery reverted them,
-			// making completed tasks reappear as RUNNING and dropping
-			// `completed` entries from anchor.yaml.
+			// Serialise the git + state writes as one unit. Under parallel
+			// execution, concurrent checkpoints (git add/commit) or interleaved
+			// tasks.md/anchor.yaml writes would corrupt the repo, so the whole
+			// bookkeeping block runs under the lock with raw (non-locking) ops.
+			// Writing state files BEFORE the commit captures them in the
+			// checkpoint — the previous commit-first order left them dirty and
+			// the next run's recovery reverted completed work.
+			o.mu.Lock()
 			if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusPassed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to passed", "task", t.ID, "err", statusErr)
 			}
-
-			// Capture real changed files BEFORE the checkpoint commit while
-			// the working tree still diffs against HEAD. Fall back to the
-			// planned file lists if the git inspection fails.
+			// Capture real changed files while the working tree still diffs
+			// against HEAD. Fall back to the planned lists on git error.
 			realCreated, realModified, changedErr := o.recovery.ChangedFiles()
 			if changedErr != nil {
 				charmbraceletlog.Warn("capturing changed files", "task", t.ID, "err", changedErr)
 				realCreated = t.Files.Create
 				realModified = t.Files.Modify
 			}
-
 			// Prefer the Worker's own summary; fall back to the reviewer's.
 			summary := strings.TrimSpace(report.Summary)
 			if summary == "" {
 				summary = reviewResult.Summary
 			}
-
 			*anchorState = anchor.Update(*anchorState, anchor.TaskResult{
 				Completed: types.CompletedTask{
 					ID:            t.ID,
@@ -640,14 +766,14 @@ func (o *Orchestrator) executeTask(
 			if err := anchor.Save(anchorPath, *anchorState); err != nil {
 				charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)
 			}
-
 			if o.cfg.Execution.AutoCommit {
 				if err := o.recovery.MarkCheckpoint(t.ID); err != nil {
 					charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
 				}
 			}
-
 			completed[t.ID] = true
+			o.mu.Unlock()
+
 			o.emit(Event{Type: EventCheckpoint, TaskID: t.ID})
 			o.emit(Event{
 				Type:       EventTaskComplete,
@@ -663,7 +789,7 @@ func (o *Orchestrator) executeTask(
 
 		if reviewResult.Verdict == VerdictIndeterminate {
 			if attempt == maxRetries {
-				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+				if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 				}
 				return fmt.Errorf("task %s reviewer never produced a verdict after %d attempts", t.ID, maxRetries+1)
@@ -688,10 +814,10 @@ func (o *Orchestrator) executeTask(
 			decision := resolveEscalation(o.cfg.Review, cat, categoryCounts[cat])
 			switch decision.Action {
 			case ActionUpgradeModel:
-				if decision.UpgradeTo != "" && decision.UpgradeTo != o.worker.model {
+				if decision.UpgradeTo != "" && decision.UpgradeTo != worker.model {
 					charmbraceletlog.Info("escalation: upgrading worker model",
-						"task", t.ID, "category", cat, "from", o.worker.model, "to", decision.UpgradeTo)
-					o.worker.model = decision.UpgradeTo
+						"task", t.ID, "category", cat, "from", worker.model, "to", decision.UpgradeTo)
+					worker.model = decision.UpgradeTo
 				}
 			case ActionHumanPrompt:
 				path, err := writeHumanEscalation(o.workDir, o.cfg.Project.Name, t.ID, cat, reviewResult.Summary)
@@ -701,7 +827,7 @@ func (o *Orchestrator) executeTask(
 					charmbraceletlog.Warn("escalation: human review requested",
 						"task", t.ID, "category", cat, "file", path)
 				}
-				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+				if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed after escalation", "task", t.ID, "err", statusErr)
 				}
 				return fatal(fmt.Errorf("task %s escalated to human review (category %s); see %s", t.ID, cat, path))
@@ -718,7 +844,7 @@ func (o *Orchestrator) executeTask(
 		}
 	}
 
-	if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+	if statusErr := o.setStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 		charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 	}
 	return fmt.Errorf("task %s failed review after %d attempts", t.ID, maxRetries+1)
@@ -797,7 +923,10 @@ func (o *Orchestrator) emit(ev Event) {
 	// the TUI but explode disk usage and reading time without adding
 	// debugging signal). Errors are warned, never blocking the run.
 	if o.ledger != nil && ev.Type != EventTaskStream {
-		if err := o.ledger.Append(ledgerEntryFromEvent(ev)); err != nil {
+		o.emitMu.Lock()
+		err := o.ledger.Append(ledgerEntryFromEvent(ev))
+		o.emitMu.Unlock()
+		if err != nil {
 			charmbraceletlog.Warn("activity ledger append", "type", ev.Type, "err", err)
 		}
 	}
@@ -913,7 +1042,7 @@ func (o *Orchestrator) applyCommand(cmd Command, tasksPath string, tasks []types
 		for i := range tasks {
 			if tasks[i].ID == cmd.TaskID && tasks[i].Status == types.StatusFailed {
 				tasks[i].Status = types.StatusPending
-				if err := task.UpdateTaskStatus(tasksPath, cmd.TaskID, types.StatusPending); err != nil {
+				if err := o.setStatus(tasksPath, cmd.TaskID, types.StatusPending); err != nil {
 					charmbraceletlog.Warn("retry: updating task status", "task", cmd.TaskID, "err", err)
 				}
 				delete(completed, cmd.TaskID)

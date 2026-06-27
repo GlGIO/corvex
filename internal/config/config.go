@@ -63,6 +63,9 @@ type ExecutionConfig struct {
 	MaxRetries       int  `yaml:"max_retries"`
 	AutoCommit       bool `yaml:"auto_commit"`
 	Parallel         bool `yaml:"parallel"`
+	// MaxParallel bounds how many tasks in one ready DAG level run
+	// concurrently when Parallel is true. 0 → default of 4.
+	MaxParallel int `yaml:"max_parallel"`
 	InsightThreshold int  `yaml:"insight_threshold"` // min repeated tasks of same unconfigured type to trigger agent suggestion; 0 = disabled
 
 	// MaxCostUSD caps the cumulative LLM spend across all tasks in a single
