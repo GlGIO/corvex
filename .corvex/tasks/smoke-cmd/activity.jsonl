@@ -1,0 +1,5 @@
+{"ts":"2026-06-27T01:26:00.316218-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-27T01:26:00.316726-03:00","type":"recovery_check"}
+{"ts":"2026-06-27T01:26:00.346496-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-27T01:26:00.346802-03:00","type":"dag_resolved"}
+{"ts":"2026-06-27T01:26:00.347425-03:00","type":"task_start","task_id":"S01"}
