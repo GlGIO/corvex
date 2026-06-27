@@ -257,6 +257,23 @@ reading you took and why. Example:
 The reviewer cross-checks spec.md and accepts implementations that match
 it even when the task description points elsewhere. Documenting your
 interpretation up front prevents a wasted retry loop.
+
+### Required: end with a TASK-REPORT block
+
+After your work is complete, end your response with a structured report block
+in EXACTLY this shape (the orchestrator parses it to carry context to the next
+task):
+
+    TASK-REPORT:
+    SUMMARY: <1-3 sentences describing what you implemented>
+    DECISIONS:
+    - <each key decision or tradeoff you made>
+    HANDOFF: <what the next task's engineer needs to know — new interfaces,
+    invariants, gotchas. One short paragraph. If this is the final task with no
+    follow-up, write "none">
+
+The HANDOFF is mandatory unless this is the last task. Omitting the TASK-REPORT
+block will cause your attempt to be rejected and retried.
 `)
 
 	return b.String()

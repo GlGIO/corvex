@@ -46,7 +46,7 @@ So:
 
 ---
 
-## S02 — TASK-REPORT contract + parseTaskReport parser ⬜ PENDING
+## S02 — TASK-REPORT contract + parseTaskReport parser ❌ FAILED
 
 ```yaml
 type: backend

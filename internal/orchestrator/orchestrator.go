@@ -437,6 +437,12 @@ func (o *Orchestrator) executeTask(
 	var taskTotalCostUSD float64
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Respect cancellation between attempts so a cancelled run aborts
+		// promptly instead of burning the remaining retries.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		if attempt > 0 {
 			o.emit(Event{Type: EventRetry, TaskID: t.ID, Attempt: attempt, Message: diagnosis})
 			if _, err := o.recovery.Check(); err != nil {
@@ -554,6 +560,40 @@ func (o *Orchestrator) executeTask(
 		})
 
 		if reviewResult.Verdict == VerdictPass {
+			// Determine the next task first — it decides whether a HANDOFF is
+			// required (the last task in the DAG has nothing to hand off to).
+			nextCompleted := make(map[string]bool, len(completed)+1)
+			for k, v := range completed {
+				nextCompleted[k] = v
+			}
+			nextCompleted[t.ID] = true
+
+			nextReady := d.NextReady(nextCompleted)
+			nextTask := ""
+			if len(nextReady) > 0 {
+				nextTask = nextReady[0]
+			}
+
+			// The Worker must hand off structured context to the next task.
+			// A passing implementation with no TASK-REPORT (or an empty HANDOFF
+			// when a next task exists) is rejected and retried — a silent empty
+			// anchor entry is worse than a retry, because every downstream task
+			// then runs blind. The final task may omit HANDOFF.
+			report, hasReport := parseTaskReport(result.Output)
+			missingHandoff := nextTask != "" && strings.TrimSpace(report.Handoff) == ""
+			if !hasReport || missingHandoff {
+				diagnosis = "your previous response passed review but was missing the required TASK-REPORT block (with a non-empty HANDOFF). Re-do the task and end your response with the TASK-REPORT block: SUMMARY, DECISIONS, HANDOFF."
+				if attempt == maxRetries {
+					if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
+						charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
+					}
+					o.emit(Event{Type: EventTaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "passed review but never produced a TASK-REPORT/HANDOFF"})
+					return fmt.Errorf("task %s passed review but never produced a TASK-REPORT with a HANDOFF after %d attempts", t.ID, maxRetries+1)
+				}
+				o.emit(Event{Type: EventRetry, TaskID: t.ID, Attempt: attempt + 1, Message: "missing TASK-REPORT/HANDOFF"})
+				continue
+			}
+
 			hookEnv.Status = "passed"
 			o.runHook(ctx, hooks.OnSuccess, hookEnv, t.ID)
 			o.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
@@ -568,18 +608,6 @@ func (o *Orchestrator) executeTask(
 				charmbraceletlog.Warn("updating task status to passed", "task", t.ID, "err", statusErr)
 			}
 
-			nextCompleted := make(map[string]bool, len(completed)+1)
-			for k, v := range completed {
-				nextCompleted[k] = v
-			}
-			nextCompleted[t.ID] = true
-
-			nextReady := d.NextReady(nextCompleted)
-			nextTask := ""
-			if len(nextReady) > 0 {
-				nextTask = nextReady[0]
-			}
-
 			// Capture real changed files BEFORE the checkpoint commit while
 			// the working tree still diffs against HEAD. Fall back to the
 			// planned file lists if the git inspection fails.
@@ -590,16 +618,24 @@ func (o *Orchestrator) executeTask(
 				realModified = t.Files.Modify
 			}
 
+			// Prefer the Worker's own summary; fall back to the reviewer's.
+			summary := strings.TrimSpace(report.Summary)
+			if summary == "" {
+				summary = reviewResult.Summary
+			}
+
 			*anchorState = anchor.Update(*anchorState, anchor.TaskResult{
 				Completed: types.CompletedTask{
 					ID:            t.ID,
 					Title:         t.Title,
-					Summary:       reviewResult.Summary,
+					Summary:       summary,
 					FilesCreated:  realCreated,
 					FilesModified: realModified,
+					Decisions:     report.Decisions,
 				},
-				NextTask:   nextTask,
-				TotalTasks: d.Size(),
+				NextTask:        nextTask,
+				NextTaskContext: report.Handoff,
+				TotalTasks:      d.Size(),
 			})
 			if err := anchor.Save(anchorPath, *anchorState); err != nil {
 				charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)

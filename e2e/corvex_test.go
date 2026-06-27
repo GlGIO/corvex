@@ -41,7 +41,7 @@ type mockProvider struct{}
 
 func (m *mockProvider) Execute(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
 	return &types.ExecuteResult{
-		Output:     "All criteria verified successfully.\n\nVERDICT: PASS",
+		Output:     "All criteria verified successfully.\n\nTASK-REPORT:\nSUMMARY: implemented and verified.\nDECISIONS:\n- straightforward approach\nHANDOFF: ready for the next task.\n\nVERDICT: PASS",
 		ExitCode:   0,
 		TokensIn:   100,
 		TokensOut:  50,

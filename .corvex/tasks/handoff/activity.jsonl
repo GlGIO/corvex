@@ -20,3 +20,6 @@
 {"ts":"2026-06-26T22:38:23.953925-03:00","type":"task_start","task_id":"S01"}
 {"ts":"2026-06-26T22:40:33.319154-03:00","type":"review_start","task_id":"S01"}
 {"ts":"2026-06-26T22:42:07.693762-03:00","type":"review_result","task_id":"S01","message":"PASS"}
+{"ts":"2026-06-26T22:51:01.107233-03:00","type":"task_start","task_id":"S02","attempt":2}
+{"ts":"2026-06-26T22:51:01.109048-03:00","type":"task_complete","task_id":"S02","status":"FAILED"}
+{"ts":"2026-06-26T22:51:01.109305-03:00","type":"sandbox_cleanup"}

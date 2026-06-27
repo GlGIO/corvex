@@ -12,10 +12,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/giovannialves/corvex/internal/anchor"
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
+
+// taskReportBlock is appended to mock Worker outputs so they satisfy the
+// TASK-REPORT/HANDOFF contract enforced by executeTask (CH-03).
+const taskReportBlock = "\n\nTASK-REPORT:\nSUMMARY: implemented the task.\nDECISIONS:\n- took the straightforward approach\nHANDOFF: state is ready for the next task"
 
 type mockProvider struct {
 	mu        sync.Mutex
@@ -288,7 +293,7 @@ func TestRun_DependencyFailureSkipsDependentsContinuesIndependent(t *testing.T) 
 				}
 				return &types.ExecuteResult{Output: "Looks good.\nVERDICT: PASS"}, nil
 			}
-			return &types.ExecuteResult{Output: "task completed"}, nil
+			return &types.ExecuteResult{Output: "task completed" + taskReportBlock}, nil
 		},
 	}
 
@@ -368,7 +373,7 @@ func TestRun_CostCeilingAbortsImmediately(t *testing.T) {
 				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
 			}
 			// Worker burns more than the ceiling on the very first task.
-			return &types.ExecuteResult{Output: "done", CostUSD: 10}, nil
+			return &types.ExecuteResult{Output: "done" + taskReportBlock, CostUSD: 10}, nil
 		},
 	}
 
@@ -401,6 +406,94 @@ func TestRun_CostCeilingAbortsImmediately(t *testing.T) {
 	}
 }
 
+func TestRun_MissingHandoffFailsTask(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-handoff-missing"
+	setupProject(t, dir, project, testTasksMD) // S01 → S02
+	gitCommitAll(t, dir, "add tasks")
+
+	events := make(chan Event, 200)
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
+			}
+			// Worker passes review but never emits a TASK-REPORT/HANDOFF.
+			return &types.ExecuteResult{Output: "I finished the task."}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+	err := orch.Run(context.Background(), project)
+	close(events)
+
+	if err == nil {
+		t.Fatal("expected failure when the worker never emits a TASK-REPORT, got nil")
+	}
+	if !strings.Contains(err.Error(), "TASK-REPORT") {
+		t.Errorf("error %q should mention the missing TASK-REPORT", err)
+	}
+
+	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
+	for _, tk := range tasks {
+		if tk.ID == "S01" && tk.Status != types.StatusFailed {
+			t.Errorf("S01 = %s, want FAILED (no handoff)", tk.Status)
+		}
+	}
+}
+
+func TestRun_HandoffPopulatesAnchor(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-handoff-anchor"
+	setupProject(t, dir, project, testTasksMD)
+	gitCommitAll(t, dir, "add tasks")
+
+	events := make(chan Event, 200)
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "Good.\nVERDICT: PASS"}, nil
+			}
+			return &types.ExecuteResult{Output: "TASK-REPORT:\nSUMMARY: built it.\nDECISIONS:\n- chose approach A\nHANDOFF: call NewThing() to reuse this."}, nil
+		},
+	}
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	state, err := anchor.Load(filepath.Join(dir, ".corvex", "tasks", project, "anchor.yaml"))
+	if err != nil {
+		t.Fatalf("loading anchor: %v", err)
+	}
+	if len(state.Completed) == 0 {
+		t.Fatal("anchor has no completed tasks")
+	}
+	first := state.Completed[0]
+	if first.Summary != "built it." {
+		t.Errorf("Summary = %q, want the worker's report summary", first.Summary)
+	}
+	if len(first.Decisions) == 0 || first.Decisions[0] != "chose approach A" {
+		t.Errorf("Decisions = %v, want the report's decisions", first.Decisions)
+	}
+	// After S01 the next task is S02, so its handoff context must be recorded.
+	if !strings.Contains(state.NextTaskContext, "NewThing") {
+		t.Errorf("NextTaskContext = %q, want the worker's HANDOFF", state.NextTaskContext)
+	}
+}
+
 func TestRun_FullFlow(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
@@ -414,7 +507,7 @@ func TestRun_FullFlow(t *testing.T) {
 			if strings.Contains(req.Prompt, "code reviewer") {
 				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
 			}
-			return &types.ExecuteResult{Output: "task completed"}, nil
+			return &types.ExecuteResult{Output: "task completed" + taskReportBlock}, nil
 		},
 	}
 
@@ -556,7 +649,7 @@ func TestRun_ResetsRunningTaskOnResume(t *testing.T) {
 			if strings.Contains(req.Prompt, "code reviewer") {
 				return &types.ExecuteResult{Output: "All good.\nVERDICT: PASS"}, nil
 			}
-			return &types.ExecuteResult{Output: "task completed"}, nil
+			return &types.ExecuteResult{Output: "task completed" + taskReportBlock}, nil
 		},
 	}
 	cfg := config.Default()
@@ -656,7 +749,7 @@ func TestRun_PlanningNeeded(t *testing.T) {
 			if strings.Contains(req.Prompt, "project planner") {
 				return &types.ExecuteResult{Output: allPassedTasksMD}, nil
 			}
-			return &types.ExecuteResult{Output: "done"}, nil
+			return &types.ExecuteResult{Output: "done" + taskReportBlock}, nil
 		},
 	}
 
@@ -759,7 +852,7 @@ func TestRun_EventsEmitted(t *testing.T) {
 			if strings.Contains(req.Prompt, "code reviewer") {
 				return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
 			}
-			return &types.ExecuteResult{Output: "done"}, nil
+			return &types.ExecuteResult{Output: "done" + taskReportBlock}, nil
 		},
 	}
 
@@ -1030,7 +1123,7 @@ func TestRun_SandboxCleanupOnCancel(t *testing.T) {
 				return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
 			}
 			cancel()
-			return &types.ExecuteResult{Output: "done"}, nil
+			return &types.ExecuteResult{Output: "done" + taskReportBlock}, nil
 		},
 	}
 
@@ -1181,7 +1274,7 @@ func TestRun_IndeterminateVerdictRetriesAndEventuallyFails(t *testing.T) {
 				// return empty output — no verdict line → VerdictIndeterminate
 				return &types.ExecuteResult{Output: "I looked at the code."}, nil
 			}
-			return &types.ExecuteResult{Output: "task done"}, nil
+			return &types.ExecuteResult{Output: "task done" + taskReportBlock}, nil
 		},
 	}
 
@@ -1227,7 +1320,7 @@ func TestRun_IndeterminateVerdictRetryDiagnosisPassedToWorker(t *testing.T) {
 			mu.Lock()
 			workerPrompts = append(workerPrompts, req.Prompt)
 			mu.Unlock()
-			return &types.ExecuteResult{Output: "task done"}, nil
+			return &types.ExecuteResult{Output: "task done" + taskReportBlock}, nil
 		},
 	}
 
@@ -1300,7 +1393,7 @@ func TestRun_SpawnInvestigationProducesDiagnosisForNextWorker(t *testing.T) {
 			mu.Lock()
 			workerPrompts = append(workerPrompts, req.Prompt)
 			mu.Unlock()
-			return &types.ExecuteResult{Output: "task done"}, nil
+			return &types.ExecuteResult{Output: "task done" + taskReportBlock}, nil
 		},
 	}
 
