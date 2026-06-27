@@ -174,6 +174,9 @@ var authEnvPrefixes = []string{
 	"AWS_PROFILE",
 	"OPENAI_",
 	"CORVEX_",
+	// Azure CLI / Azure DevOps — lets skills like `az` authenticate inside a
+	// container sandbox (e.g. AZURE_DEVOPS_EXT_PAT, AZURE_TENANT_ID).
+	"AZURE_",
 }
 
 func collectAuthEnv() map[string]string {

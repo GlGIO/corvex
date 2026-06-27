@@ -501,6 +501,7 @@ func TestCollectAuthEnv(t *testing.T) {
 	t.Setenv("AWS_PROFILE", "dev")
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	t.Setenv("CORVEX_TASK", "S01")
+	t.Setenv("AZURE_DEVOPS_EXT_PAT", "pat-test")
 	t.Setenv("UNRELATED_VAR", "should-not-appear")
 
 	env := collectAuthEnv()
@@ -516,6 +517,7 @@ func TestCollectAuthEnv(t *testing.T) {
 		"AWS_PROFILE":            "dev",
 		"OPENAI_API_KEY":         "sk-test",
 		"CORVEX_TASK":            "S01",
+		"AZURE_DEVOPS_EXT_PAT":   "pat-test",
 	}
 	for k, v := range expected {
 		if env[k] != v {
