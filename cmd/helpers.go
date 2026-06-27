@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,4 +202,24 @@ func statusEmoji(s types.TaskStatus) string {
 	default:
 		return "?"
 	}
+}
+
+// addJSONFlag registers a --json boolean flag on cmd and returns a pointer to
+// the flag value. Commands check *jsonFlag before printing human output and
+// take an early-return JSON branch instead.
+func addJSONFlag(cmd *cobra.Command) *bool {
+	var b bool
+	cmd.Flags().BoolVar(&b, "json", false, "print machine-readable JSON instead of formatted output")
+	return &b
+}
+
+// printJSON marshals v as indented JSON and writes it to w followed by a
+// newline. Human/log output must be suppressed before calling this.
+func printJSON(w io.Writer, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshalling JSON: %w", err)
+	}
+	_, err = fmt.Fprintf(w, "%s\n", data)
+	return err
 }

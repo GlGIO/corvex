@@ -1,0 +1,9 @@
+{"ts":"2026-06-27T00:43:42.030433-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-27T00:43:42.030838-03:00","type":"recovery_check"}
+{"ts":"2026-06-27T00:43:42.049223-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-27T00:43:42.049481-03:00","type":"plan_start","message":"Planning tasks..."}
+{"ts":"2026-06-27T00:46:44.844461-03:00","type":"plan_complete"}
+{"ts":"2026-06-27T00:46:44.845191-03:00","type":"dag_resolved"}
+{"ts":"2026-06-27T00:46:44.846568-03:00","type":"task_start","task_id":"S01","message":"Shared JSON output plumbing + flag helper"}
+{"ts":"2026-06-27T00:48:41.420301-03:00","type":"review_start","task_id":"S01"}
+{"ts":"2026-06-27T00:50:31.729153-03:00","type":"review_result","task_id":"S01","message":"PASS"}

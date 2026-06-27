@@ -1,0 +1,21 @@
+project: ""
+updated_at: "2026-06-27T03:50:31Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Shared JSON output plumbing + flag helper
+      summary: 'Added two shared helpers to `cmd/helpers.go`: `addJSONFlag(cmd *cobra.Command) *bool` which registers a `--json` flag on any cobra command and returns a pointer to the value, and `printJSON(w io.Writer, v any) error` which marshals a value as `json.MarshalIndent` with `"  "` indent and writes it with a trailing newline. Added table-driven tests for `printJSON` in `helpers_test.go` verifying valid JSON output, trailing newline, and expected field presence.'
+      files_created: []
+      files_modified:
+        - cmd/helpers.go
+        - cmd/helpers_test.go
+      decisions:
+        - Used `cmd.Flags().BoolVar` with a function-local `bool` variable (returned as `*bool`) rather than package-level vars, so each command that calls `addJSONFlag` owns its own flag storage — matches the pattern in `inspect.go` but avoids global state.
+        - printJSON` takes `io.Writer` rather than hardcoding `os.Stdout` so commands can pass any writer (supports testability without pipe tricks).
+        - 'Suppression mechanism documented via code comment: commands check `*jsonFlag` at the top of `RunE` and take an early-return JSON branch (same pattern `inspect.go` already uses for its inline `inspectJSON` flag). No new abstraction needed since commands write to `fmt.Printf`/`fmt.Fprintf` directly with no logger/color middleware to hook into.'
+current_state:
+    total_tasks: 6
+    completed_tasks: 1
+next_task: S02
+next_task_context: S02–S05 each call `addJSONFlag` in their `init()` (storing the returned `*bool` in a package-level var e.g. `var listJSON *bool`), then at the top of their `RunE` check `if *listJSON { return printJSON(os.Stdout, ...) }` and return early — suppressing all human output. `printJSON` accepts any `io.Writer`; pass `os.Stdout` from commands. The helper is in `cmd/helpers.go` (package `cmd`), so all command files can use it directly with no import.
