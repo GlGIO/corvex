@@ -12,11 +12,12 @@ import (
 )
 
 var resetCmd = &cobra.Command{
-	Use:   "reset <project> <task>",
-	Short: "Reset a task to PENDING status",
-	Long:  "Mark a specific task as PENDING so it can be re-executed.",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runReset,
+	Use:               "reset <project> <task>",
+	Short:             "Reset a task to PENDING status",
+	Long:              "Mark a specific task as PENDING so it can be re-executed.",
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeProjectArg,
+	RunE:              runReset,
 }
 
 func init() {

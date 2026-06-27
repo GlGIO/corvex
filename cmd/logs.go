@@ -12,11 +12,12 @@ import (
 )
 
 var logsCmd = &cobra.Command{
-	Use:   "logs <project> [task]",
-	Short: "Show task details and completion info",
-	Long:  "Display task description, criteria, files, and completion summary from anchor.",
-	Args:  cobra.RangeArgs(1, 2),
-	RunE:  runLogs,
+	Use:               "logs <project> [task]",
+	Short:             "Show task details and completion info",
+	Long:              "Display task description, criteria, files, and completion summary from anchor.",
+	Args:              cobra.RangeArgs(1, 2),
+	ValidArgsFunction: completeProjectArg,
+	RunE:              runLogs,
 }
 
 func init() {

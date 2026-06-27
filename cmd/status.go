@@ -13,11 +13,12 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status <project>",
-	Short: "Show DAG status and progress",
-	Long:  "Display the task DAG with current status, completion, and dependencies.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runStatus,
+	Use:               "status <project>",
+	Short:             "Show DAG status and progress",
+	Long:              "Display the task DAG with current status, completion, and dependencies.",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectArg,
+	RunE:              runStatus,
 }
 
 func init() {

@@ -35,11 +35,12 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run <project>",
-	Short: "Execute pending tasks for a project",
-	Long:  "Run the orchestration loop: DAG resolve → Worker → Reviewer → checkpoint → next.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRun,
+	Use:               "run <project>",
+	Short:             "Execute pending tasks for a project",
+	Long:              "Run the orchestration loop: DAG resolve → Worker → Reviewer → checkpoint → next.",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectArg,
+	RunE:              runRun,
 }
 
 func init() {

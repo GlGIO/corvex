@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-06-27T03:38:12Z"
+updated_at: "2026-06-27T03:40:24Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -27,8 +27,23 @@ completed:
         - No code changes were needed — cobra provides completion by default and it was not disabled.
         - Added the README section just before `## License` as a natural placement at the end of user-facing content.
         - Used `source <(...)` pattern for bash/zsh and shell-specific idioms for fish/powershell.
+    - id: S05
+      title: Completion dinâmica do argumento <project>
+      summary: Added dynamic shell completion for the `<project>` argument of `run`, `status`, `logs`, and `reset` commands. A single `completeProjectArg` function was added to `cmd/helpers.go`; it returns `projectNames(workDir)` with `ShellCompDirectiveNoFileComp` when completing the first positional arg, and returns nothing for subsequent args.
+      files_created: []
+      files_modified:
+        - cmd/helpers.go
+        - cmd/logs.go
+        - cmd/reset.go
+        - cmd/run.go
+        - cmd/status.go
+      decisions:
+        - Added `completeProjectArg` to `cmd/helpers.go` (not inline per command) to avoid duplicating logic across four files, consistent with the existing pattern of shared helpers there.
+        - Added `"github.com/spf13/cobra"` import to `helpers.go` — it was not previously imported there, but the function requires `cobra.ShellCompDirective` and `cobra.ShellCompDirectiveNoFileComp`.
+        - The function signature takes `_ string` for `toComplete` because `projectNames` returns the full list; cobra's built-in prefix filtering handles the narrowing automatically.
+        - Returns `nil, cobra.ShellCompDirectiveNoFileComp` (not `ShellCompDirectiveDefault`) on `loadConfig` error, so a broken config never falls back to file completion.
 current_state:
     total_tasks: 6
-    completed_tasks: 2
+    completed_tasks: 3
 next_task: S02
-next_task_context: none
+next_task_context: 'completeProjectArg` in `cmd/helpers.go` is the canonical completion helper for first-positional-arg project names. Any future command that takes `<project>` as its first arg should register `ValidArgsFunction: completeProjectArg` in its `cobra.Command` struct — no other changes needed.'

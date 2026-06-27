@@ -169,7 +169,7 @@ garantir que está habilitado. O heading no README deve ser exatamente
 
 ---
 
-## S05 — Completion dinâmica do argumento <project> ⬜ PENDING
+## S05 — Completion dinâmica do argumento <project> ✅ PASSED
 
 ```yaml
 type: backend

@@ -8,6 +8,7 @@ import (
 
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/types"
+	"github.com/spf13/cobra"
 )
 
 func loadConfig() (*config.Config, string, error) {
@@ -72,6 +73,20 @@ func findProjectWorktree(workDir, project string) string {
 		return ""
 	}
 	return wt
+}
+
+// completeProjectArg is the ValidArgsFunction for commands whose first positional
+// argument is <project>. It returns project names only when completing the first
+// arg; subsequent args (e.g. <task> in reset/logs) receive no completion.
+func completeProjectArg(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	_, workDir, err := loadConfig()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return projectNames(workDir), cobra.ShellCompDirectiveNoFileComp
 }
 
 func requireCorvexDir(workDir string) error {
