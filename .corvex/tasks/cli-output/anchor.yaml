@@ -1,0 +1,24 @@
+project: ""
+updated_at: "2026-06-27T03:36:53Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Renderer plain limpo para eventos do orchestrator
+      summary: Added a clean `PlainRenderer` in `cmd/plain_renderer.go` that replaces the old noisy `drainEvents` logger. The renderer maps each orchestrator event type to a scannable one-liner (e.g. `▶ S01  title`, `✓ S01  passed · 1m12s · $0.41`, `✗ S01  failed · msg`, `↻ S01  retry 1`, `⏭ S04  skipped (…)`, `■ planning…`, `✓ plan ready (N tasks)`, `✓ done`). A one-line change to the orchestrator was also made so `EventTaskStart` carries the task title in `Message`.
+      files_created:
+        - cmd/plain_renderer.go
+      files_modified:
+        - cmd/run.go
+        - internal/orchestrator/orchestrator.go
+      decisions:
+        - 'Added `Message: t.Title` to the `EventTaskStart` emission in `orchestrator/orchestrator.go` (line 589). This is backward-compatible because the TUI model ignores `Message` for that event type; it populates titles from the pre-loaded DAG.'
+        - noColor bool` on `PlainRenderer` controls both glyph selection (Unicode vs ASCII) AND whether lipgloss styles are applied. It is computed in `runRun` from `--no-color` flag, `NO_COLOR` env, and `!isInteractive()` — so piped/non-TTY output is always safe ASCII.
+        - Removed the old `drainEvents` function and its `charmbracelet/log` import from `run.go` entirely. The two noisy `log.Info("running"/"completed")` wrapper lines were also removed; the orchestrator events (`EventPlanStart`, `EventDone`) cover that context.
+        - EventPlanComplete` is silently ignored (no output) since `EventDAGResolved` follows immediately and carries the task count needed for `✓ plan ready (N tasks)`.
+        - The renderer writes to an injected `io.Writer` (not hardcoded `os.Stdout`) so S03's tests can capture output via a `bytes.Buffer` without ANSI codes when `noColor=true`.
+current_state:
+    total_tasks: 6
+    completed_tasks: 1
+next_task: S02
+next_task_context: 'S02 (quiet flag) should add a `quiet bool` field to `PlainRenderer` and a constructor parameter (or a setter). In `render()`, suppress non-error/non-final events when `quiet == true`; the events to always emit in quiet mode are `EventTaskComplete` (failed), `EventError`, and `EventDone`. The `noColor` computation already lives in `runRun`; S02 should read the `--quiet` flag there the same way. S03 tests should create a `PlainRenderer` with `noColor: true` and inject a `bytes.Buffer` — the output will be deterministic ASCII with no ANSI sequences.'

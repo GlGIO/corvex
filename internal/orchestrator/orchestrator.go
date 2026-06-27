@@ -586,7 +586,7 @@ func (o *Orchestrator) executeTask(
 		if err := o.setStatus(tasksPath, t.ID, types.StatusRunning); err != nil {
 			charmbraceletlog.Warn("updating task status to running", "task", t.ID, "err", err)
 		}
-		o.emit(Event{Type: EventTaskStart, TaskID: t.ID, Attempt: attempt})
+		o.emit(Event{Type: EventTaskStart, TaskID: t.ID, Attempt: attempt, Message: t.Title})
 
 		contextDocs := loadContextDocs(o.workDir, o.cfg.Context.AlwaysInclude)
 		agentPrompt := loadAgentPrompt(o.workDir, o.cfg.AgentRouting, t.Type)

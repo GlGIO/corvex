@@ -11,7 +11,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/dag"
 	"github.com/giovannialves/corvex/internal/orchestrator"
@@ -146,14 +145,14 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return runWithTUI(ctx, orc, events, commands, cancel, project, workDir)
 	}
 
-	go drainEvents(events)
+	noColor, _ := cmd.Flags().GetBool("no-color")
+	noColor = noColor || os.Getenv("NO_COLOR") != "" || !isInteractive()
+	renderer := NewPlainRenderer(os.Stdout, noColor)
+	go renderer.Drain(events)
 
-	log.Info("running", "project", project)
 	if err := orc.Run(ctx, project); err != nil {
 		return fmt.Errorf("run failed: %w", err)
 	}
-
-	log.Info("completed", "project", project)
 
 	if flagValidate {
 		if !validateConfigured(cfg.Validate) {
@@ -288,45 +287,3 @@ func dryRun(tasksPath, project string) error {
 	return nil
 }
 
-func drainEvents(events <-chan orchestrator.Event) {
-	for ev := range events {
-		switch ev.Type {
-		case orchestrator.EventTaskStart:
-			log.Info("task started", "task", ev.TaskID, "attempt", ev.Attempt)
-		case orchestrator.EventTaskComplete:
-			if ev.Status == types.StatusPassed {
-				log.Info("task passed", "task", ev.TaskID, "cost", fmt.Sprintf("$%.2f", ev.CostUSD))
-			} else {
-				log.Warn("task failed", "task", ev.TaskID, "message", ev.Message)
-			}
-		case orchestrator.EventReviewStart:
-			log.Info("reviewing", "task", ev.TaskID)
-		case orchestrator.EventReviewResult:
-			log.Info("review result", "task", ev.TaskID, "verdict", ev.Message)
-		case orchestrator.EventCheckpoint:
-			log.Info("checkpoint", "task", ev.TaskID)
-		case orchestrator.EventRetry:
-			log.Warn("retrying", "task", ev.TaskID, "attempt", ev.Attempt)
-		case orchestrator.EventPlanStart:
-			log.Info("planning started")
-		case orchestrator.EventPlanComplete:
-			log.Info("planning completed")
-		case orchestrator.EventDAGResolved:
-			log.Info("DAG resolved", "tasks", ev.Total)
-		case orchestrator.EventDone:
-			log.Info("all tasks completed")
-		case orchestrator.EventSandboxPrepare:
-			log.Info("sandbox preparing")
-		case orchestrator.EventSandboxCleanup:
-			log.Info("sandbox cleanup")
-		case orchestrator.EventInsight:
-			if ev.Insight != nil {
-				fmt.Printf("\n✨ Insight: %d tasks of type %q completed without a dedicated agent.\n", ev.Insight.Count, ev.Insight.TaskType)
-				fmt.Printf("   A suggested agent prompt was saved to: .corvex/insights/%s-agent-suggestion.md\n", ev.Insight.TaskType)
-				fmt.Printf("   To activate it: mv .corvex/insights/%s-agent-suggestion.md %s\n\n", ev.Insight.TaskType, ev.Insight.SuggestedPath)
-			}
-		case orchestrator.EventError:
-			log.Error("error", "message", ev.Message)
-		}
-	}
-}

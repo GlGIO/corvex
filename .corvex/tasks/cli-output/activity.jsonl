@@ -1,0 +1,10 @@
+{"ts":"2026-06-27T00:25:11.351997-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-27T00:25:11.352234-03:00","type":"recovery_check"}
+{"ts":"2026-06-27T00:25:11.37152-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-27T00:25:11.371671-03:00","type":"plan_start","message":"Planning tasks..."}
+{"ts":"2026-06-27T00:26:57.807317-03:00","type":"plan_complete"}
+{"ts":"2026-06-27T00:26:57.814277-03:00","type":"dag_resolved"}
+{"ts":"2026-06-27T00:26:57.838036-03:00","type":"task_start","task_id":"S01"}
+{"ts":"2026-06-27T00:31:57.846305-03:00","type":"task_warn","task_id":"S01","message":"task running \u003e 5m0s — consider pausing if stuck"}
+{"ts":"2026-06-27T00:34:07.856147-03:00","type":"review_start","task_id":"S01"}
+{"ts":"2026-06-27T00:36:53.461162-03:00","type":"review_result","task_id":"S01","message":"PASS"}
