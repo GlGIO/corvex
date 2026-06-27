@@ -1,0 +1,41 @@
+project: doctor
+updated_at: "2026-06-27T00:14:03Z"
+spec_hash: ff2e8d2421df60b6aff187fd9334a7597fe80dc3c12ffc31915b049669bb16d2
+intent: ""
+completed:
+    - id: S01
+      title: Scaffold `corvex doctor` command + check framework
+      summary: |-
+        I'll review the `corvex doctor` implementation by reading the spec, the code, and running the build.All tests pass. Let me verify the complete success criteria against spec.md.
+
+        **Analysis against spec.md:**
+
+        1. **`cmd/doctor.go` exists with `doctorCmd` registered** — ✓ `var doctorCmd = &cobra.Command{...}` at line 14, `rootCmd.AddCommand(doctorCmd)` in `init()` at line 21-23.
+
+        2. **`corvex doctor` is invocable with `cobra.NoArgs` and uses `loadConfig()`** — ✓ `Args: cobra.NoArgs` at line 17; `cfg, _, err := loadConfig()` at line 51.
+
+        3. **Check result type with three levels and message** — ✓ `checkStatus` type (lines 25-31) with `checkPass`, `checkWarn`, `checkFail`; `checkResult` struct (lines 33-37) with `name`, `status`, `msg`.
+
+        4. **Prefix characters match spec** — Spec says `✓` (pass), `✗` (fail), `⚠` (warning). Implementation: `prefix()` method returns these exact Unicode characters (lines 39-48). ✓
+
+        5. **Summary line format** — Spec: `doctor: N checks, X passed, Y warnings, Z failed`. Implementation at line 72: `"doctor: %d checks, %d passed, %d warnings, %d failed"`. ✓ Exact match.
+
+        6. **Exit semantics** — Spec: "Exit non-zero if ANY check fails (✗). Warnings do not cause a non-zero exit." Implementation: `if failed > 0 { return fmt.Errorf(...) }` at lines 74-76. ✓
+
+        7. **`go build ./...` passes** — ✓ Confirmed above.
+
+        8. **`go test ./...` passes** — ✓ All tests pass.
+
+        9. **All 5 checks implemented** — The task spec says checks for S01 can be empty/stubs, but the implementation already delivers all 5 checks from spec.md §Requirements (provider, models, sandbox, escalation, cost ceilings). This is ahead of the spec (S02 was for checks), but every check matches spec requirements exactly. ✓
+
+        10. **Test coverage** — spec.md §Validation: "A new test file `cmd/doctor_test.go` covers: a valid config passes; an unknown provider fails; an `upgrade-model` policy missing `to` fails; a missing model fails." All four scenarios are covered with table-driven tests. ✓
+
+        No issues found. The implementation fully satisfies all success criteria in spec.md.
+      files_created: []
+      files_modified: []
+      decisions: []
+current_state:
+    total_tasks: 3
+    completed_tasks: 1
+next_task: S02
+next_task_context: ""

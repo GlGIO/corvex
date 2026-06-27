@@ -1,0 +1,7 @@
+{"ts":"2026-06-26T21:10:13.713658-03:00","type":"sandbox_prepare"}
+{"ts":"2026-06-26T21:10:13.714502-03:00","type":"recovery_check"}
+{"ts":"2026-06-26T21:10:13.735143-03:00","type":"recovery_result","message":"working tree clean"}
+{"ts":"2026-06-26T21:10:13.736171-03:00","type":"dag_resolved"}
+{"ts":"2026-06-26T21:10:13.736864-03:00","type":"task_start","task_id":"S01"}
+{"ts":"2026-06-26T21:13:29.515163-03:00","type":"review_start","task_id":"S01"}
+{"ts":"2026-06-26T21:14:03.958619-03:00","type":"review_result","task_id":"S01","message":"PASS"}
