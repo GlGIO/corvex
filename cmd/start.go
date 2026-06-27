@@ -366,6 +366,16 @@ func setupWorktree(gitRoot, wtPath, feature, baseBranch string) error {
 
 	corvexSrc := filepath.Join(gitRoot, ".corvex")
 	corvexDst := filepath.Join(wtPath, ".corvex")
+
+	// If `.corvex` already exists in the worktree, don't symlink over it. This
+	// happens when `.corvex` is tracked in the repo (the checkout materialises
+	// it) or when a previous run left a symlink. The worktree's own `.corvex`
+	// is usable as-is; forcing a symlink would fail with "file exists".
+	if _, err := os.Lstat(corvexDst); err == nil {
+		fmt.Printf("  Using the worktree's existing .corvex (it is tracked in this repo)\n")
+		return nil
+	}
+
 	if err := os.Symlink(corvexSrc, corvexDst); err != nil {
 		return fmt.Errorf("creating .corvex symlink: %w", err)
 	}
