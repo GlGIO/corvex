@@ -43,7 +43,7 @@ appear once), a leaf node (empty result), and an unknown id (empty result).
 
 ---
 
-## S02 — Introduce fatal-vs-task-level error classification in `executeTask` ⬜ PENDING
+## S02 — Introduce fatal-vs-task-level error classification in `executeTask` ✅ PASSED
 
 ```yaml
 type: backend

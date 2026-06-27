@@ -430,10 +430,10 @@ func (o *Orchestrator) executeTask(
 			taskTotalCostUSD += workerCost
 			*totalCostUSD += workerCost
 			if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
-				return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap)
+				return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap))
 			}
 			if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
-				return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
+				return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap))
 			}
 			if attempt == maxRetries {
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
@@ -459,10 +459,10 @@ func (o *Orchestrator) executeTask(
 		taskTotalCostUSD += attemptCost
 		*totalCostUSD += attemptCost
 		if cap := o.cfg.Execution.MaxCostPerTaskUSD; cap > 0 && taskTotalCostUSD > cap {
-			return fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap)
+			return fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotalCostUSD, cap))
 		}
 		if cap := o.cfg.Execution.MaxCostUSD; cap > 0 && *totalCostUSD > cap {
-			return fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap)
+			return fatal(fmt.Errorf("run aborted: cumulative cost $%.2f exceeded ceiling $%.2f (configure execution.max_cost_usd to raise)", *totalCostUSD, cap))
 		}
 		if reviewErr != nil {
 			if attempt == maxRetries {
@@ -586,7 +586,7 @@ func (o *Orchestrator) executeTask(
 				if statusErr := task.UpdateTaskStatus(tasksPath, t.ID, types.StatusFailed); statusErr != nil {
 					charmbraceletlog.Warn("updating task status to failed after escalation", "task", t.ID, "err", statusErr)
 				}
-				return fmt.Errorf("task %s escalated to human review (category %s); see %s", t.ID, cat, path)
+				return fatal(fmt.Errorf("task %s escalated to human review (category %s); see %s", t.ID, cat, path))
 			case ActionSpawnInvestigation:
 				investigationDiagnosis := o.runInvestigation(ctx, t, reviewResult.Summary)
 				diagnosis = investigationDiagnosis
