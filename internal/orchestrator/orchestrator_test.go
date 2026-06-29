@@ -809,6 +809,58 @@ func TestRun_HandoffPopulatesAnchor(t *testing.T) {
 	}
 }
 
+func TestRun_PostRunHookFires(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-postrun"
+	setupProject(t, dir, project, testTasksMD)
+	// post-run hook writes a marker with the run status.
+	hooksDir := filepath.Join(dir, ".corvex", "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "postrun-marker.txt")
+	script := "#!/bin/sh\necho \"status=$CORVEX_STATUS project=$CORVEX_PROJECT\" > " + marker + "\n"
+	if err := os.WriteFile(filepath.Join(hooksDir, "post-run.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir, "add tasks + post-run hook")
+
+	events := make(chan Event, 200)
+	go func() {
+		for range events {
+		}
+	}()
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "ok.\nVERDICT: PASS"}, nil
+			}
+			return &types.ExecuteResult{Output: "done" + taskReportBlock}, nil
+		},
+	}
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+
+	orch := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events})
+	if err := orch.Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("post-run hook did not run (no marker): %v", err)
+	}
+	if !strings.Contains(string(data), "status=passed") {
+		t.Errorf("post-run marker = %q, want status=passed", string(data))
+	}
+	if !strings.Contains(string(data), "project="+project) {
+		t.Errorf("post-run marker = %q, want project=%s", string(data), project)
+	}
+}
+
 func TestRun_FullFlow(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)

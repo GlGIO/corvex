@@ -536,6 +536,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		// Preserve each task's specific failure reason so the summary stays
 		// diagnosable (e.g. "reviewer never produced a verdict").
 		msg += "\n  - " + strings.Join(failureDetails, "\n  - ")
+		o.runHook(ctx, hooks.PostRun, hooks.HookEnv{Project: o.cfg.Project.Name, Status: "partial"}, "")
 		return fmt.Errorf("%s", msg)
 	}
 
@@ -549,6 +550,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		}
 	}
 
+	o.runHook(ctx, hooks.PostRun, hooks.HookEnv{Project: o.cfg.Project.Name, Status: "passed"}, "")
 	o.emit(Event{Type: EventDone})
 	return nil
 }

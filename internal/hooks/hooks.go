@@ -17,6 +17,11 @@ const (
 	PostTask  = "post-task"
 	OnSuccess = "on-success"
 	OnFailure = "on-failure"
+	// PostRun fires once after `corvex run` finishes (success or partial),
+	// not per task. Use it for run-level automation — e.g. emit the run's new
+	// migrations as SQL, open a PR, or notify. Receives CORVEX_PROJECT and
+	// CORVEX_STATUS (passed|partial); CORVEX_TASK_ID is empty.
+	PostRun = "post-run"
 )
 
 // DefaultTimeout is applied when Runner is created with zero timeout.

@@ -15,7 +15,7 @@ Corvex is an open-source CLI tool written in Go that orchestrates AI agents to e
 - **Model-agnostic** — Pluggable provider interface (Claude CLI for MVP, extensible to OpenAI, Ollama)
 - **Professional TUI** — Vertical layout, soft palette, every visible key wired (help `?`, filter `/`, detail `↵`, pause `p`, skip `s`, retry `r`, logs `l`)
 - **Git Checkpointing** — Automatic commits after each task for crash recovery
-- **Custom Hooks** — `pre-task`, `post-task`, `on-success`, `on-failure` shell scripts
+- **Custom Hooks** — `pre-task`, `post-task`, `on-success`, `on-failure` (per task) and `post-run` (once when a run finishes) shell scripts. `post-run` gets `CORVEX_PROJECT` and `CORVEX_STATUS` (passed|partial) — wire it to emit the run's migrations as SQL, open a PR, notify, etc.
 - **Agent Routing** — Map task types to specialized agent prompts
 
 ## Installation
