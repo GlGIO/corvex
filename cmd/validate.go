@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -339,6 +340,14 @@ func setupValidationStack(ctx context.Context, workDir, project string, cfg conf
 		}
 	}
 
+	// Preflight: refuse to start if the port is already taken. Otherwise the
+	// app fails to bind, the health check passes against whatever is ALREADY
+	// listening, and the Validator silently judges the wrong server.
+	if cfg.Stack.Port != 0 && portInUse(cfg.Stack.Port) {
+		cleanup()
+		return nil, fmt.Errorf("port %d is already in use — stop the process listening there (it would be validated instead of your app), or set a different stack.port", cfg.Stack.Port)
+	}
+
 	// 3. Application
 	appCmd, err := startApp(workDir, cfg.Stack, appEnv)
 	if err != nil {
@@ -418,6 +427,17 @@ func startDBContainer(ctx context.Context, project string, cfg config.ValidateDB
 
 	stopFn()
 	return nil, fmt.Errorf("database did not become ready within 60s")
+}
+
+// portInUse reports whether something is already listening on the TCP port.
+// It tries to bind briefly; if the bind fails the port is taken.
+func portInUse(port int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return true
+	}
+	ln.Close()
+	return false
 }
 
 func startApp(workDir string, cfg config.ValidateStackConfig, env []string) (*exec.Cmd, error) {
