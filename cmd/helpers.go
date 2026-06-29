@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/types"
 	"github.com/spf13/cobra"
@@ -75,6 +76,56 @@ func findProjectWorktree(workDir, project string) string {
 		return ""
 	}
 	return wt
+}
+
+// checkWorktreeMismatch refuses to operate from the main repo when a worktree
+// for the project exists elsewhere — running there would write to the wrong
+// branch and bypass the worktree. `here` (the command's --here flag) overrides.
+// cmdName tailors the hint (e.g. "run", "plan").
+func checkWorktreeMismatch(workDir, project, cmdName string, here bool) error {
+	if here {
+		return nil
+	}
+	wt := findProjectWorktree(workDir, project)
+	if wt == "" {
+		return nil
+	}
+	absWork, _ := filepath.Abs(workDir)
+	absWT, _ := filepath.Abs(wt)
+	if absWork == absWT {
+		return nil
+	}
+	return fmt.Errorf("worktree for project %q exists at %s, but you are running from %s.\nThis would use the wrong branch/state and bypass the worktree.\n\n→ cd %s && corvex %s %s\n\nOr pass --here to use the current directory anyway", project, absWT, absWork, absWT, cmdName, project)
+}
+
+// linkWorktreePaths symlinks the configured repo-relative paths from the main
+// repo (gitRoot) into the worktree (wtPath). It is idempotent: missing sources
+// are skipped, and an existing destination is never overwritten. Used by
+// `corvex start` to bring gitignored state (deps, dotenv) the checkout omits.
+func linkWorktreePaths(gitRoot, wtPath string, paths []string) {
+	for _, rel := range paths {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		src := filepath.Join(gitRoot, rel)
+		dst := filepath.Join(wtPath, rel)
+		if _, err := os.Lstat(dst); err == nil {
+			continue // already present — don't clobber
+		}
+		if _, err := os.Stat(src); err != nil {
+			continue // nothing to link from
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			log.Warn("worktree link: mkdir", "path", rel, "err", err)
+			continue
+		}
+		if err := os.Symlink(src, dst); err != nil {
+			log.Warn("worktree link", "path", rel, "err", err)
+			continue
+		}
+		log.Info("linked into worktree", "path", rel)
+	}
 }
 
 // completeProjectArg is the ValidArgsFunction for commands whose first positional

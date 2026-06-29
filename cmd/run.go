@@ -97,14 +97,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// Refuse with an actionable message; `--here` is the escape hatch when
 	// the user really means to run from the current directory (e.g. the
 	// worktree is a leftover from an abandoned experiment).
-	if !runHere {
-		if wt := findProjectWorktree(workDir, project); wt != "" {
-			absWork, _ := filepath.Abs(workDir)
-			absWT, _ := filepath.Abs(wt)
-			if absWork != absWT {
-				return fmt.Errorf("worktree for project %q exists at %s, but you are running from %s.\nThis would write code to the wrong branch and bypass the worktree.\n\n→ cd %s && corvex run %s\n\nOr pass --here to run from the current directory anyway", project, absWT, absWork, absWT, project)
-			}
-		}
+	if err := checkWorktreeMismatch(workDir, project, "run", runHere); err != nil {
+		return err
 	}
 
 	if runDryRun {

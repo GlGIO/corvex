@@ -138,6 +138,8 @@ Beyond `--task`, `--single`, `--dry-run`, `--plain`, `--ab`:
 - `--skip-doctor` — skip the pre-run config checks.
 - `--no-replan` — fail if `spec.md` drifted instead of auto-regenerating tasks.md.
 - `--force` — run on a dirty working tree, discarding uncommitted changes first.
+- `--here` — run from the current directory even when a worktree exists for this
+  project. See [Worktrees](#worktrees) below.
 
 Before running, `corvex run` prints a cost preview (pending task count + the
 configured ceilings) and, on an interactive terminal, asks for confirmation. It
@@ -311,6 +313,38 @@ agent_routing:
   database: .corvex/agents/dba.md
   backend: .corvex/agents/backend.md
   frontend: .corvex/agents/frontend.md
+```
+
+### Worktrees
+
+`corvex start <project>` creates a sibling git worktree at `<repo>-<project>` and
+checks out a fresh feature branch. All of `corvex plan`/`run` for that project is
+meant to happen **inside** the worktree so generated code lands on the right
+branch.
+
+To guard against the easy mistake of running from the main checkout while a
+worktree exists, `corvex plan` and `corvex run` refuse to proceed and point you
+at the worktree:
+
+```
+worktree for project "feat59440" exists at /repo-feat59440, but you are running from /repo.
+→ cd /repo-feat59440 && corvex run feat59440
+```
+
+Pass `--here` to override (rare — e.g. the worktree is a leftover you intend to
+ignore).
+
+A worktree is a clean checkout, so gitignored paths the build needs — installed
+dependencies, local dotenv files — are absent. List them under `worktree.link`
+and `corvex start` symlinks each from the main repo into the worktree
+(idempotent: missing sources and already-present destinations are skipped):
+
+```yaml
+worktree:
+  link:
+    - node_modules
+    - .env
+    - backend/.env-stg
 ```
 
 ### Sandbox and Worker Isolation

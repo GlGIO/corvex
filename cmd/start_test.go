@@ -83,3 +83,60 @@ func TestSetupWorktree_UntrackedCorvexSymlinks(t *testing.T) {
 		t.Error("untracked .corvex should be symlinked into the worktree")
 	}
 }
+
+func TestCheckWorktreeMismatch(t *testing.T) {
+	root := t.TempDir()
+	gitInit(t, root)
+	// conventional worktree dir for project "feat1"
+	wt := root + "-feat1"
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// from the main repo with a worktree present → error
+	if err := checkWorktreeMismatch(root, "feat1", "plan", false); err == nil {
+		t.Error("expected mismatch error when a worktree exists and running from main")
+	}
+	// --here overrides
+	if err := checkWorktreeMismatch(root, "feat1", "plan", true); err != nil {
+		t.Errorf("--here should bypass the guard, got %v", err)
+	}
+	// no worktree for this project → nil
+	if err := checkWorktreeMismatch(root, "other", "plan", false); err != nil {
+		t.Errorf("no worktree should be allowed, got %v", err)
+	}
+}
+
+func TestLinkWorktreePaths(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "secret.env"), []byte("X=1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// pre-existing dest must not be clobbered
+	if err := os.WriteFile(filepath.Join(wt, "secret.env"), []byte("OWN"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkWorktreePaths(root, wt, []string{"node_modules", "secret.env", "missing.txt"})
+
+	// node_modules → symlinked
+	if fi, err := os.Lstat(filepath.Join(wt, "node_modules")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("node_modules should be a symlink (err=%v)", err)
+	}
+	// secret.env pre-existed → NOT a symlink (kept the worktree's own)
+	fi, err := os.Lstat(filepath.Join(wt, "secret.env"))
+	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("pre-existing secret.env should be kept, not clobbered by a symlink")
+	}
+	// missing source → skipped
+	if _, err := os.Lstat(filepath.Join(wt, "missing.txt")); err == nil {
+		t.Error("missing source should not produce a link")
+	}
+}

@@ -69,6 +69,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Bring gitignored state the checkout omits (deps, dotenv) into the worktree
+	// per worktree.link, so a fresh worktree can build/run without a manual copy.
+	linkWorktreePaths(gitRoot, wtPath, cfg.Worktree.Link)
+
 	pDir := projectDir(workDir, project)
 	specPath := filepath.Join(pDir, "spec.md")
 	decisionsPath := filepath.Join(pDir, "decisions.md")

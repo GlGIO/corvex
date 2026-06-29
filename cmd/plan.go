@@ -14,15 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var planHere bool
+
 var planCmd = &cobra.Command{
-	Use:   "plan <project>",
-	Short: "Generate or update tasks.md from a project spec",
-	Long:  "Invoke the Planner agent (read-only) to analyze spec.md and generate a DAG of tasks.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runPlan,
+	Use:               "plan <project>",
+	Short:             "Generate or update tasks.md from a project spec",
+	Long:              "Invoke the Planner agent (read-only) to analyze spec.md and generate a DAG of tasks.",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeProjectArg,
+	RunE:              runPlan,
 }
 
 func init() {
+	planCmd.Flags().BoolVar(&planHere, "here", false, "plan from the current directory even when a worktree exists for this project")
 	rootCmd.AddCommand(planCmd)
 }
 
@@ -35,6 +39,13 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := requireCorvexDir(workDir); err != nil {
+		return err
+	}
+
+	// Refuse to plan from the main repo when a worktree exists — otherwise the
+	// generated tasks.md lands in the wrong .corvex (the bug we hit running
+	// `corvex plan` from the main checkout instead of the worktree).
+	if err := checkWorktreeMismatch(workDir, project, "plan", planHere); err != nil {
 		return err
 	}
 

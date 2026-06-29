@@ -25,6 +25,17 @@ type Config struct {
 	SkillRouting map[string]string `yaml:"skill_routing"`
 	Validate     ValidateConfig    `yaml:"validate"`
 	Plan         PlanConfig        `yaml:"plan"`
+	Worktree     WorktreeConfig    `yaml:"worktree"`
+}
+
+// WorktreeConfig configures worktree setup done by `corvex start`.
+type WorktreeConfig struct {
+	// Link is a list of repo-relative paths symlinked from the main repo into a
+	// new worktree (e.g. node_modules, backend/.env-stg). Use it for gitignored
+	// state the checkout doesn't bring — deps, secrets/dotenv — so a fresh
+	// worktree can build/run without a manual copy. Missing sources are skipped;
+	// existing destinations are never overwritten.
+	Link []string `yaml:"link"`
 }
 
 // PlanConfig configures the planning step.
