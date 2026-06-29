@@ -137,6 +137,9 @@ Beyond `--task`, `--single`, `--dry-run`, `--plain`, `--ab`:
   runs auto-proceed).
 - `--skip-doctor` — skip the pre-run config checks.
 - `--no-replan` — fail if `spec.md` drifted instead of auto-regenerating tasks.md.
+  When the drift is benign (an edit that doesn't change the task breakdown),
+  accept it without a replan via `corvex plan <project> --reanchor`, which just
+  re-records the spec hash and leaves tasks.md untouched.
 - `--force` — run on a dirty working tree, discarding uncommitted changes first.
 - `--here` — run from the current directory even when a worktree exists for this
   project. See [Worktrees](#worktrees) below.

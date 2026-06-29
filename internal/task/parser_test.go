@@ -288,9 +288,11 @@ func TestParseTasksFile_MalformedHeadingFails(t *testing.T) {
 		wantSub string // substring that should appear in the error message
 	}{
 		{
-			"non-canonical status word",
-			"## S01 — Bootstrap ✅ DONE",
-			`"## S01 — Bootstrap ✅ DONE"`,
+			// A recognized word like DONE/COMPLETED now normalizes to PASSED;
+			// only a genuinely-unknown word stays malformed.
+			"unknown status word",
+			"## S01 — Bootstrap ✅ BOGUS",
+			`"## S01 — Bootstrap ✅ BOGUS"`,
 		},
 		{
 			"missing emoji",
@@ -349,5 +351,32 @@ func TestParseTasksFile_DashVariants(t *testing.T) {
 				t.Errorf("ID = %q, want S01", tasks[0].ID)
 			}
 		})
+	}
+}
+
+func TestParse_StatusSynonyms(t *testing.T) {
+	content := "## S01 — Done one ✅ COMPLETED\n\n### O que fazer\n1. x\n\n---\n\n" +
+		"## S02 — Done two ✅ DONE\n\n### O que fazer\n1. y\n\n---\n\n" +
+		"## S03 — Pending ⬜ TODO\n\n### O que fazer\n1. z\n"
+	tasks, _, err := task.ParseTasksFile(writeTemp(t, content))
+	if err != nil {
+		t.Fatalf("ParseTasksFile() error = %v, want nil (synonyms should parse)", err)
+	}
+	want := []types.TaskStatus{types.StatusPassed, types.StatusPassed, types.StatusPending}
+	if len(tasks) != 3 {
+		t.Fatalf("got %d tasks, want 3", len(tasks))
+	}
+	for i, w := range want {
+		if tasks[i].Status != w {
+			t.Errorf("tasks[%d].Status = %q, want %q", i, tasks[i].Status, w)
+		}
+	}
+}
+
+func TestParse_UnknownStatusWordIsMalformed(t *testing.T) {
+	// Right shape, emoji present, but the status word is meaningless.
+	path := writeTemp(t, "## S01 — Bogus ✅ FROBNICATED\n\n### O que fazer\n1. x\n")
+	if _, _, err := task.ParseTasksFile(path); err == nil {
+		t.Fatal("expected an unrecognized-heading error for an unknown status word")
 	}
 }

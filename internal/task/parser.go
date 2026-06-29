@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	headingRe    = regexp.MustCompile(`^##\s+(S\d+)\s*[-—–]\s*(.+?)\s+(⬜|🔄|✅|❌|⏭` + "\uFE0F" + `|⏭)\s*(PENDING|RUNNING|PASSED|FAILED|SKIPPED)\s*$`)
+	headingRe    = regexp.MustCompile(`^##\s+(S\d+)\s*[-—–]\s*(.+?)\s+(⬜|🔄|✅|❌|⏭` + "\uFE0F" + `|⏭)\s*([A-Za-z-]+)\s*$`)
 	sectionRe    = regexp.MustCompile(`^###\s+(.+)$`)
 	criterionRe  = regexp.MustCompile(`^\s*-\s*\[\s*\]\s*(.+)$`)
 	fileCreateRe = regexp.MustCompile("^\\s*-\\s*\\*\\*Criar:\\*\\*\\s*`([^`]+)`")
@@ -33,13 +33,45 @@ var statusEmoji = map[types.TaskStatus]string{
 	types.StatusSkipped: "⏭" + "\uFE0F",
 }
 
+// statusWord maps the textual status token in a task heading to a canonical
+// status. Beyond the canonical words it accepts the synonyms LLMs tend to emit
+// when regenerating tasks.md (e.g. a replan writing "✅ COMPLETED" or "✅ DONE"
+// instead of "✅ PASSED"). Being lenient here keeps a benign wording drift from
+// failing the whole run; truly unknown words still fall through to the
+// "unrecognized task heading" error. Lookups are upper-cased by the caller.
+var statusWord = map[string]types.TaskStatus{
+	"PENDING":     types.StatusPending,
+	"TODO":        types.StatusPending,
+	"PLANNED":     types.StatusPending,
+	"RUNNING":     types.StatusRunning,
+	"INPROGRESS":  types.StatusRunning,
+	"IN-PROGRESS": types.StatusRunning,
+	"WIP":         types.StatusRunning,
+	"PASSED":      types.StatusPassed,
+	"PASS":        types.StatusPassed,
+	"COMPLETE":    types.StatusPassed,
+	"COMPLETED":   types.StatusPassed,
+	"DONE":        types.StatusPassed,
+	"FAILED":      types.StatusFailed,
+	"FAIL":        types.StatusFailed,
+	"SKIPPED":     types.StatusSkipped,
+	"SKIP":        types.StatusSkipped,
+}
+
+// normalizeStatusWord resolves a heading's status token (any case) to a
+// canonical status, returning false when the word is not recognized.
+func normalizeStatusWord(word string) (types.TaskStatus, bool) {
+	s, ok := statusWord[strings.ToUpper(strings.TrimSpace(word))]
+	return s, ok
+}
+
 var emojiStatus = map[string]types.TaskStatus{
-	"⬜":              types.StatusPending,
-	"🔄":              types.StatusRunning,
-	"✅":              types.StatusPassed,
-	"❌":              types.StatusFailed,
+	"⬜":            types.StatusPending,
+	"🔄":            types.StatusRunning,
+	"✅":            types.StatusPassed,
+	"❌":            types.StatusFailed,
 	"⏭" + "\uFE0F": types.StatusSkipped,
-	"⏭":              types.StatusSkipped,
+	"⏭":            types.StatusSkipped,
 }
 
 type frontmatter struct {
@@ -150,21 +182,31 @@ func parseTaskBlocks(lines []string) ([]types.Task, []malformedHeading) {
 
 	for i, line := range lines {
 		if m := headingRe.FindStringSubmatch(line); m != nil {
+			status, ok := normalizeStatusWord(m[4])
+			if !ok {
+				// Heading shape is right but the status word is unknown — report
+				// it rather than silently dropping the task.
+				malformed = append(malformed, malformedHeading{
+					lineNum: i,
+					content: strings.TrimSpace(line),
+				})
+				continue
+			}
 			if current != nil {
 				blocks = append(blocks, *current)
 			}
 			current = &taskBlock{
 				id:     m[1],
 				title:  m[2],
-				status: types.TaskStatus(m[4]),
+				status: status,
 			}
 			continue
 		}
 
 		// Catch headings that look like task lines but fail the strict regex
-		// (e.g. "## S01 ... ✅ DONE" instead of "## S01 ... ✅ PASSED"). Without
-		// this check, the parser silently drops them and downstream commands
-		// show baffling counts like "0/28 done" when the file has 30 tasks.
+		// (e.g. a missing status emoji, or "## S01 — title PASSED"). Without this
+		// check, the parser silently drops them and downstream commands show
+		// baffling counts like "0/28 done" when the file has 30 tasks.
 		if looseHeadingRe.MatchString(line) {
 			malformed = append(malformed, malformedHeading{
 				lineNum: i,
