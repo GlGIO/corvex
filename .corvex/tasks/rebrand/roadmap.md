@@ -1,232 +1,238 @@
 # Rebrand do corvex — roadmap
 
-> Documento vivo. Fechado por rodadas de grill conversacional (não `corvex grill`).
-> Branch: `rebrand`. Status: **rodada 1 aberta**.
+> Documento vivo, fechado em 4 rodadas de grill conversacional (não `corvex grill`).
+> Branch: `rebrand`. Insumos: `f0-fluxo.md`, `ui-prompt.md`, canvas de design (turno 2, 2a–2h).
 
 ## Tese
 
 Corvex deixa de ser "orquestrador de IA que decompõe spec em DAG" e passa a ser:
 
-**Runner de workflow declarativo sobre um catálogo de tools tipadas, com gates
-aplicados por custódia de credencial e exit code, e estado que sobrevive à sessão.**
+**Runner de workflow declarativo sobre tools tipadas, com gates aplicados por custódia de
+credencial e exit code, estado que sobrevive à sessão, e uma UI que é onde o gate humano
+acontece de verdade.**
 
-O modelo de referência é o `pilot-feature` do smartcare — ele já provou o formato
-dos gates. O corvex não o substitui: absorve o que a sessão do Claude Code não
-consegue segurar.
+O modelo de referência do *fluxo* é a `autopilot` do smartcare (que provou o formato dos
+gates). O corvex **não** a substitui e não se acopla a ela — fará algo parecido, sem se
+resumir a isso.
 
-## O que só o corvex pode dar (o pilot não pode, estruturalmente)
+## O que só o corvex pode dar
 
-O runtime do pilot é a sessão do Claude Code. Isso impõe limites que mais JS não resolve:
+O runtime da autopilot é a sessão do Claude Code. Isso impõe limites que mais JS não resolve:
 
-1. **Estado além da sessão** — `resumeFromRunId` é por-sessão; resume entre sessões
-   queimou 669k tokens na 59459 (`pilot-feature/SKILL.md:94`). Teto real no tamanho
-   de qualquer automação. Corvex: checkpoint git + `activity.jsonl` em disco.
-2. **Teto de custo aplicado pelo runner** — `max_cost_usd` mata o run. O pilot só
-   tem orçamento se o humano digitar "+500k".
-3. **Contabilidade entre runs** — custo por tipo de task, qual gate mais reprova,
-   A/B de modelo com estatística acumulada.
-4. **Re-execução de um estágio isolado** — `--task S03`, sem refazer o resto.
-5. *(fase Yandeh)* **Rodar sem sessão** — CI, cron, evento de PR.
+1. **Estado além da sessão** — `resumeFromRunId` é por-sessão; resume entre sessões queimou
+   669k tokens na 59459. Corvex: checkpoint git + ledger em disco.
+2. **Teto de custo aplicado pelo runner** — mata o run. Workflow só tem orçamento se o
+   humano digitar "+500k".
+3. **Contabilidade entre runs** — custo por natureza de step, qual gate mais reprova,
+   quantas interrupções por feature.
+4. **Re-execução de um estágio isolado** sem refazer o resto.
+5. **Gate que o agente não contorna** — consentimento na UI, credencial no runner.
 
-### O que NÃO é diferencial do corvex
-**Determinismo via tools tipadas.** Se o catálogo for MCP, o pilot ganha o mesmo
-benefício sem uma linha de Go. Por isso o catálogo vem primeiro e vale mesmo que
-o corvex seja descontinuado depois.
+**Não é diferencial:** determinismo via tools tipadas. Como MCP, a autopilot ganha o mesmo
+sem uma linha de Go — por isso o catálogo tem valor independente do corvex.
+
+---
+
+## Arquitetura alvo
+
+### 1. O substantivo muda: `project` → `run`
+
+Hoje tudo é escopado por *project* (um diretório em `.corvex/tasks/`), o repo é implícito
+(cwd) e **não existe identidade de run** — o ledger vai appendando e dois runs do mesmo
+projeto são indistinguíveis. A UI inteira é escopada por `run_8f21`, com repo explícito.
+
+Consequência: **toda a superfície de comando e o schema do ledger mudam.**
+
+### 2. Camada de operações (pré-condição da UI)
+
+A regra de paridade (2h: a UI registra suas ações como comandos de CLI, "disparado pela UI")
+exige que UI e CLI chamem **a mesma função**. Hoje isso é impossível:
+
+| Problema | Evidência |
+|---|---|
+| Lógica dentro da camada cobra | `cmd/` = 3.475 linhas; `cmd/validate.go` (556) tem `setupValidationStack`, `startDBContainer`, `startApp` |
+| God object | `Orchestrator.Run` = 412 linhas (`orchestrator.go:146-558`); `executeTask` = 317 |
+| God struct | `Orchestrator` com 20+ campos misturando config, colaboradores, estado e 3 "mirror of Options.X" |
+| God package | `internal/orchestrator` = 4.009 linhas |
+
+Alvo: **`internal/ops`** — operações puras, sem cobra, sem stdout. `cmd/` vira parsing de
+flag + formatação. O servidor HTTP chama as mesmas funções. Nenhuma regra de negócio em
+`cmd/` ou em handler.
+
+### 3. Contrato de evidência (o que faz a tela de gate funcionar)
+
+A 2b mostra *"migration aplicada e revertida no shadow db"*, *"suíte 312/312"*, *"plano de
+query muda de seq scan para index scan"*. Isso é evidência **de domínio**, produzida por
+steps — mas a tela é do runner, que precisa ser genérico (nada de Azure/SmartCare no binário).
+
+Sem contrato, ou a tela é genérica e pobre, ou o binário vira específico. O step devolve:
+
+```yaml
+evidence:
+  - kind: test_output | verdict | diff | sql | link
+    label: "Testes"
+    status: pass | warn | fail
+    required_reading: true        # arma a trava do botão "Aprovar"
+    content: "..."
+```
+
+O runner só transporta e renderiza. `required_reading` é o que produz o *"falta ler o
+veredito"* da 2b. **Decisão de F2 (taxonomia), não de F4.**
+
+### 4. Sem daemon
+
+`corvex ui` sobe um servidor que **spawna processos de run desacoplados** e os acompanha
+pelo registro em disco. O run continua processo independente; a UI é supervisora, não dona.
+Preserva o CLI e faz o "em paralelo" sair de graça.
+**Auth desde a v1:** token gerado no `corvex ui`, embutido na URL. Servidor em localhost que
+executa comando com credencial precisa disso (CSRF / DNS rebinding). Retrofitar é pior.
+
+---
+
+## Superfície de comandos (alvo)
+
+Extraída do canvas — cada comando abaixo aparece literalmente numa tela.
+
+| Comando alvo | Tela | Hoje |
+|---|---|---|
+| `corvex run <recipe> --repo X --branch Y` | 2c, 2h | `run <project>` — sem repo, sem recipe, sem run id |
+| `corvex runs --since 2d` | 2e | `list` lista *projetos*, não runs |
+| `corvex show <runId>` | 2f | `inspect <project>` — escopo errado |
+| `corvex watch <runId>` | 2d | — (TUI só existe acoplada ao `run`) |
+| `corvex gates` | 2a | — |
+| `corvex gate approve\|reject <runId> --step S` | 2b, 2h | — (`human-gate` é `kind` reservado, nunca implementado) |
+| `corvex answer <runId> --choice C` | 2g, 2h | — |
+| `corvex pause\|kill <runId>` | 2d | pause existe só como `Command` interno do TUI |
+| `corvex ui` | todas | — |
+
+**Sobrevivem:** `init`, `doctor`, `plan`, `grill`, `validate`, `recipe`, `version`.
+**Reescopados:** `list`→`recipes`, `status`/`logs`→ absorvidos por `show`/`watch`.
+**Compatibilidade:** `run <project>` continua válido (o caminho `spec.md` foi mantido na
+rodada 3), resolvendo para um recipe implícito.
+
+---
 
 ## Decidido
 
-- **Público:** só o Giovanni por enquanto; Yandeh depois.
-  → Consequência dura desde a linha 1: **nada de Azure/SmartCare dentro do binário.**
-    Domínio mora em recipe + tools no repo do usuário. Retrofitar genericidade é caro.
-  → Não construir agora: RBAC, multi-usuário, dashboard.
-- **Rebrand = reposicionamento**, não renome. Continua `corvex`. Sem fase de naming.
-- **Sandbox: rebaixado, não deletado.** O default já é `local` (`config.go:296`) — ou
-  seja, hoje ele já não está no caminho. Deletar não resolve nenhum problema de acesso
-  atual, custa um refactor grande (docker/nix/devcontainer/factory/worktree/config/testes)
-  e queima a opção de rodar sem humano num servidor. Ação: documentar como experimental,
-  parar de investir. Reavaliar só depois da F2.
-- **Não usar `corvex grill` pra fechar este roadmap.** Evidência: no `host-inheritance`
-  ele rodou 28 perguntas em 2 dias, nunca convergiu, e a partir da 26 passou a auditar
-  as próprias respostas. Ele não tem regra de parada (`griller.go`). Grill entra depois,
-  por fase, com teto — e o teto é candidato a feature do próprio corvex.
+| Tema | Decisão |
+|---|---|
+| **Público** | Só o Giovanni por enquanto; Yandeh depois. **Nada de Azure/SmartCare no binário, desde a linha 1.** Sem RBAC/multi-usuário agora. |
+| **Rebrand** | Reposicionamento, não renome. Continua `corvex`. |
+| **Autopilot** | Independente, no repo dela. Zero acoplamento. Sem ponte de ledger. |
+| **Origem do DAG** | Board **ou** `spec.md`. Os dois vivem → `planner`/`griller`/`anchor` sobrevivem. |
+| **UI** | **Executa**: dispara run, aprova gate, responde pergunta, pausa, mata. Fora do Go (Go serve JSON), embutida no binário via `embed.FS`. Localhost, um usuário, token. |
+| **Paridade** | Todo botão tem equivalente em CLI; nenhum caminho existe só na UI. A UI registra suas ações como comandos (2h). |
+| **Sandbox** | **Rebaixado, não deletado.** Reenquadrado como *ambiente de execução do run* — a dor "rodar com Postgres" é a mesma máquina de container. |
+| **Multi-repo** | (i) N repos com runs independentes numa UI = **fazer**; (iii) run em A que **lê** B e C = **fazer** (`WorktreeConfig.Link` é o pé); (ii) um run **atravessando** repos = **adiar** (quebra checkpoint, worktree, DAG). |
+| **Índice global** | `~/.corvex/runs.jsonl`, fora dos repos. Ledger detalhado continua em cada `.corvex/`. |
+| **Grill** | Sem regra de parada = **bug ativo** (28 perguntas / 2 semanas no `host-inheritance`). Ganha teto. |
 
-## As dores reais (rodada 1 — do usuário, não inferidas)
+## Taxonomia
 
-1. **Não vejo o que já rodei.** Sem visão de todos os runs, sem histórico fácil.
-2. **Não vejo o que está rodando agora** — nem quais tools estão vivas no momento.
-3. **Não consigo ser determinístico em algumas integrações.**
-4. **Não consigo escolher o ambiente do run** — rodar simples, ou subindo um Postgres.
-5. **Steps não são tipados**: código, ferramenta, teste e reprodução são a mesma coisa
-   pro runner. *(Dita de passagem, mas é a espinha — ver abaixo.)*
-6. **Visão de board**: clicar numa feature, ver se foi refinada, aprovar. *(Ver escopo.)*
+**Steps** — 4 tipos:
 
-### Estado do que já existe (verificado)
-- `inspect` já lê o ledger e dá timeline/duração/retries/custo por task; `Summarize`
-  agrega; `list`/`status`/`logs` existem. **Dor 1 é quase só falta de índice global.**
-- `liveness.go` rastreia task viva **só em memória, no processo do run** — outro processo
-  (a UI) não enxerga. Falta registro de run em disco + heartbeat. **(Dor 2a)**
-- `ledger.go:6` descarta eventos de alto volume de propósito — e junto foram as
-  **chamadas de tool**, que é exatamente o dado da dor 2b. Persistir `tool_use`
-  início/fim (não os chunks) resolve.
-- `validate.database` (`type/image/migrate_command/env`) já sobe banco. **Dor 4 é meio
-  caminho andado — e a outra metade é o código docker do sandbox.**
-
-## Taxonomia de step — a espinha
-
-`kind` da recipe, generalizado, mapeando direto no Fowler:
-
-| Tipo de step | Modo | Gate natural |
+| Tipo | Modo | Gate natural |
 |---|---|---|
+| `code` | inferencial | review independente |
 | `tool` | computacional | exit code |
 | `test` | computacional | exit code |
-| `repro` | computacional | reproduz ou não |
-| `code` | **inferencial** | review independente |
+| `repro` | computacional **temporal** | reproduz antes, não reproduz depois |
 
-Tipar o step é o que permite gate por tipo, política de retry por tipo, custo por tipo e
-**renderização por tipo na UI**. Sem isso a UI é um visualizador de log.
+**Gates** — 4 naturezas (a recipe hoje só modela `task` e `command`):
+`computacional` (exit code) · `inferencial` (agente independente, nunca o autor) ·
+`humano` (bloqueia até aprovação) · `política` (contador, teto, nível de branch).
 
-**Consequência de ordem: taxonomia antes da UI.**
+**Primitivo faltante — fan-out dinâmico.** A recipe é DAG **estático** de stages
+(`Stages []Stage` + `DependsOn`, tudo no YAML). A forma da autopilot precisa de N itens
+descobertos em runtime, cada um pelo mesmo pipeline, com dependência **entre itens**
+(ondas), depois consolidação. É o que separa recipe de pipeline de verdade.
 
-## Escopo da UI (decidido)
-
-Fora do Go (Go serve JSON), com três restrições:
-1. **v1 read-only** — só ledger + registro de runs. Sem escrita, sem board, sem auth.
-2. **Local**: `corvex ui` abre localhost. Sem servidor, sem deploy.
-3. **Embutida no binário** (`embed.FS`) apesar do fonte separado — importa pra fase Yandeh.
-
-**Não construir clone do board.** O Azure DevOps ganha sempre em listar/filtrar/editar
-work item, e "discutir uma story" é trabalho do Claude Code. O que o board **não** sabe é
-o estado dos seus runs → construir a **caixa de entrada de gates**: migration parkada,
-PR com 🔴, `human-gate` aguardando, story em `needsFix`. Pequeno, específico, insubstituível.
-
-Escrita (aprovar gate pela UI) fica na v2, apoiada na custódia de credencial: a UI aprova,
-o corvex executa com a credencial que o agente nunca teve.
-
-## Sandbox — reenquadrado
-
-Deletar está **descartado**: a dor 4 ("subir um Postgres") é a mesma máquina de container.
-O que muda é o nome e o propósito: deixa de ser "sandbox de isolamento" e vira
-**ambiente de execução do run**, escolhível por run.
+---
 
 ## Fases
 
-| # | Fase | Entrega | Depende de |
-|---|------|---------|-----------|
-| **F0** | Extrair a espinha do fluxo | Fluxo real de dev a partir de `refine → pilot-* → ship → release` | — |
-| **F1** | Taxonomia de step | `kind: code\|tool\|test\|repro` na recipe + gate por tipo | F0 |
-| **F2** | Telemetria pra UI | Registro de run em disco + heartbeat; persistir eventos `tool_use`; índice global de runs | F1 |
-| **F3** | UI v1 read-only | Histórico de runs, run ao vivo, tools ao vivo, caixa de gates | F2 |
-| **F4** | Catálogo de tools MCP | Operações determinísticas do `/az`, validadas **no pilot** primeiro | F0 |
-| **F5** | Ambiente de execução por run | "simples" × "com Postgres" — reaproveita o código docker | F1 |
-| **F6** | Corvex consome o catálogo | Custódia de credencial; negar o caminho cru (`DisallowedTools`) | F4 |
+### F0 — Limpeza e modularização
+**Por quê:** pré-condição física da UI, não estética. A UI não consegue chamar o que está
+preso em `cmd/`.
 
-F4 é paralelizável com F1–F3 (não toca em Go; valida no pilot).
+- Extrair `internal/ops`: operações sem cobra, sem stdout, sem `os.Exit`. Toda regra sai de `cmd/`.
+- Tirar o stack de validação de `cmd/validate.go` → `internal/stack` (é o insumo da F5).
+- Quebrar `Orchestrator.Run` (412 linhas) e `executeTask` (317). Separar escalonador,
+  execução de step e bookkeeping.
+- Quebrar `internal/orchestrator` (4.009 linhas) em pacotes com fronteira nomeada.
+- **Aceite:** nenhum arquivo em `cmd/` acima de ~120 linhas; `go test ./...` verde; zero
+  mudança de comportamento observável.
 
-## Decidido na rodada 2
+### F1 — Identidade de run
+- `run_id`, `repo`, `recipe` no ledger; registro de run em disco (pid, início, status) +
+  heartbeat; índice global em `~/.corvex/runs.jsonl`.
+- **Aceite:** dois runs do mesmo projeto são distinguíveis; um segundo processo consegue
+  listar o que está vivo.
 
-- **Integrações da F4:** Azure (`az`) por enquanto; MCPs existentes; possivelmente AWS CLI.
-  → A F0 achou mais: `ship` e `release` têm **três tabelas de decisão determinísticas
-    escritas em prosa** (branch→target, merge por nível, versão↔tag↔ambiente). São `switch`.
-    A F4 não é "wrapper de az", é **externalizar as funções puras do fluxo**.
-- **`repro` é tipo próprio** (gate temporal: reproduz antes, não reproduz depois).
-  ⚠️ Mas a `pilot-incident`, único consumidor, foi **removida em 13/08**. Sem consumidor,
-  o tipo fica especificado e não implementado até o eixo de incidente voltar.
-- **Multi-repo:** ver seção abaixo.
+### F2 — Taxonomia, gates e evidência
+- `kind: code|tool|test|repro` na recipe; 4 naturezas de gate; contrato de evidência
+  (`required_reading`); **fan-out dinâmico com ondas**.
+- `human-gate` implementado de verdade (hoje é `kind` reservado).
+- **Aceite:** um recipe expressa a forma da autopilot; um gate humano bloqueia o processo
+  e é liberado por `corvex gate approve`.
 
-## Multi-repo — três leituras, custos diferentes
+### F3 — Superfície de comandos
+- Implementar a tabela acima. `run <project>` continua funcionando.
+- **Aceite:** todo comando do canvas existe e funciona no terminal, antes de haver UI.
 
-| Leitura | O que é | Custo | Decisão |
-|---|---|---|---|
-| **(i)** N repos, runs independentes, **uma UI** | só falta índice global de runs | baixo | **fazer na F2/F3** |
-| **(ii)** um run **atravessando** N repos | quebra checkpoint (commita em qual?), worktree, DAG, validate | alto | **adiar** |
-| **(iii)** run no repo A que **lê** B e C | contrato de contexto: caminhos que o agente pode ler | médio | **fazer** — `WorktreeConfig.Link` (`config.go:38`) já é o pé |
+### F4 — Telemetria da UI
+- Persistir eventos `tool_use` (início/fim, não chunks — `ledger.go:6` os descarta hoje).
+- Relógio de espera humana separado do relógio do run (2g: *"relógio parado há 6m"*).
+- Estado de leitura de evidência (persistente — fechar a aba não zera).
+- Custo por natureza (worker / reviewer / determinístico — a barra da 2f).
+- **Aceite:** todo dado das telas 2a–2h existe em disco.
 
-"Contexto dos 3 juntos" quase sempre significa (iii), não (ii). Índice global mora em
-`~/.corvex/runs.jsonl` (fora dos repos), com o ledger detalhado continuando em cada `.corvex/`.
+### F5 — Ambiente de execução por run
+- "simples" × "com Postgres" — reusa `internal/stack` (F0) + o docker do sandbox.
 
-## Achados da F0 que mudam o roadmap
+### F6 — Servidor + UI
+- `corvex ui`: HTTP sobre `internal/ops`, token de auth, SPA embutida.
+- Telas 2a–2h. ⌘K registrando ação de UI como comando.
+- **Aceite:** disparar run, aprovar gate e responder pergunta pela UI, com o log da 2h
+  batendo com o que o `corvex runs` mostra.
 
-1. **Gates têm 4 naturezas, não 2:** computacional, inferencial, **humano** e **política**
-   (contador/teto/nível de branch). A recipe modela só `task` e `command` → a F1 precisa
-   dos quatro.
-2. **A F4 cresceu:** além das 84 regras da `az`, `ship` §Branching, `ship` passo 8 (merge
-   por nível — a regra de segurança mais importante do fluxo) e `release` §1-2 são funções
-   puras interpretadas por modelo.
-3. **O gate de preflight de tools foi removido** da `autopilot` em 13/08 — era a mitigação
-   da cicatriz #1 (85k tokens numa MCP inexistente). Vira requisito: preflight de
-   dependência declarada é responsabilidade do runner, não de prosa numa skill.
+### F7 — Catálogo de tools (paralelizável desde já — não toca em Go)
+- Operações da `az` como tools tipadas (84 regras em prosa → assinaturas).
+- **Funções puras hoje escritas em prosa** (achado da F0): `ship` branch→target,
+  `ship` merge-por-nível (a regra de segurança mais importante do fluxo), `release`
+  versão↔tag↔ambiente.
+- MCPs existentes; possivelmente AWS CLI.
+- Validar **na autopilot** antes de o corvex consumir.
 
-## Decidido na rodada 3
+### F8 — Custódia de credencial
+- Credencial no runner, nunca no ambiente do worker. `DisallowedTools` fechando o caminho
+  cru (senão o catálogo é sugestão, não fronteira).
+- Preflight de dependência declarada antes do primeiro token (cicatriz #1).
 
-- **Autopilot e corvex são independentes.** A autopilot fica no repo dela, sem relação com
-  o corvex. O corvex fará *algo parecido* — mas não se resume a isso.
-  → **Consequência:** o corvex precisa da FORMA da autopilot como primitivo genérico
-    (fan-out sobre itens de runtime, ondas topológicas, consolidação, gate), **não** de
-    integração com Azure. O domínio entra por tools/adapters, nunca no binário.
-- **DAG vem do board OU do `spec.md`.** Os dois caminhos vivem.
-  → **Consequência:** `planner.go`/`griller.go`/`anchor.go` sobrevivem, e a ausência de
-    regra de parada no grill deixa de ser legado e vira **bug ativo** (travou o
-    `host-inheritance` com 28 perguntas em 2 semanas). Entra no backlog com teto.
-- **Sem ponte com a autopilot.** A UI só mostra dados do corvex.
-  → **Consequência dura:** existe **um único `activity.jsonl` no repo inteiro**, em
-    `feat/absorb-feedback` (não mergeada). `main` e `rebrand` não têm nenhum. A UI nasce
-    vazia e só serve depois que o corvex executar trabalho real. **F3 vai pro fim.**
+**Backlog paralelo:** teto no `griller.go`; contrato de contexto cross-repo.
 
-## Primitivo faltante: fan-out dinâmico
+---
 
-A recipe hoje é **DAG estático de stages** (`Stages []Stage` + `DependsOn []string`, tudo
-conhecido no YAML). A forma da autopilot precisa de **fan-out dinâmico**: N itens
-descobertos em runtime, cada um pelo mesmo pipeline, com dependência **entre itens**
-(ondas topológicas), depois consolidação.
+## Riscos
 
-Não se expressa no schema atual. É o que separa "recipe" de pipeline de verdade.
-
-## Fases (reordenadas — rodada 3)
-
-| # | Fase | Entrega | Depende de |
-|---|------|---------|-----------|
-| ~~F0~~ | ~~Espinha do fluxo~~ | ✅ `f0-fluxo.md` | — |
-| **F1** | Taxonomia + fan-out | steps `code\|tool\|test\|repro`; gates nas 4 naturezas (computacional/inferencial/humano/política); **fan-out dinâmico com ondas** | F0 |
-| **F2** | Funções puras como tools | `ship` branch→target, merge-por-nível, `release` versão↔tag↔ambiente, ops da `az`. **Não toca em Go** — paga no autopilot antes | F0 |
-| **F3** | Ambiente de execução por run | "simples" × "com Postgres" — reaproveita o docker do sandbox, reenquadrado | F1 |
-| **F4** | Corvex roda trabalho real | custódia de credencial; `DisallowedTools`; preflight de dependência declarada (cicatriz #1) | F1, F2, F3 |
-| **F5** | Telemetria | registro de run em disco + heartbeat; persistir `tool_use`; índice global em `~/.corvex/runs.jsonl` | F1 |
-| **F6** | UI **read-write** | caixa de gates, run ao vivo, histórico, disparo de run, aprovação de gate | F5 |
-
-### Revisão: a UI executa (decidido 13/08, após a redação do prompt de design)
-
-A UI **não é read-only**. Ela dispara run, aprova gate, pausa e mata — a intenção é
-substituir o terminal no dia a dia, **em paralelo** com ele. Consequências:
-
-- **A UI vira a fronteira de aplicação do gate humano:** ela guarda o consentimento, o
-  runner guarda a credencial, o agente não tem nenhum dos dois. Resolve estruturalmente
-  o problema de "gate por prompt" que motivou o rebrand inteiro.
-- **A F5 deixa de depender da F4 e passa a depender só da F1.** Registro de run em disco +
-  heartbeat + eventos `tool_use` viram **pré-requisito duro**: sem eles a UI não consegue
-  listar nem supervisionar o que está vivo.
-- **Sem daemon.** `corvex ui` sobe um servidor que spawna processos de run desacoplados e
-  os acompanha pelo registro em disco. O run continua sendo processo independente; a UI é
-  supervisora, não dona. Preserva o CLI e faz o "em paralelo" sair de graça.
-- **Regra de paridade:** todo botão tem equivalente em CLI; nenhum caminho existe só na UI.
-- **Auth desde o início:** servidor em localhost que executa comando com credencial na mão
-  precisa de token (gerado no `corvex ui`, embutido na URL aberta). Retrofitar é pior.
-- **Risco central de produto:** a tela de aprovação de gate. Gate que vira carimbo é pior
-  que gate nenhum — é a cicatriz #4 (reviewer passou 🔴 na 59337) na versão humana.
-  O desenho tem que forçar o olhar antes de habilitar o botão.
-
-**Backlog paralelo:** teto no `griller.go`; contrato de contexto cross-repo
-(leitura de B e C a partir de A — `WorktreeConfig.Link` é o pé).
-
-## Em aberto
-
-Nada bloqueante. Próximo passo: spec da F1.
+1. **Gate que vira carimbo.** É a cicatriz #4 na versão humana. A 2b/1d já força leitura,
+   mas isso é atrito, não prova. Mitigação real: **sensor sobre os sensores** — medir
+   latência de aprovação e taxa de reprovação por gate. Gate aprovado em 4s, 100% das
+   vezes, é teatro: automatiza ou deleta.
+2. **A UI nasce vazia.** Sem ponte com a autopilot, só há **um** `activity.jsonl` no repo
+   inteiro (em `feat/absorb-feedback`, não mergeada). A F6 só é útil depois da F3.
+3. **Snooze é vazamento.** Se a UI ganhar "adiar", o número de adiados precisa ficar
+   visível — senão é assim que gate morre em silêncio.
+4. **Escopo.** F0–F6 é reescrita grande de um binário que hoje funciona. Cada fase precisa
+   manter `go test ./...` verde e o `run <project>` atual funcionando.
 
 ## Fontes
 
 - `martinfowler.com/articles/harness-engineering.html` — guides (feedforward) × sensors
-  (feedback), cada um computacional ou inferencial. O gate de migration do pilot é o
-  desenho canônico: classificador determinístico → review-IA independente → aplica só em
-  STG → verifica por MCP → senão park humano.
-- `~/projects/yandeh/smartcare/.claude/skills/` — 88 KB em 8 skills: `az` (24.7 KB, 84
-  regras), `pilot-feature` (14.5 KB + 40 KB de workflow.js), `pilot-incident`, `refine`,
-  `refine-maestri`, `dev-maestri`, `ship`, `release`.
+  (feedback), computacional × inferencial.
+- `.corvex/tasks/rebrand/f0-fluxo.md` — espinha do fluxo, catálogo de 12 gates reais.
+- `.corvex/tasks/rebrand/ui-prompt.md` — briefing de design.
+- Canvas de design, turno 2 (2a painel · 2b gate · 2c disparar · 2d ao vivo · 2e histórico ·
+  2f encerrado · 2g pergunta · 2h ⌘K).
+- `~/projects/yandeh/smartcare/.claude/skills/` — `az`, `autopilot`, `refine`, `ship`,
+  `release`, `dev-maestri`.
