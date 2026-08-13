@@ -77,7 +77,7 @@ evidence:
 ```
 
 O runner só transporta e renderiza. `required_reading` é o que produz o *"falta ler o
-veredito"* da 2b. **Decisão de F2 (taxonomia), não de F4.**
+veredito"* da 2b. **Decisão de F2 (taxonomia), não de F8.**
 
 ### 4. Sem daemon
 
@@ -89,26 +89,34 @@ executa comando com credencial precisa disso (CSRF / DNS rebinding). Retrofitar 
 
 ---
 
-## Superfície de comandos (alvo)
+## Superfície de comandos
 
-Extraída do canvas — cada comando abaixo aparece literalmente numa tela.
+Ponto de partida (não o alvo final — a F3 é o passo de redesenho).
+Coluna do meio = como aparece no canvas; à direita = esquema substantivo→verbo proposto.
 
-| Comando alvo | Tela | Hoje |
-|---|---|---|
-| `corvex run <recipe> --repo X --branch Y` | 2c, 2h | `run <project>` — sem repo, sem recipe, sem run id |
-| `corvex runs --since 2d` | 2e | `list` lista *projetos*, não runs |
-| `corvex show <runId>` | 2f | `inspect <project>` — escopo errado |
-| `corvex watch <runId>` | 2d | — (TUI só existe acoplada ao `run`) |
-| `corvex gates` | 2a | — |
-| `corvex gate approve\|reject <runId> --step S` | 2b, 2h | — (`human-gate` é `kind` reservado, nunca implementado) |
-| `corvex answer <runId> --choice C` | 2g, 2h | — |
-| `corvex pause\|kill <runId>` | 2d | pause existe só como `Command` interno do TUI |
-| `corvex ui` | todas | — |
+| Hoje | No canvas | Alvo (F3) | Tela |
+|---|---|---|---|
+| `run <project>` | `run <recipe> --repo --branch` | `run start <recipe> --repo --branch` | 2c, 2h |
+| `list` (lista *projetos*) | `runs --since 2d` | `run list --since 2d` | 2e |
+| `inspect <project>` | `show <runId>` | `run show <id>` | 2f |
+| — | `watch <runId>` | `run watch <id>` | 2d |
+| — (interno do TUI) | `pause` / `kill` | `run pause\|kill <id>` | 2d |
+| — | `gates` | `gate list` | 2a |
+| — (`human-gate` reservado, nunca implementado) | `gate approve <id> --step S` | `gate approve\|reject <id> --step S` | 2b, 2h |
+| — | `answer <id> --choice C` | `gate answer <id> --choice C` | 2g, 2h |
+| `recipe <name>` | — | `recipe list\|show\|validate` | — |
+| — | — | `ui` | todas |
 
-**Sobrevivem:** `init`, `doctor`, `plan`, `grill`, `validate`, `recipe`, `version`.
-**Reescopados:** `list`→`recipes`, `status`/`logs`→ absorvidos por `show`/`watch`.
-**Compatibilidade:** `run <project>` continua válido (o caminho `spec.md` foi mantido na
-rodada 3), resolvendo para um recipe implícito.
+**Colisão a corrigir:** `run` (executa) × `runs` (lista) diferem por uma letra e fazem coisas
+opostas. Com autocomplete piora — TAB devolve duas opções quase idênticas, uma destrutiva.
+É o motivo de a F3 existir como passo próprio.
+
+**Aliases fixos e poucos** (só caminho quente): `corvex run <recipe>` = `run start`;
+`corvex gates` = `gate list`.
+**Sobrevivem:** `init`, `doctor`, `plan`, `grill`, `validate`, `version`.
+**Absorvidos:** `status` e `logs` → `run show` / `run watch`.
+**Compatibilidade:** `run <project>` continua válido (o caminho `spec.md` ficou na rodada 3),
+resolvendo para um recipe implícito.
 
 ---
 
@@ -156,7 +164,7 @@ descobertos em runtime, cada um pelo mesmo pipeline, com dependência **entre it
 preso em `cmd/`.
 
 - Extrair `internal/ops`: operações sem cobra, sem stdout, sem `os.Exit`. Toda regra sai de `cmd/`.
-- Tirar o stack de validação de `cmd/validate.go` → `internal/stack` (é o insumo da F5).
+- Tirar o stack de validação de `cmd/validate.go` → `internal/stack` (é o insumo da F6).
 - Quebrar `Orchestrator.Run` (412 linhas) e `executeTask` (317). Separar escalonador,
   execução de step e bookkeeping.
 - Quebrar `internal/orchestrator` (4.009 linhas) em pacotes com fronteira nomeada.
@@ -176,27 +184,59 @@ preso em `cmd/`.
 - **Aceite:** um recipe expressa a forma da autopilot; um gate humano bloqueia o processo
   e é liberado por `corvex gate approve`.
 
-### F3 — Superfície de comandos
-- Implementar a tabela acima. `run <project>` continua funcionando.
+### F3 — Redesenho da superfície de CLI (só desenho — entrega documento)
+Passo próprio, sem código. Hoje os comandos não têm gramática: verbo e substantivo
+misturados (`init`, `plan`, `run`, `grill`, `start`, `status`, `list`, `logs`, `inspect`)
+e **cinco** formas de olhar a mesma coisa (`status`, `logs`, `inspect`, + `show`, `watch`).
+
+**Defeito concreto a corrigir:** `corvex run` e `corvex runs` diferem por uma letra e fazem
+coisas opostas — um executa, o outro lista. Com autocomplete piora: TAB devolve duas opções
+quase idênticas, uma destrutiva.
+
+- **Esquema alvo: substantivo → verbo** (convenção `gh`/`kubectl`):
+  `run start|list|show|watch|pause|kill` · `gate list|approve|reject|answer` ·
+  `recipe list|show|validate`.
+- **Aliases fixos e poucos**, só para caminho quente: `corvex run <recipe>` = `run start`;
+  `corvex gates` = `gate list`. Alias para tudo reproduz o erro do Docker
+  (`docker run` × `docker container run`).
+- **Regra de crescimento:** poucos substantivos (`run`, `gate`, `recipe`), verbos
+  convencionais, **todo o resto é flag**. Comando novo justifica por que não é flag.
+- Tudo em **inglês**.
+- **Custo aceito:** os rodapés do canvas mudam (`corvex gates` → `corvex gate list`).
+- **Aceite:** documento com a tabela completa antiga→nova, aliases, e o mapeamento de cada
+  tela do canvas para o comando equivalente. Nenhuma linha de Go.
+
+### F4 — Implementar comandos + inteligência
+- Implementar o desenho da F3. `run <project>` continua funcionando.
+- **Completion dinâmica** (determinística, cobra): `run show <TAB>` completa com run ids
+  reais do índice da F1; `gate approve <TAB>` completa **só com gates pendentes**.
+- **Sugestão do próximo comando por estado** — o canvas já faz isso em todo rodapé
+  (*"⌘K abre o terminal aqui, já com `corvex gates`"*). Run terminou `parked` → imprime
+  `→ corvex gate approve run_8f21 --step migrate-stg`. Determinístico, sem token.
+- **`corvex` sem argumento mostra estado, não help** — a 2a no terminal. Quem digita
+  `corvex` está perguntando "e aí?", não "quais são as flags".
+- **Fora de escopo:** linguagem natural → comando (`corvex do "aprova o gate"`). Mais lento
+  que TAB, custa token, e erra em silêncio numa superfície que aprova migration. As duas
+  formas acima cobrem ~90% do problema de graça. Reavaliar depois da F7.
 - **Aceite:** todo comando do canvas existe e funciona no terminal, antes de haver UI.
 
-### F4 — Telemetria da UI
+### F5 — Telemetria da UI
 - Persistir eventos `tool_use` (início/fim, não chunks — `ledger.go:6` os descarta hoje).
 - Relógio de espera humana separado do relógio do run (2g: *"relógio parado há 6m"*).
 - Estado de leitura de evidência (persistente — fechar a aba não zera).
 - Custo por natureza (worker / reviewer / determinístico — a barra da 2f).
 - **Aceite:** todo dado das telas 2a–2h existe em disco.
 
-### F5 — Ambiente de execução por run
+### F6 — Ambiente de execução por run
 - "simples" × "com Postgres" — reusa `internal/stack` (F0) + o docker do sandbox.
 
-### F6 — Servidor + UI
+### F7 — Servidor + UI
 - `corvex ui`: HTTP sobre `internal/ops`, token de auth, SPA embutida.
 - Telas 2a–2h. ⌘K registrando ação de UI como comando.
 - **Aceite:** disparar run, aprovar gate e responder pergunta pela UI, com o log da 2h
   batendo com o que o `corvex runs` mostra.
 
-### F7 — Catálogo de tools (paralelizável desde já — não toca em Go)
+### F8 — Catálogo de tools (paralelizável desde já — não toca em Go)
 - Operações da `az` como tools tipadas (84 regras em prosa → assinaturas).
 - **Funções puras hoje escritas em prosa** (achado da F0): `ship` branch→target,
   `ship` merge-por-nível (a regra de segurança mais importante do fluxo), `release`
@@ -204,7 +244,7 @@ preso em `cmd/`.
 - MCPs existentes; possivelmente AWS CLI.
 - Validar **na autopilot** antes de o corvex consumir.
 
-### F8 — Custódia de credencial
+### F9 — Custódia de credencial
 - Credencial no runner, nunca no ambiente do worker. `DisallowedTools` fechando o caminho
   cru (senão o catálogo é sugestão, não fronteira).
 - Preflight de dependência declarada antes do primeiro token (cicatriz #1).
@@ -220,10 +260,10 @@ preso em `cmd/`.
    latência de aprovação e taxa de reprovação por gate. Gate aprovado em 4s, 100% das
    vezes, é teatro: automatiza ou deleta.
 2. **A UI nasce vazia.** Sem ponte com a autopilot, só há **um** `activity.jsonl` no repo
-   inteiro (em `feat/absorb-feedback`, não mergeada). A F6 só é útil depois da F3.
+   inteiro (em `feat/absorb-feedback`, não mergeada). A F7 só é útil depois da F4.
 3. **Snooze é vazamento.** Se a UI ganhar "adiar", o número de adiados precisa ficar
    visível — senão é assim que gate morre em silêncio.
-4. **Escopo.** F0–F6 é reescrita grande de um binário que hoje funciona. Cada fase precisa
+4. **Escopo.** F0–F7 é reescrita grande de um binário que hoje funciona. Cada fase precisa
    manter `go test ./...` verde e o `run <project>` atual funcionando.
 
 ## Fontes
