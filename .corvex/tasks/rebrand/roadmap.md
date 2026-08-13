@@ -190,8 +190,29 @@ Não se expressa no schema atual. É o que separa "recipe" de pipeline de verdad
 | **F2** | Funções puras como tools | `ship` branch→target, merge-por-nível, `release` versão↔tag↔ambiente, ops da `az`. **Não toca em Go** — paga no autopilot antes | F0 |
 | **F3** | Ambiente de execução por run | "simples" × "com Postgres" — reaproveita o docker do sandbox, reenquadrado | F1 |
 | **F4** | Corvex roda trabalho real | custódia de credencial; `DisallowedTools`; preflight de dependência declarada (cicatriz #1) | F1, F2, F3 |
-| **F5** | Telemetria | registro de run em disco + heartbeat; persistir `tool_use`; índice global em `~/.corvex/runs.jsonl` | F4 |
-| **F6** | UI v1 read-only | histórico, run ao vivo, tools ao vivo, caixa de gates | F5 |
+| **F5** | Telemetria | registro de run em disco + heartbeat; persistir `tool_use`; índice global em `~/.corvex/runs.jsonl` | F1 |
+| **F6** | UI **read-write** | caixa de gates, run ao vivo, histórico, disparo de run, aprovação de gate | F5 |
+
+### Revisão: a UI executa (decidido 13/08, após a redação do prompt de design)
+
+A UI **não é read-only**. Ela dispara run, aprova gate, pausa e mata — a intenção é
+substituir o terminal no dia a dia, **em paralelo** com ele. Consequências:
+
+- **A UI vira a fronteira de aplicação do gate humano:** ela guarda o consentimento, o
+  runner guarda a credencial, o agente não tem nenhum dos dois. Resolve estruturalmente
+  o problema de "gate por prompt" que motivou o rebrand inteiro.
+- **A F5 deixa de depender da F4 e passa a depender só da F1.** Registro de run em disco +
+  heartbeat + eventos `tool_use` viram **pré-requisito duro**: sem eles a UI não consegue
+  listar nem supervisionar o que está vivo.
+- **Sem daemon.** `corvex ui` sobe um servidor que spawna processos de run desacoplados e
+  os acompanha pelo registro em disco. O run continua sendo processo independente; a UI é
+  supervisora, não dona. Preserva o CLI e faz o "em paralelo" sair de graça.
+- **Regra de paridade:** todo botão tem equivalente em CLI; nenhum caminho existe só na UI.
+- **Auth desde o início:** servidor em localhost que executa comando com credencial na mão
+  precisa de token (gerado no `corvex ui`, embutido na URL aberta). Retrofitar é pior.
+- **Risco central de produto:** a tela de aprovação de gate. Gate que vira carimbo é pior
+  que gate nenhum — é a cicatriz #4 (reviewer passou 🔴 na 59337) na versão humana.
+  O desenho tem que forçar o olhar antes de habilitar o botão.
 
 **Backlog paralelo:** teto no `griller.go`; contrato de contexto cross-repo
 (leitura de B e C a partir de A — `WorktreeConfig.Link` é o pé).
