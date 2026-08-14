@@ -1,0 +1,10 @@
+$ corvex version
+
+--- stdout ---
+corvex v0.1.0-dev
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
