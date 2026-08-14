@@ -181,8 +181,9 @@ que qualquer instrução de prompt — se houver conflito, a que está aqui ganh
      | grep -vE ':[0-9]+:[[:space:]]*//' | grep -v "_test.go"
    ```
    → deve ser **vazio**. (Comentários que citam Azure como exemplo são permitidos; fixture
-   de teste também. Hoje retorna **uma** linha — `internal/orchestrator/worker.go:179`,
-   o `"AZURE_"` cravado em `authEnvPrefixes` — que a F0 remove.)
+   de teste também.) **Vazio desde a F0 (`e6d06dc`)**: a única linha que existia era o
+   `"AZURE_"` cravado em `authEnvPrefixes` (`internal/orchestrator/worker.go:179`), hoje
+   substituído por `sandbox.env_allowlist` no `config.yaml` unido aos defaults genéricos.
 5. Nenhum segredo, token ou credencial em log, ledger ou commit.
 6. Um commit por fase, no mínimo. Mensagem descrevendo o que mudou e o que **não** mudou.
 
@@ -246,7 +247,57 @@ por process-group), `doctor`, `inspect`, `status`, `logs`, `start`.
   - Cada comando acima tem ao menos um teste golden que falha se a saída mudar.
 - **Autonomia:** ✅ autônoma. É trabalho aditivo, não muda comportamento.
 
-### F0 — Limpeza e modularização
+### F0 — Limpeza e modularização — ✅ CONCLUÍDA
+**Concluída em `e6d06dc`** (`refactor(f0): cmd/ vira cobra puro, regra desce para
+internal/ops`), sobre a rede da F-1 (`9d09810`). Waves anteriores: `a0886f5`, `68bf111`.
+
+Estado no fecho — os dez invariantes conferidos um comando cada:
+
+| # | Invariante | Estado |
+|---|---|---|
+| 1 | rede verde | `go test ./...`, `./cmd/ -count=2` e `./cmd/ -shuffle=on` verdes; `go build`/`go vet` limpos |
+| 2 | cobertura de `cmd/` | **84.2%** (piso 60). `internal/ops/` nasceu com 24.1% |
+| 3 | caminho legado | binário real em fixture real: `corvex run alpha --dry-run` sai **byte-idêntico** ao golden `run_dryrun` (mesmo md5), exit 0, stderr vazio, sem chamar IA |
+| 4 | zero domínio | 0 linhas em fonte de produção |
+| 5 | zero segredo | a `Entry` do ledger não tem campo de env — estruturalmente não dá para gravar credencial; a allowlist não é logada (nem por valor, nem por prefixo) |
+| 6 | cobra só em `cmd/` | `grep -rl "spf13/cobra" internal/` → vazio |
+| 7 | `ops` silencioso | `grep -rnE "fmt.Print\|os.Exit" internal/ops/` → vazio |
+| 8 | `cmd/` ≤ 150 linhas | nenhuma fonte de produção acima (os seis violadores foram fatiados) |
+| 9 | `internal/` ≤ 400 linhas | nenhuma fonte de produção acima |
+| 10 | `ops` sem `tui` | `go list -deps ./internal/ops` sem `internal/tui` e sem cobra |
+
+**Zero mudança de comportamento, provado e não assumido:** os 249 goldens são
+byte-idênticos a um `git archive` de `9d09810` (conteúdo, nomes e quantidade); o conjunto
+de labels que os testes referenciam é o mesmo e nenhum golden ficou órfão; os testes de
+caracterização ficam em exatamente 82 asserts, 8 skips e 5 `t.Log`; **nenhuma função de
+teste que existia em `9d09810` desapareceu** (asserts do repo subiram 1479 → 1515). Os 14
+bugs congelados de `f-1-anomalias.md` foram movidos junto, byte a byte, não consertados —
+truncagem e formatação ficaram em `cmd/` justamente por isso.
+
+**Estado global da allowlist de env eliminado.** `activeEnvMu`, `activeEnvAllowlist`,
+`SetActiveEnvAllowlist` e `ActiveEnvAllowlist` saíram de `internal/config`, e o publish
+dentro de `config.Load` foi removido. A allowlist virou **campo de `Worker`**, propagado no
+`clone()` e consumido em `collectAuthEnv`; `NewWorker` ganhou o parâmetro para que o
+compilador force todo construtor a fornecê-lo, e os dois construtores leem do `Config` que
+aquele run já carregou. O que chega ao sandbox passa a ser o que **o config daquele run**
+declarou, não o que algum `Load` anterior no processo publicou — propriedade que o global
+não conseguia oferecer, e que agora tem teste próprio
+(`TestWorkerForwardsItsOwnAllowlistToSandbox`). Isto fecha também o invariante 4: o
+`"AZURE_"` cravado em `authEnvPrefixes` não existe mais.
+
+**Fica para depois** (não bloqueia F1; nenhum é violação de invariante):
+- `internal/ops/doctor_env.go` ainda importa `internal/orchestrator` só por
+  `orchestrator.RepoSkills(workDir)` — a camada de regra dependendo do executor.
+  `RepoSkills` deveria descer para `ops` ou para um pacote `skills` próprio.
+- `ops.LinkWorktreePaths` relata progresso pelo logger global, idêntico ao que
+  `cmd/helpers.go` fazia em `9d09810` — preservado de propósito por LEI A. Trocar por
+  `io.Writer`/callback é mudança de comportamento; é a dívida que a **F7** paga quando a
+  operação passar a ser chamada por HTTP.
+- Dívida de gofmt pré-existente em 7 arquivos — subconjunto estrito dos 10 de `68bf111`.
+  A F0 não criou dívida nova e limpou 3; todo arquivo novo da fase está gofmt-limpo.
+
+---
+
 **Por quê:** pré-condição física da UI, não estética. A regra de paridade (2h) exige que UI
 e CLI chamem a mesma função, e hoje `setupValidationStack` só é alcançável pelo cobra.
 
