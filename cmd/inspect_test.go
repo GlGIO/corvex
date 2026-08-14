@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
+	"github.com/giovannialves/corvex/internal/ops"
 )
 
 func setupInspectTestProject(t *testing.T) (tmpDir string, cleanup func()) {
@@ -83,7 +84,7 @@ func TestInspectJSONShape(t *testing.T) {
 		t.Fatalf("runInspect --json failed: %v", err)
 	}
 
-	var out inspectOutput
+	var out ops.InspectReport
 	if err := json.Unmarshal([]byte(output), &out); err != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput:\n%s", err, output)
 	}
@@ -118,12 +119,12 @@ func TestInspectJSONTaskMetrics(t *testing.T) {
 		t.Fatalf("runInspect --json failed: %v", err)
 	}
 
-	var out inspectOutput
+	var out ops.InspectReport
 	if err := json.Unmarshal([]byte(output), &out); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	byID := make(map[string]inspectTaskStat, len(out.Tasks))
+	byID := make(map[string]ops.InspectTaskStat, len(out.Tasks))
 	for _, s := range out.Tasks {
 		byID[s.ID] = s
 	}
@@ -182,7 +183,7 @@ func TestInspectJSONTotalCost(t *testing.T) {
 		t.Fatalf("runInspect --json failed: %v", err)
 	}
 
-	var out inspectOutput
+	var out ops.InspectReport
 	if err := json.Unmarshal([]byte(output), &out); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
@@ -22,12 +21,32 @@ type Worker struct {
 	sandbox      sandbox.Sandbox
 	onStream     func(types.StreamEvent)
 	skillRouting map[string]string // task type → repo skill name
+	envAllowlist []string          // host env prefixes forwarded into the sandbox
 }
 
 // NewWorker creates a Worker bound to the given provider and model.
 // skillRouting (task type → skill name) may be nil.
-func NewWorker(p provider.Provider, model, workDir string, sb sandbox.Sandbox, skillRouting map[string]string) *Worker {
-	return &Worker{provider: p, model: model, workDir: workDir, sandbox: sb, skillRouting: skillRouting}
+//
+// envAllowlist is the resolved list of host environment prefixes this Worker
+// may forward into its sandbox — normally cfg.EnvAllowlist(). It is a
+// parameter, not process state, because it decides which credentials leave the
+// host: the Worker of one run must never inherit the allowlist of another.
+// A nil list forwards nothing.
+func NewWorker(
+	p provider.Provider,
+	model, workDir string,
+	sb sandbox.Sandbox,
+	skillRouting map[string]string,
+	envAllowlist []string,
+) *Worker {
+	return &Worker{
+		provider:     p,
+		model:        model,
+		workDir:      workDir,
+		sandbox:      sb,
+		skillRouting: skillRouting,
+		envAllowlist: envAllowlist,
+	}
 }
 
 // clone returns a copy of the Worker with its own mutable fields (model,
@@ -40,6 +59,7 @@ func (w *Worker) clone() *Worker {
 		workDir:      w.workDir,
 		sandbox:      w.sandbox,
 		skillRouting: w.skillRouting,
+		envAllowlist: w.envAllowlist,
 	}
 }
 
@@ -131,7 +151,7 @@ func (w *Worker) executeViaSandbox(
 ) (*types.ExecuteResult, error) {
 	bin, args, env := cb.BuildCommand(req)
 
-	authEnv := collectAuthEnv(config.ActiveEnvAllowlist())
+	authEnv := collectAuthEnv(w.envAllowlist)
 	for k, v := range env {
 		authEnv[k] = v
 	}
@@ -168,10 +188,10 @@ func (w *Worker) executeViaSandbox(
 // one of prefixes. Values never reach a log or the ledger — they are read here
 // and handed straight to the sandbox.
 //
-// The prefix list is configuration, not code: config.ActiveEnvAllowlist()
-// returns the built-in credentials plus whatever `sandbox.env_allowlist`
-// declares, so a user can grant a new credential (a cloud CLI, an issue
-// tracker token) without a new binary.
+// The prefix list is configuration, not code: the caller passes
+// cfg.EnvAllowlist(), which is the built-in credentials plus whatever
+// `sandbox.env_allowlist` declares, so a user can grant a new credential (a
+// cloud CLI, an issue tracker token) without a new binary.
 func collectAuthEnv(prefixes []string) map[string]string {
 	env := make(map[string]string)
 	for _, e := range os.Environ() {

@@ -31,6 +31,7 @@ import (
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/activity"
+	"github.com/giovannialves/corvex/internal/ops"
 )
 
 // ── local fixtures ───────────────────────────────────────────────────────────
@@ -628,7 +629,7 @@ func TestCharacterizeRunWorktreeMismatch(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, fixtureTasksMD).GitInit()
 	// The sibling path convention is <parent>/<repo>-<project>; it only has to
 	// exist as a directory for the guard to trip.
-	runMkdirAll(t, worktreePath(f.Dir, "alpha"))
+	runMkdirAll(t, ops.WorktreePath(f.Dir, "alpha"))
 
 	args := []string{"run", "alpha", "--dry-run"}
 	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
@@ -638,7 +639,7 @@ func TestCharacterizeRunWorktreeMismatch(t *testing.T) {
 // --here is the documented escape hatch for the case above.
 func TestCharacterizeRunWorktreeMismatchHere(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, fixtureTasksMD).GitInit()
-	runMkdirAll(t, worktreePath(f.Dir, "alpha"))
+	runMkdirAll(t, ops.WorktreePath(f.Dir, "alpha"))
 
 	args := []string{"run", "alpha", "--dry-run", "--here"}
 	stdout, stderr, err := runCLIIn(t, f.Dir, args...)

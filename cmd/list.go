@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,7 @@ func init() {
 }
 
 func runList(_ *cobra.Command, _ []string) error {
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -41,29 +41,13 @@ func runList(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	names := projectNames(workDir)
-	tasksDir := filepath.Join(workDir, ".corvex", "tasks")
+	summaries := ops.ListProjects(workDir)
 
-	projects := make([]listProject, 0, len(names))
-	for _, name := range names {
-		hasSpec := false
-		hasTasks := false
-
-		if _, err := os.Stat(filepath.Join(tasksDir, name, "spec.md")); err == nil {
-			hasSpec = true
-		}
-		if _, err := os.Stat(filepath.Join(tasksDir, name, "tasks.md")); err == nil {
-			hasTasks = true
-		}
-
-		status := "no spec"
-		if hasSpec && hasTasks {
-			status = "ready"
-		} else if hasSpec {
-			status = "needs planning"
-		}
-
-		projects = append(projects, listProject{Name: name, HasSpec: hasSpec, HasTasks: hasTasks, Status: status})
+	projects := make([]listProject, 0, len(summaries))
+	for _, s := range summaries {
+		projects = append(projects, listProject{
+			Name: s.Name, HasSpec: s.HasSpec, HasTasks: s.HasTasks, Status: s.Status,
+		})
 	}
 
 	if *listJSON {

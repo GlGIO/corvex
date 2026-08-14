@@ -4,14 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/giovannialves/corvex/internal/anchor"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
-	"github.com/giovannialves/corvex/internal/task"
-	"github.com/giovannialves/corvex/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +35,7 @@ func init() {
 func runPlan(cmd *cobra.Command, args []string) error {
 	project := args[0]
 
-	cfg, workDir, err := loadConfig()
+	cfg, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -54,17 +51,17 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	pDir0 := projectDir(workDir, project)
-	specPath0 := filepath.Join(pDir0, "spec.md")
-	tasksPath0 := filepath.Join(pDir0, "tasks.md")
-	anchorPath0 := filepath.Join(pDir0, "anchor.yaml")
+	pDir := ops.ProjectDir(workDir, project)
+	specPath := filepath.Join(pDir, "spec.md")
+	tasksPath := filepath.Join(pDir, "tasks.md")
+	anchorPath := filepath.Join(pDir, "anchor.yaml")
 
 	// --reanchor: the spec changed in a way that doesn't affect the task
 	// breakdown (e.g. an edited validation note). Re-record the spec hash so the
 	// drift guard in `corvex run` stops firing, without invoking the Planner —
 	// which would regenerate (and can corrupt) the existing tasks.md.
 	if planReanchor {
-		return reanchorSpec(project, specPath0, tasksPath0, anchorPath0)
+		return reanchorSpec(project, specPath, tasksPath, anchorPath)
 	}
 
 	p, err := provider.NewProvider(cfg.Provider.Default, cfg)
@@ -75,11 +72,6 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	planner := planning.NewPlanner(p, cfg.Provider.Models.Planner, workDir, cfg.AgentRouting, cfg.Plan.ContextCommand)
 	planner.SetProgressWriter(os.Stdout)
 
-	pDir := projectDir(workDir, project)
-	specPath := filepath.Join(pDir, "spec.md")
-	anchorPath := filepath.Join(pDir, "anchor.yaml")
-	tasksPath := filepath.Join(pDir, "tasks.md")
-
 	log.Info("planning", "project", project)
 	if err := planner.Plan(cmd.Context(), specPath, anchorPath, tasksPath); err != nil {
 		return fmt.Errorf("planning failed: %w", err)
@@ -87,24 +79,8 @@ func runPlan(cmd *cobra.Command, args []string) error {
 
 	log.Info("tasks.md generated", "path", tasksPath)
 
-	// Persist the spec hash in anchor.yaml so subsequent `corvex run`
-	// invocations can detect whether the spec has drifted. Without this,
-	// `needsPlanning` finds no anchor state, treats the spec as "changed",
-	// and triggers an automatic replan every time — wiping manual edits to
-	// tasks.md and resetting completed task statuses to PENDING.
-	existing, _ := anchor.Load(anchorPath)
-	hash, err := anchor.SpecHash(specPath)
-	if err != nil {
-		return fmt.Errorf("hashing spec: %w", err)
-	}
-	existing.Project = project
-	existing.SpecHash = hash
-	existing.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if existing.Completed == nil {
-		existing.Completed = []types.CompletedTask{}
-	}
-	if err := anchor.Save(anchorPath, existing); err != nil {
-		return fmt.Errorf("saving anchor: %w", err)
+	if err := ops.RecordSpecHash(project, specPath, anchorPath); err != nil {
+		return err
 	}
 
 	fmt.Printf("Next: corvex run %s\n", project)
@@ -116,30 +92,17 @@ func runPlan(cmd *cobra.Command, args []string) error {
 // exist — re-anchoring against a missing or broken plan would silently mask the
 // problem. Used for benign spec edits that don't change the task breakdown.
 func reanchorSpec(project, specPath, tasksPath, anchorPath string) error {
-	if _, err := os.Stat(specPath); err != nil {
-		return fmt.Errorf("--reanchor: spec.md not found at %s", specPath)
-	}
-	if _, err := os.Stat(tasksPath); err != nil {
-		return fmt.Errorf("--reanchor: no tasks.md at %s — nothing to anchor; run `corvex plan %s` first", tasksPath, project)
-	}
-	// Guard against re-anchoring on top of a corrupted tasks.md.
-	if _, _, err := task.ParseTasksFile(tasksPath); err != nil {
-		return fmt.Errorf("--reanchor: tasks.md does not parse, refusing to anchor a broken plan: %w", err)
+	switch st := ops.InspectReanchor(specPath, tasksPath); st.Problem {
+	case ops.ReanchorNoSpec:
+		return fmt.Errorf("--reanchor: spec.md not found at %s", st.SpecPath)
+	case ops.ReanchorNoTasks:
+		return fmt.Errorf("--reanchor: no tasks.md at %s — nothing to anchor; run `corvex plan %s` first", st.TasksPath, project)
+	case ops.ReanchorBrokenTasks:
+		return fmt.Errorf("--reanchor: tasks.md does not parse, refusing to anchor a broken plan: %w", st.Err)
 	}
 
-	hash, err := anchor.SpecHash(specPath)
-	if err != nil {
-		return fmt.Errorf("hashing spec: %w", err)
-	}
-	existing, _ := anchor.Load(anchorPath)
-	existing.Project = project
-	existing.SpecHash = hash
-	existing.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if existing.Completed == nil {
-		existing.Completed = []types.CompletedTask{}
-	}
-	if err := anchor.Save(anchorPath, existing); err != nil {
-		return fmt.Errorf("saving anchor: %w", err)
+	if err := ops.RecordSpecHash(project, specPath, anchorPath); err != nil {
+		return err
 	}
 
 	log.Info("re-anchored spec hash (tasks.md left untouched)", "project", project)

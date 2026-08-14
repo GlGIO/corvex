@@ -1,4 +1,8 @@
-package cmd
+package ops
+
+// Unit test for the --ab flag parser. It lived in cmd/run_test.go while
+// parseABModels was still a cmd function; it moved down with the code,
+// assertions unchanged.
 
 import "testing"
 
@@ -23,7 +27,7 @@ func TestParseABModels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseABModels(tt.raw)
+			got, err := ParseABModels(tt.raw)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil; result = %v", got)

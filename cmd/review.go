@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +25,7 @@ func init() {
 }
 
 func runReview(_ *cobra.Command, args []string) error {
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -37,39 +34,20 @@ func runReview(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	dir := filepath.Join(workDir, ".corvex", "escalations")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No pending escalations.")
-			return nil
-		}
-		return fmt.Errorf("reading escalations directory: %w", err)
-	}
-
 	filter := ""
 	if len(args) == 1 {
 		filter = args[0]
 	}
 
-	var matched []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".md") {
-			continue
-		}
-		if filter != "" && !strings.HasPrefix(name, filter+"-") {
-			continue
-		}
-		matched = append(matched, name)
+	list, err := ops.ListEscalations(workDir, filter)
+	if err != nil {
+		return err
 	}
-	sort.Strings(matched)
 
-	if len(matched) == 0 {
-		if filter != "" {
+	if len(list.Items) == 0 {
+		// A filter that matched nothing says so; a workspace that never
+		// escalated anything gets the generic line, even with a filter.
+		if filter != "" && list.Exists {
 			fmt.Printf("No pending escalations for project %q.\n", filter)
 		} else {
 			fmt.Println("No pending escalations.")
@@ -77,21 +55,12 @@ func runReview(_ *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Pending escalations (%d):\n\n", len(matched))
-	for _, name := range matched {
-		path := filepath.Join(dir, name)
-		fmt.Printf("• %s\n", path)
-
-		// Surface the first two lines of context so users can triage without
-		// opening each file.
-		if data, readErr := os.ReadFile(path); readErr == nil {
-			lines := strings.SplitN(string(data), "\n", 6)
-			for i, line := range lines {
-				if i >= 4 || strings.TrimSpace(line) == "" {
-					continue
-				}
-				fmt.Printf("    %s\n", line)
-			}
+	fmt.Printf("Pending escalations (%d):\n\n", len(list.Items))
+	for _, e := range list.Items {
+		fmt.Printf("• %s\n", e.Path)
+		// Surface the head of the file so users can triage without opening it.
+		for _, line := range e.Head {
+			fmt.Printf("    %s\n", line)
 		}
 		fmt.Println()
 	}

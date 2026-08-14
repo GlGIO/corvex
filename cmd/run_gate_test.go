@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/ops"
 )
 
 func TestDoctorGate(t *testing.T) {
@@ -47,7 +48,7 @@ func TestRunPreview(t *testing.T) {
 	}
 
 	cfg := config.Default() // MaxCostUSD 25, per-task 5
-	got := runPreview(tmp, "proj", cfg)
+	got := formatRunPreview(ops.LoadRunPreview(tmp, "proj", cfg))
 	if !strings.Contains(got, "1 pending") {
 		t.Errorf("preview = %q, want it to report 1 pending task", got)
 	}

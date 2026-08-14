@@ -214,11 +214,6 @@ func Load(path string) (*Config, error) {
 
 	applyDefaults(cfg)
 
-	// Publish the sandbox env allowlist for this process, so the components
-	// that forward host credentials into a sandboxed child honour the user's
-	// `sandbox.env_allowlist` without threading it through every constructor.
-	SetActiveEnvAllowlist(cfg.Sandbox.EnvAllowlist)
-
 	// Auto-source dotenv files into the process environment so `${VAR}`
 	// placeholders in this config — most notably `mcp_servers[].env` — can
 	// be expanded at runtime without committing secrets to the YAML.

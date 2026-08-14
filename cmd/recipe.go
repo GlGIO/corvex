@@ -1,13 +1,11 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/charmbracelet/log"
-	"github.com/giovannialves/corvex/internal/recipe"
-	"github.com/giovannialves/corvex/internal/task"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +26,7 @@ func init() {
 func runRecipe(_ *cobra.Command, args []string) error {
 	name := args[0]
 
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -36,35 +34,19 @@ func runRecipe(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	recipePath := filepath.Join(workDir, ".corvex", "recipes", name+".yaml")
-	data, err := os.ReadFile(recipePath)
+	tasksPath, count, err := ops.CompileRecipe(workDir, name)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("recipe not found: %s (create a recipe YAML there, then re-run)", recipePath)
+		// A missing recipe is the one failure worth answering with a hint about
+		// what to write and where.
+		var notFound *ops.RecipeNotFoundError
+		if errors.As(err, &notFound) {
+			return fmt.Errorf("recipe not found: %s (create a recipe YAML there, then re-run)", notFound.Path)
 		}
-		return fmt.Errorf("reading recipe %s: %w", recipePath, err)
-	}
-
-	r, err := recipe.Parse(data)
-	if err != nil {
-		return err
-	}
-	tasks, dag, err := r.Compile()
-	if err != nil {
 		return err
 	}
 
-	projDir := projectDir(workDir, name)
-	if err := os.MkdirAll(projDir, 0o755); err != nil {
-		return fmt.Errorf("creating project dir %s: %w", projDir, err)
-	}
-	tasksPath := filepath.Join(projDir, "tasks.md")
-	if err := task.WriteTasksFile(tasksPath, tasks, dag); err != nil {
-		return fmt.Errorf("writing tasks.md: %w", err)
-	}
-
-	log.Info("compiled recipe", "name", name, "stages", len(tasks), "tasks", tasksPath)
-	fmt.Printf("Compiled recipe %q → %d task(s) at %s\n", name, len(tasks), tasksPath)
+	log.Info("compiled recipe", "name", name, "stages", count, "tasks", tasksPath)
+	fmt.Printf("Compiled recipe %q → %d task(s) at %s\n", name, count, tasksPath)
 	fmt.Printf("Next: corvex run %s\n", name)
 	return nil
 }

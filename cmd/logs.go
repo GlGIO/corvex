@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
-	"github.com/giovannialves/corvex/internal/anchor"
-	"github.com/giovannialves/corvex/internal/task"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/giovannialves/corvex/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +25,7 @@ func init() {
 func runLogs(_ *cobra.Command, args []string) error {
 	project := args[0]
 
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -36,33 +34,21 @@ func runLogs(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	pDir := projectDir(workDir, project)
-	tasksPath := filepath.Join(pDir, "tasks.md")
-	anchorPath := filepath.Join(pDir, "anchor.yaml")
-
-	tasks, _, err := task.ParseTasksFile(tasksPath)
+	view, err := ops.ReadProject(workDir, project)
 	if err != nil {
-		return fmt.Errorf("parsing tasks: %w", err)
-	}
-
-	anchorState, _ := anchor.Load(anchorPath)
-
-	completedMap := make(map[string]types.CompletedTask)
-	for _, c := range anchorState.Completed {
-		completedMap[c.ID] = c
+		return err
 	}
 
 	if len(args) == 2 {
-		taskID := strings.ToUpper(args[1])
-		return showTaskLog(tasks, completedMap, taskID)
+		return showTaskLog(view, strings.ToUpper(args[1]))
 	}
 
-	for i, t := range tasks {
+	for i, t := range view.Tasks {
 		if i > 0 {
 			fmt.Println("---")
 			fmt.Println()
 		}
-		if err := showTaskLog(tasks, completedMap, t.ID); err != nil {
+		if err := showTaskLog(view, t.ID); err != nil {
 			return err
 		}
 	}
@@ -70,17 +56,12 @@ func runLogs(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func showTaskLog(tasks []types.Task, completedMap map[string]types.CompletedTask, taskID string) error {
-	var t *types.Task
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			t = &tasks[i]
-			break
-		}
-	}
-
-	if t == nil {
-		return fmt.Errorf("task %s not found", taskID)
+// showTaskLog renders one task: its heading, description, criteria, touched
+// files, and whatever the anchor recorded when it completed.
+func showTaskLog(view *ops.ProjectView, taskID string) error {
+	t, err := ops.FindTask(view.Tasks, taskID)
+	if err != nil {
+		return err
 	}
 
 	emoji := statusEmoji(t.Status)
@@ -113,7 +94,7 @@ func showTaskLog(tasks []types.Task, completedMap map[string]types.CompletedTask
 		fmt.Println()
 	}
 
-	if c, ok := completedMap[t.ID]; ok {
+	if c, ok := view.Completed[t.ID]; ok {
 		if c.Summary != "" {
 			fmt.Printf("Summary: %s\n\n", c.Summary)
 		}

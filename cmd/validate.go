@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/stack"
@@ -32,7 +33,7 @@ func init() {
 func runValidate(cmd *cobra.Command, args []string) error {
 	project := args[0]
 
-	cfg, workDir, err := loadConfig()
+	cfg, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -45,7 +46,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		if err := wizard.New(reader, os.Stdout).Run(cmd.Context(), workDir, cfg); err != nil {
 			return fmt.Errorf("validate wizard: %w", err)
 		}
-		cfg, workDir, err = loadConfig()
+		cfg, workDir, err = ops.LoadConfig()
 		if err != nil {
 			return err
 		}
@@ -54,15 +55,9 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	return validateProject(cmd.Context(), cfg, workDir, project)
 }
 
-// validateConfigured is a thin alias over wizard.Configured, kept so cmd/run.go
-// (owned by another front of this refactor) keeps reading naturally.
-func validateConfigured(v config.ValidateConfig) bool {
-	return wizard.Configured(v)
-}
-
 // validateProject is the shared entry point used by both validateCmd and --validate in run.
 func validateProject(ctx context.Context, cfg *config.Config, workDir, project string) error {
-	pDir := projectDir(workDir, project)
+	pDir := ops.ProjectDir(workDir, project)
 	specPath := filepath.Join(pDir, "spec.md")
 	tasksPath := filepath.Join(pDir, "tasks.md")
 

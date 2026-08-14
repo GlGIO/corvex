@@ -1,9 +1,11 @@
 package step
 
 import (
+	"context"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/types"
 )
 
 func TestCollectAuthEnv(t *testing.T) {
@@ -50,20 +52,21 @@ func TestCollectAuthEnv(t *testing.T) {
 	}
 }
 
-// A prefix the defaults do not know about is inherited once the loaded config
-// declares it — no recompile needed to grant a new credential.
+// A prefix the defaults do not know about is inherited once the config that
+// this run loaded declares it — no recompile needed to grant a new credential.
 func TestCollectAuthEnv_ConfiguredPrefix(t *testing.T) {
 	t.Setenv("AZURE_DEVOPS_EXT_PAT", "pat-test")
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 
-	if got := collectAuthEnv(config.ActiveEnvAllowlist()); got["AZURE_DEVOPS_EXT_PAT"] != "" {
+	undeclared := &config.Config{}
+	if got := collectAuthEnv(undeclared.EnvAllowlist()); got["AZURE_DEVOPS_EXT_PAT"] != "" {
 		t.Fatalf("AZURE_DEVOPS_EXT_PAT leaked without config: %q", got["AZURE_DEVOPS_EXT_PAT"])
 	}
 
-	t.Cleanup(func() { config.SetActiveEnvAllowlist(nil) })
-	config.SetActiveEnvAllowlist([]string{"AZURE_"})
+	declared := &config.Config{}
+	declared.Sandbox.EnvAllowlist = []string{"AZURE_"}
 
-	env := collectAuthEnv(config.ActiveEnvAllowlist())
+	env := collectAuthEnv(declared.EnvAllowlist())
 	if env["AZURE_DEVOPS_EXT_PAT"] != "pat-test" {
 		t.Errorf("AZURE_DEVOPS_EXT_PAT = %q, want %q", env["AZURE_DEVOPS_EXT_PAT"], "pat-test")
 	}
@@ -76,12 +79,45 @@ func TestCollectAuthEnv_NoMatch(t *testing.T) {
 	t.Setenv("TOTALLY_UNRELATED", "value1")
 	t.Setenv("ANOTHER_RANDOM", "value2")
 
-	env := collectAuthEnv(config.ActiveEnvAllowlist())
+	env := collectAuthEnv(config.DefaultEnvAllowlist())
 
 	if _, ok := env["TOTALLY_UNRELATED"]; ok {
 		t.Error("TOTALLY_UNRELATED should not be in auth env")
 	}
 	if _, ok := env["ANOTHER_RANDOM"]; ok {
 		t.Error("ANOTHER_RANDOM should not be in auth env")
+	}
+}
+
+// The allowlist is a per-Worker field, not process state: what reaches the
+// sandbox is exactly what the config of THIS Worker declared. A second Worker
+// built from a config that says nothing sees none of it — the property the old
+// process-wide "active allowlist" could not offer.
+func TestWorkerForwardsItsOwnAllowlistToSandbox(t *testing.T) {
+	t.Setenv("AZURE_DEVOPS_EXT_PAT", "pat-test")
+
+	declared := &config.Config{}
+	declared.Sandbox.EnvAllowlist = []string{"AZURE_"}
+
+	envFor := func(allowlist []string) map[string]string {
+		sb := &mockSandbox{}
+		w := NewWorker(&mockCommandProvider{}, "sonnet", "/tmp", sb, nil, allowlist)
+		task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
+		if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+		sb.mu.Lock()
+		defer sb.mu.Unlock()
+		if len(sb.runCalls) != 1 {
+			t.Fatalf("sandbox.Run called %d times, want 1", len(sb.runCalls))
+		}
+		return sb.runCalls[0].Env
+	}
+
+	if got := envFor(declared.EnvAllowlist())["AZURE_DEVOPS_EXT_PAT"]; got != "pat-test" {
+		t.Errorf("declaring worker: AZURE_DEVOPS_EXT_PAT = %q, want %q", got, "pat-test")
+	}
+	if got := envFor(config.DefaultEnvAllowlist())["AZURE_DEVOPS_EXT_PAT"]; got != "" {
+		t.Errorf("plain worker inherited another config's credential: %q", got)
 	}
 }

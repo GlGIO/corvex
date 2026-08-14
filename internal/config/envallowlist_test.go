@@ -113,12 +113,11 @@ func TestConfigEnvAllowlist(t *testing.T) {
 }
 
 // (e) End to end: AZURE_ reaches the sandbox only because config.yaml says so.
-func TestLoad_PublishesActiveEnvAllowlist(t *testing.T) {
-	t.Cleanup(func() { config.SetActiveEnvAllowlist(nil) })
-
-	config.SetActiveEnvAllowlist(nil)
-	if slices.Contains(config.ActiveEnvAllowlist(), "AZURE_") {
-		t.Fatal("AZURE_ active before any config declared it")
+// The allowlist belongs to the Config that was loaded — there is no process
+// state to consult, so a Config nobody configured still allows nothing extra.
+func TestLoad_ConfigDeclaredPrefixReachesEnvAllowlist(t *testing.T) {
+	if slices.Contains((&config.Config{}).EnvAllowlist(), "AZURE_") {
+		t.Fatal("AZURE_ allowed by a config that never declared it")
 	}
 
 	dir := t.TempDir()
@@ -136,10 +135,10 @@ func TestLoad_PublishesActiveEnvAllowlist(t *testing.T) {
 		t.Errorf("cfg.Sandbox.EnvAllowlist = %v, want %v", cfg.Sandbox.EnvAllowlist, want)
 	}
 
-	active := config.ActiveEnvAllowlist()
+	effective := cfg.EnvAllowlist()
 	for _, want := range []string{"AZURE_", "GH_TOKEN", "ANTHROPIC_"} {
-		if !slices.Contains(active, want) {
-			t.Errorf("active allowlist missing %q: %v", want, active)
+		if !slices.Contains(effective, want) {
+			t.Errorf("effective allowlist missing %q: %v", want, effective)
 		}
 	}
 }
@@ -167,11 +166,16 @@ func TestEnvAllowlist_MarshalOmitsEmpty(t *testing.T) {
 	}
 }
 
-func TestActiveEnvAllowlist_DefaultsBeforeLoad(t *testing.T) {
-	t.Cleanup(func() { config.SetActiveEnvAllowlist(nil) })
-	config.SetActiveEnvAllowlist(nil)
+// A config nobody configured — the zero value, or none at all — allows exactly
+// the built-in defaults. This is what used to be "before any config is loaded",
+// now expressed without process state.
+func TestEnvAllowlist_UnconfiguredIsDefaults(t *testing.T) {
+	if got := (&config.Config{}).EnvAllowlist(); !slices.Equal(got, config.DefaultEnvAllowlist()) {
+		t.Errorf("zero-value config allowlist = %v, want defaults", got)
+	}
 
-	if got := config.ActiveEnvAllowlist(); !slices.Equal(got, config.DefaultEnvAllowlist()) {
-		t.Errorf("active allowlist without config = %v, want defaults", got)
+	var absent *config.Config
+	if got := absent.EnvAllowlist(); !slices.Equal(got, config.DefaultEnvAllowlist()) {
+		t.Errorf("nil config allowlist = %v, want defaults", got)
 	}
 }

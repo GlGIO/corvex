@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
+	"github.com/giovannialves/corvex/internal/ops"
 )
 
 // setupCombinedFixture creates a tempdir with a "fixture" project that has
@@ -232,7 +233,7 @@ func TestInspectJSONFixture(t *testing.T) {
 		t.Fatalf("runInspect --json failed: %v", err)
 	}
 
-	var out inspectOutput
+	var out ops.InspectReport
 	if err := json.Unmarshal([]byte(output), &out); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput:\n%s", err, output)
 	}
@@ -250,7 +251,7 @@ func TestInspectJSONFixture(t *testing.T) {
 		t.Errorf("totalCostUSD: got %f, want 0.15", out.TotalCostUSD)
 	}
 
-	byID := make(map[string]inspectTaskStat, len(out.Tasks))
+	byID := make(map[string]ops.InspectTaskStat, len(out.Tasks))
 	for _, s := range out.Tasks {
 		byID[s.ID] = s
 	}

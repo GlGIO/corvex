@@ -1,9 +1,6 @@
 package config
 
-import (
-	"strings"
-	"sync"
-)
+import "strings"
 
 // defaultEnvAllowlist holds the environment-variable prefixes a sandboxed
 // child process inherits from the host, with no configuration at all.
@@ -66,43 +63,16 @@ func ResolveEnvAllowlist(extra []string) []string {
 
 // EnvAllowlist returns the prefixes in effect for this config: the defaults
 // plus whatever `sandbox.env_allowlist` declares.
+//
+// This is the ONLY way to obtain an effective allowlist. There is deliberately
+// no process-wide "active" allowlist: the list decides which host CREDENTIALS
+// a sandboxed child inherits, so it belongs to the config of the run that is
+// asking, and it travels to whoever needs it as an argument. Two runs with
+// different configs in one process (the HTTP surface) must not be able to see
+// each other's credentials.
 func (c *Config) EnvAllowlist() []string {
 	if c == nil {
 		return DefaultEnvAllowlist()
 	}
 	return ResolveEnvAllowlist(c.Sandbox.EnvAllowlist)
-}
-
-var (
-	activeEnvMu        sync.RWMutex
-	activeEnvAllowlist []string
-)
-
-// SetActiveEnvAllowlist publishes the extra prefixes declared by the loaded
-// config as the ones in effect for this process. Load calls it, so a component
-// that hands the host environment to a sandboxed child reads the user's
-// configuration without every constructor in between having to carry the list.
-//
-// extra is unioned with the defaults, so this can never narrow the allowlist.
-// Passing nil restores the plain defaults.
-func SetActiveEnvAllowlist(extra []string) {
-	resolved := ResolveEnvAllowlist(extra)
-	activeEnvMu.Lock()
-	activeEnvAllowlist = resolved
-	activeEnvMu.Unlock()
-}
-
-// ActiveEnvAllowlist returns the prefixes in effect for this process. Before
-// any config is loaded it returns the built-in defaults.
-func ActiveEnvAllowlist() []string {
-	activeEnvMu.RLock()
-	list := activeEnvAllowlist
-	activeEnvMu.RUnlock()
-
-	if list == nil {
-		return DefaultEnvAllowlist()
-	}
-	out := make([]string, len(list))
-	copy(out, list)
-	return out
 }

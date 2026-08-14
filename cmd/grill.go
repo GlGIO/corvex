@@ -2,20 +2,15 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
-	"github.com/charmbracelet/log"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/spf13/cobra"
 )
-
-const maxGrillIterations = 50
 
 var grillCmd = &cobra.Command{
 	Use:   "grill <project>",
@@ -35,7 +30,7 @@ func init() {
 func runGrill(cmd *cobra.Command, args []string) error {
 	project := args[0]
 
-	cfg, workDir, err := loadConfig()
+	cfg, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -43,7 +38,7 @@ func runGrill(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	pDir := projectDir(workDir, project)
+	pDir := ops.ProjectDir(workDir, project)
 	specPath := filepath.Join(pDir, "spec.md")
 	decisionsPath := filepath.Join(pDir, "decisions.md")
 
@@ -62,122 +57,8 @@ func runGrill(cmd *cobra.Command, args []string) error {
 	return runGrillLoop(cmd.Context(), griller, reader, project, specPath, decisionsPath)
 }
 
-// runGrillLoop is the shared interactive Q&A loop used by both `grill` and `start`.
-func runGrillLoop(ctx context.Context, griller *planning.Griller, reader *bufio.Reader, project, specPath, decisionsPath string) error {
-	totalCost := 0.0
-	answered := 0
-
-	fmt.Printf("Grilling %s — Ctrl+C to stop (decisions persist in decisions.md)\n", project)
-
-	for i := 0; i < maxGrillIterations; i++ {
-		log.Info("grilling", "iteration", i+1)
-		step, err := griller.Grill(ctx, specPath, decisionsPath)
-		if err != nil {
-			return fmt.Errorf("grill step: %w", err)
-		}
-		totalCost += step.CostUSD
-
-		if step.Done {
-			fmt.Printf("\n✓ No further ambiguities. %d decision(s) recorded, $%.2f spent.\n", answered, totalCost)
-			fmt.Printf("  Next: corvex plan %s\n", project)
-			return nil
-		}
-
-		if step.Reflection != "" {
-			fmt.Printf("\n💬 %s\n", step.Reflection)
-		}
-		fmt.Printf("\n🔍 %s\n", step.Question)
-		if step.Recommended != "" {
-			fmt.Printf("💡 Recommended: %s\n", step.Recommended)
-		}
-		if step.Rationale != "" {
-			fmt.Printf("   why: %s\n", step.Rationale)
-		}
-
-		answer, action, err := readGrillAnswer(ctx, reader, griller, specPath, decisionsPath, step.Recommended)
-		if err != nil {
-			return err
-		}
-		switch action {
-		case answerDone:
-			fmt.Printf("\n✓ Stopped early. %d decision(s) recorded, $%.2f spent.\n", answered, totalCost)
-			fmt.Printf("  Next: corvex plan %s\n", project)
-			return nil
-		case answerSkip:
-			if err := appendDecision(decisionsPath, step.Question, "(skipped — leave to planner)"); err != nil {
-				return err
-			}
-		case answerProvide:
-			if err := appendDecision(decisionsPath, step.Question, answer); err != nil {
-				return err
-			}
-		}
-		answered++
-	}
-
-	fmt.Printf("\nReached iteration cap (%d). Run 'corvex plan %s' with what we have or continue with another 'corvex grill'.\n",
-		maxGrillIterations, project)
-	return nil
-}
-
-// readGrillAnswer mirrors readBrainstormAnswer for the grill loop:
-// supports /ask (Griller.AskFollowup), /summary, /skip, /done, and re-prompts
-// after any interjection so the user keeps the same 🔍 in front of them.
-func readGrillAnswer(ctx context.Context, reader *bufio.Reader, griller *planning.Griller, specPath, decisionsPath, recommended string) (string, answerAction, error) {
-	for {
-		fmt.Print("Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): ")
-		raw, err := reader.ReadString('\n')
-		if err != nil {
-			return "", 0, fmt.Errorf("reading answer: %w", err)
-		}
-		trimmed := strings.TrimSpace(raw)
-
-		switch {
-		case trimmed == "/done":
-			return "", answerDone, nil
-		case trimmed == "/skip":
-			return "", answerSkip, nil
-		case trimmed == "/summary":
-			printDecisionsSummary(decisionsPath)
-		case strings.HasPrefix(trimmed, "/ask"):
-			question := strings.TrimSpace(strings.TrimPrefix(trimmed, "/ask"))
-			if question == "" {
-				fmt.Println("(usage: /ask <your question>)")
-				continue
-			}
-			reply, askErr := griller.AskFollowup(ctx, specPath, decisionsPath, question)
-			if askErr != nil {
-				fmt.Printf("(ask failed: %v)\n", askErr)
-				continue
-			}
-			fmt.Printf("\n💬 %s\n\n", reply)
-		case trimmed == "":
-			if recommended == "" {
-				fmt.Println("(sem recomendação concreta — digite uma resposta, /ask para perguntar ao modelo, /summary para rever, /skip pra pular)")
-				continue
-			}
-			return recommended, answerProvide, nil
-		default:
-			return trimmed, answerProvide, nil
-		}
-	}
-}
-
+// appendDecision is a call-through kept for cmd/start.go, which records
+// brainstorm Q&A the same way. New call sites use ops.AppendDecision directly.
 func appendDecision(path, question, answer string) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating decisions dir: %w", err)
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("opening decisions file: %w", err)
-	}
-	defer f.Close()
-
-	ts := time.Now().UTC().Format(time.RFC3339)
-	entry := fmt.Sprintf("## %s\n_recorded: %s_\n\n**A:** %s\n\n", question, ts, answer)
-	if _, err := f.WriteString(entry); err != nil {
-		return fmt.Errorf("writing decision: %w", err)
-	}
-	return nil
+	return ops.AppendDecision(path, question, answer)
 }

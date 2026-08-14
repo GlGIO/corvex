@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -18,7 +19,7 @@ func TestExecute_NoAllowedTools(t *testing.T) {
 			return &types.ExecuteResult{Output: "done"}, nil
 		},
 	}
-	w := NewWorker(mock, "test-model", "/tmp", nil, nil)
+	w := NewWorker(mock, "test-model", "/tmp", nil, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
@@ -40,7 +41,7 @@ func TestExecute_ModelAndWorkDir(t *testing.T) {
 			return &types.ExecuteResult{Output: "done"}, nil
 		},
 	}
-	w := NewWorker(mock, "sonnet", "/my/workdir", nil, nil)
+	w := NewWorker(mock, "sonnet", "/my/workdir", nil, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
 	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
@@ -80,7 +81,7 @@ func TestWorkerExecute_ViaSandbox(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -110,7 +111,7 @@ func TestWorkerExecute_FallbackDirect(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -143,7 +144,7 @@ func TestWorkerExecute_NilSandbox(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", nil, nil)
+	w := NewWorker(prov, "sonnet", "/tmp", nil, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -170,7 +171,7 @@ func TestWorkerExecute_SandboxError(t *testing.T) {
 
 	prov := &mockCommandProvider{}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	_, err := w.Execute(context.Background(), task, "", nil, "", "")
@@ -204,7 +205,7 @@ func TestWorkerExecute_NonZeroExitCode(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(prov, "sonnet", "/tmp", sb, nil)
+	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist())
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
 	result, err := w.Execute(context.Background(), task, "", nil, "", "")

@@ -108,7 +108,7 @@ func New(opts Options) *Orchestrator {
 	o.exec = step.NewExecutor(step.Options{
 		Config:             opts.Config,
 		Provider:           opts.Provider,
-		Worker:             step.NewWorker(opts.Provider, opts.Config.Provider.Models.Worker, opts.WorkDir, opts.Sandbox, opts.Config.SkillRouting),
+		Worker:             step.NewWorker(opts.Provider, opts.Config.Provider.Models.Worker, opts.WorkDir, opts.Sandbox, opts.Config.SkillRouting, opts.Config.EnvAllowlist()),
 		Reviewer:           step.NewReviewer(opts.Provider, opts.Config.Provider.Models.Reviewer, opts.WorkDir, opts.Config.SkillRouting["review"]),
 		Hooks:              o.hooks,
 		Recovery:           o.recovery,

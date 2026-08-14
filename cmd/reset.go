@@ -2,12 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/log"
-	"github.com/giovannialves/corvex/internal/task"
-	"github.com/giovannialves/corvex/internal/types"
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +26,7 @@ func runReset(_ *cobra.Command, args []string) error {
 	project := args[0]
 	taskID := strings.ToUpper(args[1])
 
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -37,10 +35,7 @@ func runReset(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	pDir := projectDir(workDir, project)
-	tasksPath := filepath.Join(pDir, "tasks.md")
-
-	if err := task.UpdateTaskStatus(tasksPath, taskID, types.StatusPending); err != nil {
+	if err := ops.ResetTask(workDir, project, taskID); err != nil {
 		return fmt.Errorf("resetting task: %w", err)
 	}
 

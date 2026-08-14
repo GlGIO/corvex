@@ -715,7 +715,7 @@ func newFixture(t *testing.T) *fixture {
 }
 
 // newBareFixture creates a temp dir with .corvex/ but NO config.yaml, so
-// loadConfig() falls back to config.Default(). Useful for characterizing what
+// ops.LoadConfig() falls back to config.Default(). Useful for characterizing what
 // happens with a project but no configuration.
 func newBareFixture(t *testing.T) *fixture {
 	t.Helper()

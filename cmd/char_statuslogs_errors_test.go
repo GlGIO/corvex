@@ -1,7 +1,7 @@
 package cmd
 
 // Characterization of the shared preamble every command in this group runs
-// before doing its own work: loadConfig() then requireCorvexDir(). Those two
+// before doing its own work: ops.LoadConfig() then requireCorvexDir(). Those two
 // produce the errors a user actually hits first, and each command wraps them
 // differently (or not at all), so each gets its own golden.
 

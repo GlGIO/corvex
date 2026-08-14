@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/spf13/cobra"
 )
 
@@ -20,9 +21,9 @@ func completeProjectArg(_ *cobra.Command, args []string, _ string) ([]string, co
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	_, workDir, err := loadConfig()
+	_, workDir, err := ops.LoadConfig()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	return projectNames(workDir), cobra.ShellCompDirectiveNoFileComp
+	return ops.ProjectNames(workDir), cobra.ShellCompDirectiveNoFileComp
 }
