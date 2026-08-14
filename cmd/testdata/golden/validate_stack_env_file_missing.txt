@@ -1,0 +1,10 @@
+# setupValidationStack — env_file does not exist
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+loading stack env_file backend/.env-stg: open <TMP>: no such file or directory

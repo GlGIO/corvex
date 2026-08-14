@@ -1,0 +1,10 @@
+$ corvex inspect gamma --json
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+reading tasks: parsing tasks <TMP>: open <TMP>: no such file or directory

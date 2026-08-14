@@ -1,0 +1,13 @@
+--- file brainstorm-qa.md ---
+## Which delimiter?
+_recorded: <TS>_
+
+**A:** (skipped)
+
+## Which delimiter?
+_recorded: <TS>_
+
+**A:** comma
+
+
+--- end of brainstorm-qa.md (ends with newline: true) ---

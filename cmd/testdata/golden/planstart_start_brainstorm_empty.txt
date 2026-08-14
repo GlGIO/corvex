@@ -1,0 +1,20 @@
+$ corvex start gamma
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run gamma
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+
+Choice [1]: Briefly describe the feature (blank line to submit):
+> 
+
+--- stderr ---
+(empty)
+
+--- error ---
+feature description cannot be empty

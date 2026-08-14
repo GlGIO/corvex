@@ -1,0 +1,14 @@
+$ corvex validate alpha
+
+--- stdout ---
+
+validate: not configured.
+Inspecting codebase to draft a config (one AI call)...
+
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [postgres:16]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+
+--- stderr ---
+<TS> WARN AI inference failed — falling back to manual wizard err="configurer execution: claude cli exited with error: exit status 3 (stderr: stub claude: no)"
+
+--- error ---
+validate wizard: open <TMP>: permission denied

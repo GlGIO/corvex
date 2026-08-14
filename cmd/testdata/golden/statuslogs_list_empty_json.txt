@@ -1,0 +1,10 @@
+$ corvex list --json
+
+--- stdout ---
+[]
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

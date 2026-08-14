@@ -1,0 +1,4 @@
+.corvex/tasks/alpha/
+  activity.jsonl
+  spec.md
+  tasks.md.bak-<TS>

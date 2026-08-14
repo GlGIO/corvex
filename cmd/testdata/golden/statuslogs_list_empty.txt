@@ -1,0 +1,10 @@
+$ corvex list
+
+--- stdout ---
+No projects found. Create a spec in .corvex/tasks/<project>/spec.md
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

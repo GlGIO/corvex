@@ -1,0 +1,22 @@
+$ corvex logs alpha S01
+
+--- stdout ---
+✅ S01 — First Task [PASSED]
+
+Description:
+First task does the setup.
+
+Criteria:
+  [✓] Compiles
+  [✓] Tests pass
+
+Files:
+  + internal/foo/foo.go
+  ~ cmd/root.go
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

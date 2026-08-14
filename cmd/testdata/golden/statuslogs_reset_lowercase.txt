@@ -1,0 +1,10 @@
+$ corvex reset alpha s02
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO task reset task=S02 status=PENDING
+
+--- error ---
+(nil)

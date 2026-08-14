@@ -1,0 +1,10 @@
+$ corvex validate alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO setting up validation stack project=alpha
+
+--- error ---
+stack setup failed: starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH

@@ -1,0 +1,10 @@
+$ corvex run alpha --plain --yes --no-replan
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+run failed: spec.md has changed since the last plan, but --no-replan is set; run `corvex plan alpha` to regenerate tasks.md, or revert spec.md to its previous state

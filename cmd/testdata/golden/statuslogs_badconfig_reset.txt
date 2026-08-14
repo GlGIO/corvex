@@ -1,0 +1,10 @@
+$ corvex reset alpha S01
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+loading config: parsing config <TMP>: yaml: line 1: did not find expected ',' or ']'

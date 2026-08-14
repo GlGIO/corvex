@@ -1,0 +1,12 @@
+$ corvex plan alpha --reanchor
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+--reanchor: tasks.md does not parse, refusing to anchor a broken plan: parsing <TMP>: 1 unrecognized task heading(s):
+  line 1: "## S01 — Broken ✅ FROBNICATED"
+Hint: status must be one of PENDING|RUNNING|PASSED|FAILED|SKIPPED (with matching emoji ⬜|🔄|✅|❌|⏭️)

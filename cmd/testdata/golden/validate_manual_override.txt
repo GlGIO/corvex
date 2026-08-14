@@ -1,0 +1,59 @@
+# manualOverride (all 9 prompts)
+
+--- stdout ---
+
+Manual edit — Enter to keep current value:
+    stack.runtime [node]:     stack.framework [nestjs]:     stack.start_command [npm run start:test]:     stack.port [3000]:     stack.health_path [/health]:     database.type [postgres]:     database.image [postgres:16]:     database.migrate_command [npm run migrate]:     ui.enabled (y/n) [y]: 
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: node
+    framework: gin
+    start_command: npm run start:test
+    port: 8080
+    ready_timeout: 30
+    health_path: /healthz
+    env_file: backend/.env-stg
+database:
+    type: none
+    image: postgres:16
+    migrate_command: npm run migrate
+    env: {}
+ui:
+    enabled: false
+
+# manualOverride on a zero config, stdin at EOF
+
+--- stdout ---
+
+Manual edit — Enter to keep current value:
+    stack.runtime:     stack.framework:     stack.start_command:     stack.port [0]:     stack.health_path:     database.type:     database.image:     database.migrate_command:     ui.enabled (y/n) [n]: 
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: ""
+    framework: ""
+    start_command: ""
+    port: 0
+    ready_timeout: 0
+    health_path: ""
+    env_file: ""
+database:
+    type: ""
+    image: ""
+    migrate_command: ""
+    env: {}
+ui:
+    enabled: false

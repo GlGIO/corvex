@@ -1,0 +1,17 @@
+$ corvex doctor
+
+--- stdout ---
+✓ provider: provider=claude-cli binary=<TMP>
+✓ models: planner=opus worker=sonnet reviewer=sonnet
+✓ sandbox: type=local
+✓ escalation: 0 policies
+⚠ cost: max_cost_usd=0 (no cap); max_cost_per_task_usd=0 (no cap)
+✓ mcp-secrets: no MCP servers configured
+✓ skills: no repo skills (add .corvex/skills/<name>/SKILL.md to expose some to the worker)
+doctor: 7 checks, 6 passed, 1 warnings, 0 failed
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

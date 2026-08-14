@@ -1,0 +1,10 @@
+$ corvex run alpha --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+parsing tasks: parsing tasks <TMP>/.corvex/tasks/alpha/tasks.md: open <TMP>/.corvex/tasks/alpha/tasks.md: no such file or directory

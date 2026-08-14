@@ -1,0 +1,13 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+config preflight failed (run `corvex doctor` for details):
+  ✗ provider: unknown provider "bogus-provider" (known: claude-cli)
+
+→ fix the above, or pass --skip-doctor to bypass

@@ -1,0 +1,30 @@
+$ corvex start gamma
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run gamma
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+
+Choice [1]: Describe the feature (blank line to submit):
+> > ✓ spec.md written to <TMP>
+
+Grilling gamma — Ctrl+C to stop (decisions persist in decisions.md)
+
+✓ No further ambiguities. 0 decision(s) recorded, $0.42 spent.
+  Next: corvex plan gamma
+
+Ready to execute. From a new prompt, run:
+  cd <TMP>
+  corvex run gamma
+
+
+--- stderr ---
+<TS> INFO grilling iteration=1
+
+--- error ---
+(nil)

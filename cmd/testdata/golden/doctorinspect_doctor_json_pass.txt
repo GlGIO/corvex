@@ -1,0 +1,51 @@
+$ corvex doctor --json
+
+--- stdout ---
+{
+  "checks": [
+    {
+      "name": "provider",
+      "status": "pass",
+      "message": "provider=claude-cli binary=<TMP>"
+    },
+    {
+      "name": "models",
+      "status": "pass",
+      "message": "planner=opus worker=sonnet reviewer=sonnet"
+    },
+    {
+      "name": "sandbox",
+      "status": "pass",
+      "message": "type=local"
+    },
+    {
+      "name": "escalation",
+      "status": "pass",
+      "message": "0 policies"
+    },
+    {
+      "name": "cost",
+      "status": "pass",
+      "message": "max_cost_usd=25.00 max_cost_per_task_usd=5.00"
+    },
+    {
+      "name": "mcp-secrets",
+      "status": "pass",
+      "message": "no MCP servers configured"
+    },
+    {
+      "name": "skills",
+      "status": "pass",
+      "message": "no repo skills (add .corvex/skills/\u003cname\u003e/SKILL.md to expose some to the worker)"
+    }
+  ],
+  "passed": 7,
+  "warnings": 0,
+  "failed": 0
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

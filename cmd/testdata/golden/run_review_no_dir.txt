@@ -1,0 +1,10 @@
+$ corvex review
+
+--- stdout ---
+No pending escalations.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

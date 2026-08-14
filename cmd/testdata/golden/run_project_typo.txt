@@ -1,0 +1,14 @@
+$ corvex run alpah
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+project "alpah" not found
+
+available projects: alpha
+
+did you mean "alpha"?

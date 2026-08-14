@@ -1,0 +1,10 @@
+$ corvex status beta
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+parsing tasks: parsing tasks <TMP>: open <TMP>: no such file or directory

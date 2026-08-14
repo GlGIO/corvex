@@ -1,0 +1,10 @@
+-rw-r--r-- .corvex/.gitignore
+-rw-r--r-- .corvex/agents/default.md
+-rw-r--r-- .corvex/config.yaml
+-rw-r--r-- .corvex/context/README.md
+drwxr-xr-x .corvex/
+drwxr-xr-x .corvex/agents/
+drwxr-xr-x .corvex/context/
+drwxr-xr-x .corvex/hooks/
+drwxr-xr-x .corvex/tasks/
+drwxr-xr-x .corvex/templates/

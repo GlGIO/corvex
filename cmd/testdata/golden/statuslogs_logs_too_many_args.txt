@@ -1,0 +1,10 @@
+$ corvex logs alpha S01 extra
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+accepts between 1 and 2 arg(s), received 3

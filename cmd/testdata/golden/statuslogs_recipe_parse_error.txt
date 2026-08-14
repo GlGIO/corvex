@@ -1,0 +1,10 @@
+$ corvex recipe broken
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+parsing recipe: yaml: line 1: did not find expected ',' or ']'

@@ -1,0 +1,10 @@
+$ corvex logs alpha S99
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+task S99 not found

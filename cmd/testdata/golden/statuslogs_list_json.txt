@@ -1,0 +1,29 @@
+$ corvex list --json
+
+--- stdout ---
+[
+  {
+    "name": "alpha",
+    "hasSpec": true,
+    "hasTasks": true,
+    "status": "ready"
+  },
+  {
+    "name": "beta",
+    "hasSpec": true,
+    "hasTasks": false,
+    "status": "needs planning"
+  },
+  {
+    "name": "gamma",
+    "hasSpec": false,
+    "hasTasks": true,
+    "status": "no spec"
+  }
+]
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

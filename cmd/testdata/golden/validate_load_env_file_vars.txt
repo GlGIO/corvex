@@ -1,0 +1,34 @@
+# loadEnvFileVars — input
+# leading comment
+
+   
+export DB_HOST=stg.db
+DB_PORT=5432
+DB_PASSWORD="se cret"
+DB_SINGLE='single quoted'
+garbage line without equals
+EMPTY=
+=novalue
+  SPACED_KEY  =  spaced value  
+URL=postgres://u:p@h:5432/db?sslmode=disable
+WITH_HASH=value#notacomment
+DUPLICATE=first
+DUPLICATE=second
+#export COMMENTED=1
+
+# loadEnvFileVars — output (10 entries, in order)
+ 0: "DB_HOST=stg.db"
+ 1: "DB_PORT=5432"
+ 2: "DB_PASSWORD=se cret"
+ 3: "DB_SINGLE=single quoted"
+ 4: "EMPTY="
+ 5: "SPACED_KEY=spaced value"
+ 6: "URL=postgres://u:p@h:5432/db?sslmode=disable"
+ 7: "WITH_HASH=value#notacomment"
+ 8: "DUPLICATE=first"
+ 9: "DUPLICATE=second"
+
+error: <nil>
+
+# missing file
+error: open <TMP>: no such file or directory

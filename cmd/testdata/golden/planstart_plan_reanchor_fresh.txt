@@ -1,0 +1,10 @@
+$ corvex plan alpha --reanchor
+
+--- stdout ---
+Next: corvex run alpha
+
+--- stderr ---
+<TS> INFO re-anchored spec hash (tasks.md left untouched) project=alpha
+
+--- error ---
+(nil)

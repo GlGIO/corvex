@@ -1,0 +1,24 @@
+# setupValidationStack — env_file sourced into migrations + app
+
+--- stdout ---
+migrating schema
+
+--- stderr ---
+<TS> INFO sourced stack env_file file=backend/.env-stg vars=4
+<TS> INFO running migrations
+<TS> INFO waiting for app to be ready port=0
+
+--- error ---
+app did not become ready at http://localhost:0/health within 1s
+
+--- migration process env (CHAR_* only) ---
+CHAR_DB_HOST=stg.db
+CHAR_DB_PORT=5432
+CHAR_EMPTY=
+CHAR_QUOTED=a value
+
+--- app process env (CHAR_* only) ---
+CHAR_DB_HOST=stg.db
+CHAR_DB_PORT=5432
+CHAR_EMPTY=
+CHAR_QUOTED=a value

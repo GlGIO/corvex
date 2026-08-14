@@ -1,0 +1,11 @@
+$ corvex plan alpha --here
+
+--- stdout ---
+Next: corvex run alpha
+
+--- stderr ---
+<TS> INFO planning project=alpha
+<TS> INFO tasks.md generated path=<TMP>
+
+--- error ---
+(nil)

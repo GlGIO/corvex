@@ -1,0 +1,40 @@
+# confirmUncertain with 5 fields
+
+--- stdout ---
+
+? Please confirm uncertain fields:
+    stack.health_path (/health — no explicit health endpoint found) [/health]:     stack.port (3000) [3000]:     stack.ready_timeout (30 — convention) [30]:     ui.enabled (n — no frontend found) [n]:     stack.bogus (whatever — not a field applyFieldOverride knows) [whatever]: 
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: node
+    framework: ""
+    start_command: ""
+    port: 4321
+    ready_timeout: 0
+    health_path: /health
+    env_file: ""
+database:
+    type: ""
+    image: ""
+    migrate_command: ""
+    env: {}
+ui:
+    enabled: true
+
+# confirmUncertain with no uncertain fields
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,14 @@
+$ corvex inspect alpha --task S01
+
+--- stdout ---
+Events for S01:
+
+  <CLOCK>  task_start        
+  <CLOCK>  retry              review requested changes
+  <CLOCK>  task_complete      [PASSED] 8s $0.15
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

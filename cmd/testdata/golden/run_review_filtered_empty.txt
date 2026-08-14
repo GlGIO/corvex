@@ -1,0 +1,10 @@
+$ corvex review gamma
+
+--- stdout ---
+No pending escalations for project "gamma".
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

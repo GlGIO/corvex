@@ -1,0 +1,21 @@
+$ corvex review
+
+--- stdout ---
+Pending escalations (2):
+
+• <TMP>/.corvex/escalations/alpha-S02.md
+    # Escalation alpha/S02
+    Category: test
+    Attempts: 3
+    Last error: boom
+
+• <TMP>/.corvex/escalations/beta-S07.md
+    # Escalation beta/S07
+    Category: build
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

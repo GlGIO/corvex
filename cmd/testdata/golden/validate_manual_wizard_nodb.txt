@@ -1,0 +1,29 @@
+# manualValidateWizard — database none
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: python
+    framework: fastapi
+    start_command: uvicorn app
+    port: 9000
+    ready_timeout: 30
+    health_path: /health
+    env_file: ""
+database:
+    type: none
+    image: ""
+    migrate_command: ""
+    env: {}
+ui:
+    enabled: false

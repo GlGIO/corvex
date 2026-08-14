@@ -1,0 +1,10 @@
+# setupValidationStack — start_command not on PATH
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting app (corvex-char-missing-app --serve): exec: "corvex-char-missing-app": executable file not found in $PATH

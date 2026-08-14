@@ -1,0 +1,18 @@
+$ corvex init
+
+--- stdout ---
+
+Created .corvex/ with:
+  config.yaml         — project configuration
+  agents/default.md   — default agent prompt
+  context/README.md   — context directory guide
+  hooks/              — lifecycle hooks (pre-task, post-task, ...)
+  tasks/              — task manifests
+
+Next: create a project spec in .corvex/tasks/<project>/spec.md
+
+--- stderr ---
+<TS> INFO initialized corvex project path=<TMP>
+
+--- error ---
+(nil)

@@ -1,0 +1,13 @@
+--- file anchor.yaml ---
+project: alpha
+updated_at: "<TS>"
+spec_hash: 0dfdc7e32d82f84f6a3b1894365e3ef60d6ae80dc93d54393a0d14151daef462
+intent: ""
+completed: []
+current_state:
+    total_tasks: 0
+    completed_tasks: 0
+next_task: S02
+next_task_context: ""
+
+--- end of anchor.yaml (ends with newline: true) ---

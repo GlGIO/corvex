@@ -1,0 +1,16 @@
+$ corvex status cyclic
+
+--- stdout ---
+Project: cyclic
+Tasks:   0/2 done
+
+  ⬜ S01 — Alpha ← [S02]
+  ⬜ S02 — Beta  ← [S01]
+
+2 task(s) pending — run: corvex run cyclic
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

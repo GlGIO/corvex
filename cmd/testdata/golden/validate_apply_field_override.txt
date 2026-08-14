@@ -1,0 +1,26 @@
+# applyFieldOverride(v, field, value) — only the changed fields are listed
+# seed: runtime=node framework=nestjs start_command="npm start" port=3000
+#       ready_timeout=30 health_path=/health env_file=""
+#       database=postgres/postgres:16/"npm run migrate" ui.enabled=false
+
+stack.runtime                value="python"           → stack.runtime: "node" → "python"
+stack.framework              value="fastapi"          → stack.framework: "nestjs" → "fastapi"
+stack.start_command          value="uvicorn app:app"  → stack.start_command: "npm start" → "uvicorn app:app"
+stack.port                   value="8080"             → stack.port: "3000" → "8080"
+stack.port                   value="eighty-eighty"    → (no change)
+stack.port                   value=""                 → (no change)
+stack.health_path            value="/healthz"         → stack.health_path: "/health" → "/healthz"
+stack.health_path            value=""                 → stack.health_path: "/health" → ""
+stack.ready_timeout          value="5"                → stack.ready_timeout: "30" → "5"
+stack.ready_timeout          value="nope"             → (no change)
+database.type                value="mysql"            → database.type: "postgres" → "mysql"
+database.image               value="mysql:8"          → database.image: "postgres:16" → "mysql:8"
+database.migrate_command     value="make migrate"     → database.migrate_command: "npm run migrate" → "make migrate"
+ui.enabled                   value="y"                → ui.enabled: "false" → "true"
+ui.enabled                   value="yes"              → ui.enabled: "false" → "true"
+ui.enabled                   value="true"             → ui.enabled: "false" → "true"
+ui.enabled                   value="Y"                → (no change)
+ui.enabled                   value="n"                → (no change)
+stack.env_file               value="backend/.env-stg" → (no change)
+unknown.field                value="ignored"          → (no change)
+                             value="ignored"          → (no change)

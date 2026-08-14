@@ -1,0 +1,17 @@
+# startDBContainer — docker run exits 125
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting postgres container: Unable to find image 'postgres:16' locally
+denied: exit status 125
+
+stopFn returned: false
+
+--- docker calls (in order) ---
+rm -f corvex-val-alpha-db
+run -d --rm --name corvex-val-alpha-db postgres:16

@@ -1,0 +1,57 @@
+---
+generated_by: characterize
+dag:
+    S01: []
+    S02:
+        - S01
+    S03:
+        - S01
+        - S02
+---
+
+## S01 — First Task ✅ PASSED
+
+```yaml
+type: general
+```
+
+### O que fazer
+First task does the setup.
+
+### Critérios de sucesso
+- [ ] Compiles
+- [ ] Tests pass
+
+### Arquivos
+- **Criar:** `internal/foo/foo.go`
+- **Modificar:** `cmd/root.go`
+
+---
+
+## S02 — Second Task ⬜ PENDING
+
+```yaml
+type: backend
+depends_on: [S01]
+```
+
+### O que fazer
+Second task wires the backend.
+
+### Critérios de sucesso
+- [ ] Endpoint responds
+
+---
+
+## S03 — Título muito comprido com acentuação para estourar quarenta ⬜ PENDING
+
+```yaml
+type: frontend
+depends_on: [S01, S02]
+```
+
+### O que fazer
+Third task.
+
+### Critérios de sucesso
+- [ ] Renders

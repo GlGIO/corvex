@@ -1,0 +1,13 @@
+$ corvex status empty
+
+--- stdout ---
+Project: empty
+Tasks:   0/0 done
+
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

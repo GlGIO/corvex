@@ -1,0 +1,41 @@
+$ corvex status alpha --json
+
+--- stdout ---
+{
+  "project": "alpha",
+  "total": 3,
+  "passed": 1,
+  "failed": 1,
+  "pending": 1,
+  "tasks": [
+    {
+      "id": "S01",
+      "title": "First Task",
+      "status": "PASSED",
+      "dependsOn": []
+    },
+    {
+      "id": "S02",
+      "title": "Second Task",
+      "status": "FAILED",
+      "dependsOn": [
+        "S01"
+      ]
+    },
+    {
+      "id": "S03",
+      "title": "Título muito comprido com acentuação para estourar quarenta",
+      "status": "PENDING",
+      "dependsOn": [
+        "S01",
+        "S02"
+      ]
+    }
+  ]
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

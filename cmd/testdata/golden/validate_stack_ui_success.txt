@@ -1,0 +1,17 @@
+# setupValidationStack — app + chrome, then cleanup()
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+<TS> INFO chrome CDP ready port=9222
+
+--- error ---
+(nil)
+
+app port open before cleanup: true
+app port closed after cleanup: true
+chrome process alive before cleanup: true
+chrome process alive after cleanup: false

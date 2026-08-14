@@ -1,0 +1,25 @@
+$ corvex start --help
+
+--- stdout ---
+Start is the onboarding gate for a new feature. It presents the appropriate
+entry point based on how defined your idea is:
+
+  brainstorm  vague idea; AI asks questions and writes spec.md
+  grill       clear idea; describe it quickly, then AI interrogates the spec
+  plan        spec.md already exists; skip straight to grill → plan
+
+Usage:
+  corvex start <project> [flags]
+
+Flags:
+  -h, --help   help for start
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

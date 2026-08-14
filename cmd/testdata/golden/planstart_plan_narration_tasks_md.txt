@@ -1,0 +1,3 @@
+--- file tasks.md ---
+I'll now analyse the spec and write the tasks for you.
+--- end of tasks.md (ends with newline: false) ---

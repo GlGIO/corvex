@@ -1,0 +1,43 @@
+# runValidateWizard — AI draft then manual edit
+
+--- stdout ---
+
+validate: not configured.
+Inspecting codebase to draft a config (one AI call)...
+
+  · Read package.json
+✓ Detected:
+  stack.runtime = node  (from package.json)
+  stack.framework = nestjs  (from package.json dependencies)
+  database.type = none
+
+? Please confirm uncertain fields:
+    stack.health_path (/health — no explicit health endpoint found) [/health]:     stack.port (0) [0]:     stack.bogus (whatever — field applyFieldOverride ignores) [whatever]: 
+Edit any field manually? (y/n) [n]: 
+Manual edit — Enter to keep current value:
+    stack.runtime [node]:     stack.framework [nestjs]:     stack.start_command [corvex-char-missing-app]:     stack.port [0]:     stack.health_path [/health]:     database.type [none]:     database.image:     database.migrate_command:     ui.enabled (y/n) [n]: 
+✓ Written to .corvex/config.yaml  (inference cost: $0.0123)
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: go
+    framework: nestjs
+    start_command: ./app
+    port: 7777
+    ready_timeout: 1
+    health_path: /health
+    env_file: ""
+database:
+    type: sqlite
+    image: ""
+    migrate_command: ""
+    env: {}
+ui:
+    enabled: false

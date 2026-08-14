@@ -1,0 +1,16 @@
+$ corvex status done
+
+--- stdout ---
+Project: done
+Tasks:   2/2 done
+
+  ✅ S01 — Alpha
+  ✅ S02 — Beta  ← [S01]
+
+All tasks complete.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

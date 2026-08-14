@@ -1,0 +1,11 @@
+$ corvex logs bare
+
+--- stdout ---
+⬜ S01 — Bare Task [PENDING]
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

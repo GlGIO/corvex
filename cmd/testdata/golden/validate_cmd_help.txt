@@ -1,0 +1,21 @@
+$ corvex validate --help
+
+--- stdout ---
+Validate spins up the configured stack (DB + app + optional Chrome),
+then runs an AI agent to test endpoints and UI flows against the spec.
+
+Usage:
+  corvex validate <project> [flags]
+
+Flags:
+  -h, --help   help for validate
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

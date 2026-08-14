@@ -1,0 +1,10 @@
+$ corvex validate alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+loading config: reading config <TMP>: read <TMP>: is a directory

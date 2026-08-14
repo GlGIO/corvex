@@ -1,0 +1,13 @@
+$ corvex run alpha --plain --yes --force
+
+--- stdout ---
+<PlainRenderer output — drained on an unawaited goroutine; see runAssertRendererLines>
+
+--- stderr ---
+Run "alpha": 0 pending task(s) · ceilings: $25.00/run, $5.00/task
+
+--- error ---
+(nil)
+
+--- dirty.txt still present ---
+false

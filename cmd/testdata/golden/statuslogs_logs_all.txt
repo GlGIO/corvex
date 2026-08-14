@@ -1,0 +1,42 @@
+$ corvex logs alpha
+
+--- stdout ---
+✅ S01 — First Task [PASSED]
+
+Description:
+First task does the setup.
+
+Criteria:
+  [✓] Compiles
+  [✓] Tests pass
+
+Files:
+  + internal/foo/foo.go
+  ~ cmd/root.go
+
+---
+
+❌ S02 — Second Task [FAILED]
+
+Description:
+Second task wires the backend.
+
+Criteria:
+  [ ] Endpoint responds
+
+---
+
+⬜ S03 — Título muito comprido com acentuação para estourar quarenta [PENDING]
+
+Description:
+Third task.
+
+Criteria:
+  [ ] Renders
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

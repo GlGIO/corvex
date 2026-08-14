@@ -1,0 +1,37 @@
+$ corvex inspect alpha --json
+
+--- stdout ---
+{
+  "project": "alpha",
+  "total": 2,
+  "completed": 1,
+  "totalCostUSD": 0.15,
+  "tasks": [
+    {
+      "id": "S01",
+      "title": "First Task",
+      "status": "PASSED",
+      "durationMs": 8000,
+      "retries": 1,
+      "costUSD": 0.15,
+      "tokensIn": 600,
+      "tokensOut": 300
+    },
+    {
+      "id": "S02",
+      "title": "Second Task",
+      "status": "PENDING",
+      "durationMs": 0,
+      "retries": 0,
+      "costUSD": 0,
+      "tokensIn": 0,
+      "tokensOut": 0
+    }
+  ]
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

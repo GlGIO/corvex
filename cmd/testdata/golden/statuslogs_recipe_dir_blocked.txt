@@ -1,0 +1,10 @@
+$ corvex recipe blocked
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+creating project dir <TMP>: mkdir <TMP>: not a directory

@@ -1,0 +1,21 @@
+$ corvex inspect wide
+
+--- stdout ---
+Project: wide
+Tasks:   1/5 done   ·   $1.91 total
+
+ID    STATUS   DURATION   RETRIES COST     TITLE
+S01   ✅        750ms      0       $0.01    Passed task
+S02   🔄        1m35s      0       $1.50    Running task
+S03   ❌        45s        2       $0.40    Failed task
+S04   ⏭        —          0       —        Skipped task
+S05   ⬜        —          0       —        Validar o módulo de autenticação com verifica�…
+
+Slowest:    S02 (1m35s), S03 (45s), S01 (750ms)
+Expensive:  S02 ($1.50), S03 ($0.40), S01 ($0.01)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

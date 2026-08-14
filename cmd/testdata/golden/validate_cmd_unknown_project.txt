@@ -1,0 +1,13 @@
+$ corvex validate ghost
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO setting up validation stack project=ghost
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+<TS> INFO running validator agent project=ghost
+
+--- error ---
+validator: reading spec: open <TMP>: no such file or directory

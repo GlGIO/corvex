@@ -1,0 +1,10 @@
+$ corvex init
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+.corvex/ already exists in <TMP>

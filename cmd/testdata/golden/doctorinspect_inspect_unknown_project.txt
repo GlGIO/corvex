@@ -1,0 +1,10 @@
+$ corvex inspect alphaa
+
+--- stdout ---
+No activity recorded for project "alphaa" yet. Run `corvex run alphaa` first.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

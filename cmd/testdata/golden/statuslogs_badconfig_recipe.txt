@@ -1,0 +1,10 @@
+$ corvex recipe demo
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+loading config: parsing config <TMP>: yaml: line 1: did not find expected ',' or ']'

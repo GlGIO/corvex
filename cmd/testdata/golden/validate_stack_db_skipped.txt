@@ -1,0 +1,42 @@
+# setupValidationStack — database.type ""
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+
+--- docker calls ---
+(no calls)
+
+# setupValidationStack — database.type "none"
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+
+--- docker calls ---
+(no calls)
+
+# setupValidationStack — database.type "sqlite"
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+
+--- docker calls ---
+(no calls)
+

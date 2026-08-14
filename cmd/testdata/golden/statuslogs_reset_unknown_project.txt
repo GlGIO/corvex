@@ -1,0 +1,10 @@
+$ corvex reset nope S01
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+resetting task: parsing tasks <TMP>: open <TMP>: no such file or directory

@@ -1,0 +1,10 @@
+$ corvex start alpha
+
+--- stdout ---
+Base branch [main]: 
+
+--- stderr ---
+(empty)
+
+--- error ---
+setting up worktree: this repository has no commits yet — run `git -C <TMP> commit --allow-empty -m "initial commit"` and retry `corvex start alpha`

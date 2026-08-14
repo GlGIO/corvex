@@ -1,0 +1,10 @@
+$ corvex run alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+project "alpha" not found

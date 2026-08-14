@@ -1,0 +1,22 @@
+$ corvex plan --help
+
+--- stdout ---
+Invoke the Planner agent (read-only) to analyze spec.md and generate a DAG of tasks.
+
+Usage:
+  corvex plan <project> [flags]
+
+Flags:
+  -h, --help       help for plan
+      --here       plan from the current directory even when a worktree exists for this project
+      --reanchor   accept the current spec.md as-is: update the stored spec hash without invoking the Planner or touching tasks.md (use when a spec edit doesn't change the task breakdown)
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

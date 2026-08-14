@@ -1,0 +1,19 @@
+$ corvex validate alpha
+
+--- stdout ---
+  · Read package.json
+
+POST /orders returned 500.
+
+CATEGORY: missing-edge-case
+
+✗ FAIL  ($0.37, 9s)
+
+--- stderr ---
+<TS> INFO setting up validation stack project=alpha
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+<TS> INFO running validator agent project=alpha
+
+--- error ---
+validation failed

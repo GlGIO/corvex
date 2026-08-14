@@ -1,0 +1,10 @@
+# manualValidateWizard — .corvex missing
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [postgres:16]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+
+--- stderr ---
+(empty)
+
+--- error ---
+open <TMP>: no such file or directory

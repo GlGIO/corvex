@@ -1,0 +1,15 @@
+$ corvex review beta
+
+--- stdout ---
+Pending escalations (1):
+
+• <TMP>/.corvex/escalations/beta-S07.md
+    # Escalation beta/S07
+    Category: build
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

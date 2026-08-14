@@ -1,0 +1,10 @@
+$ corvex doctor extra-arg
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+unknown command "extra-arg" for "corvex doctor"

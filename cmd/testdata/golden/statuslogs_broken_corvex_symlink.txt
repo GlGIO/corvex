@@ -1,0 +1,10 @@
+$ corvex list
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+.corvex is a symlink but points to a missing target (stat <TMP>: no such file or directory) — recreate it: rm <TMP> && ln -s <main-repo>/.corvex <TMP>

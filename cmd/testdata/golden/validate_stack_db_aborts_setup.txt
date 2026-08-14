@@ -1,0 +1,14 @@
+# setupValidationStack — database container fails first
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting postgres container: Cannot connect to the Docker daemon: exit status 1
+
+--- docker calls (in order) ---
+rm -f corvex-val-alpha-db
+run -d --rm --name corvex-val-alpha-db postgres:16

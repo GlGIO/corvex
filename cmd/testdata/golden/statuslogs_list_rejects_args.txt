@@ -1,0 +1,10 @@
+$ corvex list alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+unknown command "alpha" for "corvex list"

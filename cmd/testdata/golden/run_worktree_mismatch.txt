@@ -1,0 +1,15 @@
+$ corvex run alpha --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+worktree for project "alpha" exists at <TMP>-alpha, but you are running from <TMP>.
+This would use the wrong branch/state and bypass the worktree.
+
+→ cd <TMP>-alpha && corvex run alpha
+
+Or pass --here to use the current directory anyway

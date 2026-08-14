@@ -1,0 +1,18 @@
+# startDBContainer — postgres, docker exits 0
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+stopFn returned: true
+
+--- docker calls (in order) ---
+rm -f corvex-val-alpha-db
+run -d --rm --name corvex-val-alpha-db -e POSTGRES_PASSWORD=test postgres:16
+exec corvex-val-alpha-db pg_isready
+rm -f corvex-val-alpha-db

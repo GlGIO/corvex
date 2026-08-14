@@ -1,0 +1,11 @@
+$ corvex recipe demo
+
+--- stdout ---
+Compiled recipe "demo" → 3 task(s) at <TMP>
+Next: corvex run demo
+
+--- stderr ---
+<TS> INFO compiled recipe name=demo stages=3 tasks=<TMP>
+
+--- error ---
+(nil)

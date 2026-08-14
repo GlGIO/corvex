@@ -1,0 +1,10 @@
+$ corvex run alpha --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+validating DAG: cycle detected involving nodes: [S01 S02]

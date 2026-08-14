@@ -1,0 +1,17 @@
+$ corvex logs alpha s02
+
+--- stdout ---
+❌ S02 — Second Task [FAILED]
+
+Description:
+Second task wires the backend.
+
+Criteria:
+  [ ] Endpoint responds
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

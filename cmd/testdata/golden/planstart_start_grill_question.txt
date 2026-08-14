@@ -1,0 +1,25 @@
+$ corvex start alpha
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run alpha
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+  3) plan       — spec.md already exists; skip straight to grill → plan
+
+Choice [1]: Grilling alpha — Ctrl+C to stop (decisions persist in decisions.md)
+
+🔍 Which storage backend?
+💡 Recommended: Postgres
+   why: Already in the stack.
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+
+--- stderr ---
+<TS> INFO grilling iteration=1
+
+--- error ---
+reading answer: EOF

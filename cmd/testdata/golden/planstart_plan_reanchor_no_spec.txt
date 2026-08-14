@@ -1,0 +1,10 @@
+$ corvex plan alpha --reanchor
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+--reanchor: spec.md not found at <TMP>

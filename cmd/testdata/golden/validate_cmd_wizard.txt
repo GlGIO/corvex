@@ -1,0 +1,80 @@
+$ corvex validate alpha
+
+--- stdout ---
+
+validate: not configured.
+Inspecting codebase to draft a config (one AI call)...
+
+  · Read package.json
+✓ Detected:
+  stack.runtime = node  (from package.json)
+  stack.framework = nestjs  (from package.json dependencies)
+  database.type = none
+
+? Please confirm uncertain fields:
+    stack.health_path (/health — no explicit health endpoint found) [/health]:     stack.port (0) [0]:     stack.bogus (whatever — field applyFieldOverride ignores) [whatever]: 
+Edit any field manually? (y/n) [n]: 
+✓ Written to .corvex/config.yaml  (inference cost: $0.0123)
+
+
+--- stderr ---
+<TS> INFO setting up validation stack project=alpha
+
+--- error ---
+stack setup failed: starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+
+--- .corvex/config.yaml on disk ---
+project:
+    name: fixture
+    description: characterization fixture
+provider:
+    default: claude-cli
+    models:
+        planner: opus
+        worker: sonnet
+        reviewer: sonnet
+sandbox:
+    type: local
+    profile: ""
+    image: ""
+    mount: ""
+    workdir: ""
+    worker_extra_args: []
+    mcp_servers: []
+execution:
+    max_retries: 2
+    auto_commit: false
+    parallel: false
+    max_parallel: 0
+    insight_threshold: 3
+    max_cost_usd: 25
+    max_cost_per_task_usd: 5
+    task_warn_minutes: 5
+    task_timeout_minutes: 20
+    stream_idle_timeout_seconds: 180
+review:
+    escalation: {}
+context:
+    always_include: []
+agent_routing: {}
+skill_routing: {}
+validate:
+    stack:
+        runtime: node
+        framework: nestjs
+        start_command: corvex-char-missing-app
+        port: 0
+        ready_timeout: 1
+        health_path: /health
+        env_file: ""
+    database:
+        type: none
+        image: ""
+        migrate_command: ""
+        env: {}
+    ui:
+        enabled: false
+plan:
+    context_command: ""
+worktree:
+    link: []

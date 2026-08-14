@@ -1,0 +1,14 @@
+# setupValidationStack — full success, then cleanup()
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+
+--- error ---
+(nil)
+
+port open before cleanup: true
+port closed after cleanup: true

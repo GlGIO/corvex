@@ -1,0 +1,10 @@
+$ corvex recipe nope
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe not found: <TMP> (create a recipe YAML there, then re-run)

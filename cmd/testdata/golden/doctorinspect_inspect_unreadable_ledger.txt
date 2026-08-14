@@ -1,0 +1,10 @@
+$ corvex inspect alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+reading activity ledger: reading activity ledger <TMP>: read <TMP>: is a directory

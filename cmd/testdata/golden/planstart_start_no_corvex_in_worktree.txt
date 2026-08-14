@@ -1,0 +1,12 @@
+$ corvex start alpha
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run alpha
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+.corvex directory not found in <TMP> — run 'corvex init' first (or if this is a worktree, recreate the symlink: ln -s <main-repo>/.corvex .corvex)

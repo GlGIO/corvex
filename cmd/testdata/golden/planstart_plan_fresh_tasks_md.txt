@@ -1,0 +1,19 @@
+--- file tasks.md ---
+---
+generated_by: planner-stub
+dag:
+  S01: []
+---
+
+## S01 — Stub Generated Task ⬜ PENDING
+
+```yaml
+type: general
+```
+
+### O que fazer
+Do the stub thing
+
+### Critérios de sucesso
+- [ ] Stub done
+--- end of tasks.md (ends with newline: false) ---

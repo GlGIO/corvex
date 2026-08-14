@@ -1,0 +1,19 @@
+# startChrome — chromium on PATH, CDP answering
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+process returned: true
+
+--- chrome argv ---
+arg=[--headless]
+arg=[--remote-debugging-port=9222]
+arg=[--no-sandbox]
+arg=[--disable-gpu]
+arg=[--disable-dev-shm-usage]

@@ -1,0 +1,10 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+.corvex directory not found in <TMP> — run 'corvex init' first (or if this is a worktree, recreate the symlink: ln -s <main-repo>/.corvex .corvex)

@@ -1,0 +1,8 @@
+--- file spec.md ---
+# delta
+
+## Objective
+
+Export rows as CSV.
+
+--- end of spec.md (ends with newline: true) ---

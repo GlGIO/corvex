@@ -1,0 +1,10 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO planning project=alpha
+
+--- error ---
+planning failed: reading spec <TMP>: open <TMP>: no such file or directory

@@ -1,0 +1,10 @@
+# setupValidationStack — start_command empty
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+start_command is empty

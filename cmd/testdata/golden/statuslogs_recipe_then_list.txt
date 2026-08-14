@@ -1,0 +1,10 @@
+$ corvex list
+
+--- stdout ---
+  demo (no spec)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

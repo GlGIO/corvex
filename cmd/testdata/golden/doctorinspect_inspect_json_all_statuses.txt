@@ -1,0 +1,67 @@
+$ corvex inspect wide --json
+
+--- stdout ---
+{
+  "project": "wide",
+  "total": 5,
+  "completed": 1,
+  "totalCostUSD": 1.9100000000000001,
+  "tasks": [
+    {
+      "id": "S01",
+      "title": "Passed task",
+      "status": "PASSED",
+      "durationMs": 750,
+      "retries": 0,
+      "costUSD": 0.01,
+      "tokensIn": 10,
+      "tokensOut": 5
+    },
+    {
+      "id": "S02",
+      "title": "Running task",
+      "status": "RUNNING",
+      "durationMs": 95000,
+      "retries": 0,
+      "costUSD": 1.5,
+      "tokensIn": 9000,
+      "tokensOut": 4000
+    },
+    {
+      "id": "S03",
+      "title": "Failed task",
+      "status": "FAILED",
+      "durationMs": 45000,
+      "retries": 2,
+      "costUSD": 0.4,
+      "tokensIn": 2000,
+      "tokensOut": 800
+    },
+    {
+      "id": "S04",
+      "title": "Skipped task",
+      "status": "SKIPPED",
+      "durationMs": 0,
+      "retries": 0,
+      "costUSD": 0,
+      "tokensIn": 0,
+      "tokensOut": 0
+    },
+    {
+      "id": "S05",
+      "title": "Validar o módulo de autenticação com verificação de permissões",
+      "status": "PENDING",
+      "durationMs": 0,
+      "retries": 0,
+      "costUSD": 0,
+      "tokensIn": 0,
+      "tokensOut": 0
+    }
+  ]
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

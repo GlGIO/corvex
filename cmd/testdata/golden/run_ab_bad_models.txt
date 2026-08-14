@@ -1,0 +1,10 @@
+$ corvex run alpha --plain --yes --task S02 --ab sonnet
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+--ab needs exactly 2 models separated by a comma (got 1: "sonnet")

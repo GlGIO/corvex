@@ -1,0 +1,15 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+worktree for project "alpha" exists at <TMP>, but you are running from <TMP>
+This would use the wrong branch/state and bypass the worktree.
+
+→ cd <TMP> && corvex plan alpha
+
+Or pass --here to use the current directory anyway

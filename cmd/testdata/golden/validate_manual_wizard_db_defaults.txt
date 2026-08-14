@@ -1,0 +1,90 @@
+# manualValidateWizard — database mysql
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [mysql:8]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: node
+    framework: ""
+    start_command: npm run start:test
+    port: 3000
+    ready_timeout: 30
+    health_path: /health
+    env_file: ""
+database:
+    type: mysql
+    image: mysql:8
+    migrate_command: npm run migrate
+    env: {}
+ui:
+    enabled: false
+
+# manualValidateWizard — database mongodb
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [mongodb:latest]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: node
+    framework: ""
+    start_command: npm run start:test
+    port: 3000
+    ready_timeout: 30
+    health_path: /health
+    env_file: ""
+database:
+    type: mongodb
+    image: mongodb:latest
+    migrate_command: npm run migrate
+    env: {}
+ui:
+    enabled: false
+
+# manualValidateWizard — database sqlite
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: node
+    framework: ""
+    start_command: npm run start:test
+    port: 3000
+    ready_timeout: 30
+    health_path: /health
+    env_file: ""
+database:
+    type: sqlite
+    image: ""
+    migrate_command: ""
+    env: {}
+ui:
+    enabled: false
+

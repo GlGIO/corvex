@@ -1,0 +1,91 @@
+# manualValidateWizard — postgres
+
+--- stdout ---
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [postgres:16]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- validate config ---
+stack:
+    runtime: go
+    framework: gin
+    start_command: ./run-app
+    port: 8080
+    ready_timeout: 30
+    health_path: /health
+    env_file: ""
+database:
+    type: postgres
+    image: postgres:16
+    migrate_command: make migrate
+    env:
+        POSTGRES_DB: testdb
+        POSTGRES_PASSWORD: test
+        POSTGRES_USER: test
+ui:
+    enabled: true
+
+--- .corvex/config.yaml on disk ---
+project:
+    name: ""
+    description: ""
+provider:
+    default: claude-cli
+    models:
+        planner: opus
+        worker: sonnet
+        reviewer: sonnet
+sandbox:
+    type: local
+    profile: ""
+    image: ""
+    mount: ""
+    workdir: ""
+    worker_extra_args: []
+    mcp_servers: []
+execution:
+    max_retries: 2
+    auto_commit: true
+    parallel: false
+    max_parallel: 0
+    insight_threshold: 3
+    max_cost_usd: 25
+    max_cost_per_task_usd: 5
+    task_warn_minutes: 5
+    task_timeout_minutes: 20
+    stream_idle_timeout_seconds: 180
+review:
+    escalation: {}
+context:
+    always_include: []
+agent_routing: {}
+skill_routing: {}
+validate:
+    stack:
+        runtime: go
+        framework: gin
+        start_command: ./run-app
+        port: 8080
+        ready_timeout: 30
+        health_path: /health
+        env_file: ""
+    database:
+        type: postgres
+        image: postgres:16
+        migrate_command: make migrate
+        env:
+            POSTGRES_DB: testdb
+            POSTGRES_PASSWORD: test
+            POSTGRES_USER: test
+    ui:
+        enabled: true
+plan:
+    context_command: ""
+worktree:
+    link: []

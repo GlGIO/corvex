@@ -1,0 +1,17 @@
+$ corvex validate alpha
+
+--- stdout ---
+  · Read package.json
+
+Checked /health and the two endpoints from the spec.
+
+✓ PASS  ($0.42, 12s)
+
+--- stderr ---
+<TS> INFO setting up validation stack project=alpha
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+<TS> INFO running validator agent project=alpha
+
+--- error ---
+(nil)

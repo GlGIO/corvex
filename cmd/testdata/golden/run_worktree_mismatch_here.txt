@@ -1,0 +1,16 @@
+$ corvex run alpha --dry-run --here
+
+--- stdout ---
+Dry run for project: alpha
+
+Execution order:
+    ✅ S01 — First Task [PASSED]
+  → ⬜ S02 — Second Task [PENDING]
+
+1 task(s) would be executed
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

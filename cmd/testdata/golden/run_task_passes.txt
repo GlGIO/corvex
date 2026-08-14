@@ -1,0 +1,10 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+<PlainRenderer output — drained on an unawaited goroutine; see runAssertRendererLines>
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: $25.00/run, $5.00/task
+
+--- error ---
+(nil)

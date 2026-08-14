@@ -1,0 +1,13 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+<PlainRenderer output — drained on an unawaited goroutine; see runAssertRendererLines>
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+run failed: DAG integrity violation: task S02 is PASSED but its dependency S01 is not.
+This usually means a replan changed the DAG. To fix, choose one:
+  1) Reset S02 to ⬜ PENDING in tasks.md (delete its artifacts first if they were written), so it re-validates under the new DAG.
+  2) Manually run S01 by marking it PENDING and re-running, then retry.

@@ -1,0 +1,21 @@
+$ corvex doctor --help
+
+--- stdout ---
+Check the config and local environment for common misconfigurations
+
+Usage:
+  corvex doctor [flags]
+
+Flags:
+  -h, --help   help for doctor
+      --json   print machine-readable JSON instead of formatted output
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

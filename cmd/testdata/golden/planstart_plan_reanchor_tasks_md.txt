@@ -1,0 +1,36 @@
+--- file tasks.md ---
+---
+generated_by: characterize
+dag:
+  S01: []
+  S02: [S01]
+---
+
+## S01 — First Task ✅ PASSED
+
+```yaml
+type: general
+```
+
+### O que fazer
+First task
+
+### Critérios de sucesso
+- [ ] Done
+
+---
+
+## S02 — Second Task ⬜ PENDING
+
+```yaml
+type: backend
+depends_on: [S01]
+```
+
+### O que fazer
+Second task
+
+### Critérios de sucesso
+- [ ] Done
+
+--- end of tasks.md (ends with newline: true) ---

@@ -1,0 +1,12 @@
+$ corvex list
+
+--- stdout ---
+  alpha (ready)
+  beta (needs planning)
+  gamma (no spec)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

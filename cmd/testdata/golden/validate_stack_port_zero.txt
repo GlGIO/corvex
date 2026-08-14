@@ -1,0 +1,10 @@
+# setupValidationStack — port 0 skips the preflight
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO waiting for app to be ready port=0
+
+--- error ---
+app did not become ready at http://localhost:0/health within 1s

@@ -1,0 +1,10 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO planning project=alpha
+
+--- error ---
+planning failed: planner execution: claude cli exited with error: exit status 3 (stderr: stub claude: refusing)

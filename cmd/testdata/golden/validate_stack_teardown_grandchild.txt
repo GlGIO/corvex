@@ -1,0 +1,13 @@
+# setupValidationStack — teardown after a spawning start_command
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO waiting for app to be ready port=0
+
+--- error ---
+app did not become ready at http://localhost:0/health within 1s
+
+grandchild pid recorded: true
+grandchild still alive after cleanup(): true

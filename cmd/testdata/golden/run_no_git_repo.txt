@@ -1,0 +1,11 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+<PlainRenderer output — drained on an unawaited goroutine; see runAssertRendererLines>
+
+--- stderr ---
+Run "alpha": 0 pending task(s) · ceilings: $25.00/run, $5.00/task
+<TS> WARN recovery guard failed err="checking dirty state: git status: fatal: not a git repository (or any of the parent directories): .git: exit status 128"
+
+--- error ---
+(nil)

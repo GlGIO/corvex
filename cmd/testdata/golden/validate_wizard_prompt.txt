@@ -1,0 +1,48 @@
+## answer given, with default
+stdin="8080\n" question="Port?" default="3000"
+printed="  Port? [3000]: "
+returned="8080"
+stderr=""
+
+## empty answer keeps default
+stdin="\n" question="Port?" default="3000"
+printed="  Port? [3000]: "
+returned="3000"
+stderr=""
+
+## whitespace answer keeps default
+stdin="   \n" question="Port?" default="3000"
+printed="  Port? [3000]: "
+returned="3000"
+stderr=""
+
+## answer is trimmed
+stdin="  gin  \n" question="Framework?" default=""
+printed="  Framework?: "
+returned="gin"
+stderr=""
+
+## no default → no brackets
+stdin="fastapi\n" question="Framework?" default=""
+printed="  Framework?: "
+returned="fastapi"
+stderr=""
+
+## EOF returns default
+stdin="" question="Port?" default="3000"
+printed="  Port? [3000]: "
+returned="3000"
+stderr=""
+
+## EOF with empty default returns empty
+stdin="" question="Framework?" default=""
+printed="  Framework?: "
+returned=""
+stderr=""
+
+## answer without trailing newline is still read at EOF
+stdin="9090" question="Port?" default="3000"
+printed="  Port? [3000]: "
+returned="3000"
+stderr=""
+

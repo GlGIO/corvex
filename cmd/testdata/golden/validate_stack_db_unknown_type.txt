@@ -1,0 +1,15 @@
+# startDBContainer — mongodb (no readiness probe)
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- docker calls (in order) ---
+rm -f corvex-val-gamma-db
+run -d --rm --name corvex-val-gamma-db mongo:7
+rm -f corvex-val-gamma-db

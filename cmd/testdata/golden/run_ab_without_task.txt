@@ -1,0 +1,10 @@
+$ corvex run alpha --plain --yes --ab sonnet,opus
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+--ab requires --task <id> or --single to scope the comparison

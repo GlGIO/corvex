@@ -1,0 +1,37 @@
+--- tasks.md ---
+---
+generated_by: characterize
+dag:
+    S01: []
+---
+
+## S01 — First Task ✅ PASSED
+
+```yaml
+type: general
+```
+
+### O que fazer
+First task
+
+### Critérios de sucesso
+- [ ] Done
+
+--- anchor.yaml ---
+project: alpha
+updated_at: "<TS>"
+spec_hash: <HASH>
+intent: characterize
+completed:
+    - id: S01
+      title: First Task
+      summary: implemented the first task
+      files_created: []
+      files_modified: []
+      decisions:
+        - chose the boring option
+current_state:
+    total_tasks: 1
+    completed_tasks: 1
+next_task: ""
+next_task_context: 'nothing pending VERDICT: PASS'

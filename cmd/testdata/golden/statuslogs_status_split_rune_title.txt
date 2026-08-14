@@ -1,0 +1,15 @@
+$ corvex status longtitle
+
+--- stdout ---
+Project: longtitle
+Tasks:   0/1 done
+
+  ⬜ S01 — Migração para o padrão de configura�…   
+
+1 task(s) pending — run: corvex run longtitle
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

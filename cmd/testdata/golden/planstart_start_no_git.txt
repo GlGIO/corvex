@@ -1,0 +1,10 @@
+$ corvex start alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+not in a git repository: no .git found above .

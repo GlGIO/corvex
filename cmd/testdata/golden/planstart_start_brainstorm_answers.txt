@@ -1,0 +1,72 @@
+$ corvex start epsilon
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run epsilon
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+
+Choice [1]: Briefly describe the feature (blank line to submit):
+> > 
+Brainstorming epsilon — Ctrl+C to stop, /done to finish early
+
+🔍 Which delimiter?
+💡 Recommended: comma
+   why: Matches the format name.
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+(nenhuma decisão registrada ainda)
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+🔍 Which delimiter?
+💡 Recommended: comma
+   why: Matches the format name.
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+🔍 Which delimiter?
+💡 Recommended: comma
+   why: Matches the format name.
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): (usage: /ask <your question>)
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+💬 One thing is unclear.
+
+```brainstorm
+{"type":"question","text":"Which delimiter?","recommended":"comma","rationale":"Matches the format name."}
+```
+
+```spec
+# epsilon
+
+## Objective
+
+Export rows as CSV.
+```
+
+```grill
+{"type":"done"}
+```
+
+Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): 
+✓ Stopped early (2 answers). Writing spec.md...
+✓ spec.md written to <TMP>
+
+Grilling epsilon — Ctrl+C to stop (decisions persist in decisions.md)
+
+✓ No further ambiguities. 0 decision(s) recorded, $0.42 spent.
+  Next: corvex plan epsilon
+
+Ready to execute. From a new prompt, run:
+  cd <TMP>
+  corvex run epsilon
+
+
+--- stderr ---
+<TS> INFO brainstorming iteration=1
+<TS> INFO brainstorming iteration=2
+<TS> INFO brainstorming iteration=3
+<TS> INFO generating spec.md from brainstorm Q&A
+<TS> INFO grilling iteration=1
+
+--- error ---
+(nil)

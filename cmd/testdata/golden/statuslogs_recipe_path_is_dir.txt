@@ -1,0 +1,10 @@
+$ corvex recipe dir
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+reading recipe <TMP>: read <TMP>: is a directory

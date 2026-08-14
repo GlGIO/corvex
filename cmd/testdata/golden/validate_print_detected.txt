@@ -1,0 +1,25 @@
+# printDetected with 4 fields (one sourceless, one valueless)
+
+--- stdout ---
+✓ Detected:
+  stack.runtime = node  (from package.json)
+  stack.port = 3000  (from src/main.ts)
+  database.type = none
+  stack.framework =   (from guessed)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+# printDetected with nothing detected
+
+--- stdout ---
+(nothing auto-detected — please confirm/enter values manually)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

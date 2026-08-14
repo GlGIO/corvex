@@ -1,0 +1,10 @@
+# setupValidationStack — stack.port already bound
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+port <PORT> is already in use — stop the process listening there (it would be validated instead of your app), or set a different stack.port

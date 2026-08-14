@@ -1,0 +1,53 @@
+# startApp(start_command="")
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+start_command is empty
+started: false
+
+# startApp(start_command="   ")
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+start_command is empty
+started: false
+
+# startApp(start_command="corvex-char-missing-app")
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+started: false
+
+# startApp(start_command="corvex-char-app --flag 'quoted arg'")
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+started: true
+
+--- app pwd + argv ---
+<TMP>
+arg=[--flag]
+arg=['quoted]
+arg=[arg']

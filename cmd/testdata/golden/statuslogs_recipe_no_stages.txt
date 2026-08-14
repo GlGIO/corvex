@@ -1,0 +1,10 @@
+$ corvex recipe hollow
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe "hollow": has no stages

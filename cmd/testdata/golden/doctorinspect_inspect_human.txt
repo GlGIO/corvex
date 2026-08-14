@@ -1,0 +1,18 @@
+$ corvex inspect alpha
+
+--- stdout ---
+Project: alpha
+Tasks:   1/2 done   ·   $0.15 total
+
+ID    STATUS   DURATION   RETRIES COST     TITLE
+S01   ✅        8s         1       $0.15    First Task
+S02   ⬜        —          0       —        Second Task
+
+Slowest:    S01 (8s)
+Expensive:  S01 ($0.15)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

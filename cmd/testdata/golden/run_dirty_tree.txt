@@ -1,0 +1,15 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+run failed: working tree has 1 uncommitted change(s):
+  dirty.txt
+
+Corvex won't run on a dirty tree: it commits a checkpoint after every task, and its crash-recovery reset could discard this work.
+→ commit or stash your changes, then re-run
+→ or pass --force to let corvex reset the tree first (DESTRUCTIVE — discards the changes above)

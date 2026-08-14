@@ -1,0 +1,3 @@
+portInUse(0) with nothing bound: false
+portInUse(p) while :p (wildcard) is bound: true
+portInUse(p) after the wildcard listener closed: false

@@ -1,0 +1,16 @@
+# startDBContainer — mysql, docker exits 0
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
+
+--- docker calls (in order) ---
+rm -f corvex-val-beta-db
+run -d --rm --name corvex-val-beta-db mysql:8
+exec corvex-val-beta-db mysqladmin ping --silent
+rm -f corvex-val-beta-db

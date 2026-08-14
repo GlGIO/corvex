@@ -1,0 +1,10 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO planning project=alpha
+
+--- error ---
+planning failed: planning failed after 3 attempts: planner produced no tasks — the model output contained no '## S<n> — … ⬜ PENDING' headings (it likely narrated instead of emitting tasks.md content)

@@ -1,0 +1,9 @@
+# validateConfigured(v) — true means "skip the wizard"
+
+zero value                               → false
+port only                                → true
+start_command only                       → true
+both                                     → true
+runtime+framework but no port/command    → false
+database configured only                 → false
+ui enabled only                          → false

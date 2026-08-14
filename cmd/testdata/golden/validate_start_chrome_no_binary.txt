@@ -1,0 +1,10 @@
+# startChrome — no chromium/chrome on PATH
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+no Chrome/Chromium binary found — install chromium or google-chrome

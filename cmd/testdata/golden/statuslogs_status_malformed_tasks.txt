@@ -1,0 +1,12 @@
+$ corvex status broken
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+parsing tasks: parsing <TMP>: 1 unrecognized task heading(s):
+  line 7: "## S01 — Broken ✅ ALMOST"
+Hint: status must be one of PENDING|RUNNING|PASSED|FAILED|SKIPPED (with matching emoji ⬜|🔄|✅|❌|⏭️)

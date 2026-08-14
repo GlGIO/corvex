@@ -1,0 +1,12 @@
+$ corvex run ghost
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+project "ghost" not found
+
+available projects: alpha, beta

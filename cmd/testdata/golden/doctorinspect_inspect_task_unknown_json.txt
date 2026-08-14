@@ -1,0 +1,10 @@
+$ corvex inspect alpha --task S99 --json
+
+--- stdout ---
+[]
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

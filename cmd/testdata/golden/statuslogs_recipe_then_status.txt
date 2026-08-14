@@ -1,0 +1,17 @@
+$ corvex status demo
+
+--- stdout ---
+Project: demo
+Tasks:   0/3 done
+
+  ⬜ S01 — Bootstrap    
+  ⬜ S02 — Build backend ← [S01]
+  ⬜ S03 — Verify        ← [S01, S02]
+
+3 task(s) pending — run: corvex run demo
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

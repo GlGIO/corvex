@@ -1,0 +1,11 @@
+# setupValidationStack — migrate command exits 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO running migrations
+relation already exists
+
+--- error ---
+migrations failed: exit status 1

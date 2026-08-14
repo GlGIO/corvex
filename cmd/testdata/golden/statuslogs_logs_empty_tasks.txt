@@ -1,0 +1,10 @@
+$ corvex logs empty
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,31 @@
+$ corvex start alpha
+
+--- stdout ---
+Base branch [main]: HEAD is now at <SHA> init
+
+✓ Worktree ready at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run alpha
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+  3) plan       — spec.md already exists; skip straight to grill → plan
+
+Choice [1]: Grilling alpha — Ctrl+C to stop (decisions persist in decisions.md)
+
+✓ No further ambiguities. 0 decision(s) recorded, $0.42 spent.
+  Next: corvex plan alpha
+
+Ready to execute. From a new prompt, run:
+  cd <TMP>
+  corvex run alpha
+
+
+--- stderr ---
+Preparing worktree (new branch 'feat/alpha')
+<TS> INFO grilling iteration=1
+
+--- error ---
+(nil)

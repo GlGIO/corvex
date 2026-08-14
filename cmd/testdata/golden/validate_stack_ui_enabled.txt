@@ -1,0 +1,13 @@
+# setupValidationStack — ui.enabled with no Chrome
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+<TS> INFO waiting for app to be ready port=<PORT>
+<TS> INFO app ready
+
+--- error ---
+no Chrome/Chromium binary found — install chromium or google-chrome
+
+app port closed after the failure: true

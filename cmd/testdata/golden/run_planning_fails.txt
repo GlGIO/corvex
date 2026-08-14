@@ -1,0 +1,10 @@
+$ corvex run alpha --plain --yes
+
+--- stdout ---
+<PlainRenderer output — drained on an unawaited goroutine; see runAssertRendererLines>
+
+--- stderr ---
+Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+
+--- error ---
+run failed: planning: planner execution: claude cli exited with error: exit status 3 (stderr: stub claude: refusing)

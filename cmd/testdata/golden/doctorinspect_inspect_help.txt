@@ -1,0 +1,24 @@
+$ corvex inspect --help
+
+--- stdout ---
+Read .corvex/tasks/<project>/activity.jsonl and render a timeline:
+duration, retry count, cost, and tokens for each task. Use --task to drill
+into a single task's event stream, or --json for raw output.
+
+Usage:
+  corvex inspect <project> [flags]
+
+Flags:
+  -h, --help          help for inspect
+      --json          print machine-readable JSON instead of formatted output
+      --task string   show detailed events for a single task ID (e.g. S05)
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,10 @@
+$ corvex plan alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+creating provider: unknown provider: "gpt-9000"

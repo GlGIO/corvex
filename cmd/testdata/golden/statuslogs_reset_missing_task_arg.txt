@@ -1,0 +1,10 @@
+$ corvex reset alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+accepts 2 arg(s), received 1

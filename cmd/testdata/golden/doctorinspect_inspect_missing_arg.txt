@@ -1,0 +1,10 @@
+$ corvex inspect
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+accepts 1 arg(s), received 0

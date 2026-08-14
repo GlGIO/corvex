@@ -1,0 +1,20 @@
+## 200 OK
+error: <nil>
+
+## 404 Not Found is still 'ready'
+error: <nil>
+
+## 401 Unauthorized is still 'ready'
+error: <nil>
+
+## 500 keeps polling until the deadline
+error: app did not become ready at http://localhost:<PORT>/health within 1s
+
+## nothing listening
+error: app did not become ready at http://localhost:<PORT>/health within 1s
+
+## empty health_path falls back to /
+error: app did not become ready at http://localhost:<PORT>/ within 1s
+
+## cancelled context
+error: context canceled

@@ -1,0 +1,26 @@
+$ corvex validate alpha
+
+--- stdout ---
+
+validate: not configured.
+Inspecting codebase to draft a config (one AI call)...
+
+  Backend runtime? (node/python/go/java) [node]:   Framework? (nestjs/express/fastapi/...):   Start command? [npm run start:test]:   Port? [3000]:   Health check path? (empty to skip) [/health]:   Database? (postgres/mysql/sqlite/none) [postgres]:   DB docker image? [postgres:16]:   Migrate command? [npm run migrate]:   Test UI with Chrome CDP? (y/n) [n]: 
+✓ Written to .corvex/config.yaml
+
+migrating schema
+
+--- stderr ---
+<TS> WARN AI inference failed — falling back to manual wizard err="configurer execution: claude cli exited with error: exit status 3 (stderr: stub claude: no)"
+<TS> INFO setting up validation stack project=alpha
+<TS> INFO database ready type=postgres
+<TS> INFO running migrations
+
+--- error ---
+stack setup failed: starting app (corvex-char-missing-app): exec: "corvex-char-missing-app": executable file not found in $PATH
+
+--- docker calls (in order, -e flags sorted) ---
+rm -f corvex-val-alpha-db
+run -d --rm --name corvex-val-alpha-db -e POSTGRES_DB=testdb -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test postgres:16
+exec corvex-val-alpha-db pg_isready
+rm -f corvex-val-alpha-db

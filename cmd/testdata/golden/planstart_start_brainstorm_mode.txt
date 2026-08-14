@@ -1,0 +1,36 @@
+$ corvex start delta
+
+--- stdout ---
+✓ Using existing worktree at <TMP>
+  Next (after this command finishes): cd <TMP> && corvex run delta
+
+
+corvex: How defined is this feature?
+
+  1) brainstorm — vague idea; AI will ask questions and write spec.md
+  2) grill      — clear idea; describe it quickly, then AI interrogates spec
+
+Choice [1]: Briefly describe the feature (blank line to submit):
+> > 
+Brainstorming delta — Ctrl+C to stop, /done to finish early
+
+✓ Design questions resolved (0 answers, $0.42). Writing spec.md...
+✓ spec.md written to <TMP>
+
+Grilling delta — Ctrl+C to stop (decisions persist in decisions.md)
+
+✓ No further ambiguities. 0 decision(s) recorded, $0.42 spent.
+  Next: corvex plan delta
+
+Ready to execute. From a new prompt, run:
+  cd <TMP>
+  corvex run delta
+
+
+--- stderr ---
+<TS> INFO brainstorming iteration=1
+<TS> INFO generating spec.md from brainstorm Q&A
+<TS> INFO grilling iteration=1
+
+--- error ---
+(nil)
