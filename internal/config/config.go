@@ -71,6 +71,22 @@ type SandboxConfig struct {
 	WorkDir         string            `yaml:"workdir"`
 	WorkerExtraArgs []string          `yaml:"worker_extra_args"`
 	MCPServers      []MCPServerConfig `yaml:"mcp_servers"`
+
+	// EnvAllowlist declares EXTRA environment-variable name prefixes forwarded
+	// from the host process into the sandbox, on top of the built-in ones
+	// (ANTHROPIC_, CLAUDE_, AWS_*, OPENAI_, CORVEX_). Use it for credentials
+	// Corvex knows nothing about — a cloud CLI, an issue tracker token, a
+	// company VPN var (e.g. AZURE_ for `az`, GH_TOKEN, VAULT_).
+	//
+	// It is a union, never a replacement: the defaults are always present, so
+	// nothing here can lock the Worker out of its own model credentials. Values
+	// are never read from or written to config.yaml — only names are matched,
+	// the value stays in the host environment.
+	//
+	// omitempty on purpose: `corvex validate` rewrites config.yaml by marshaling
+	// the whole struct, and an unset allowlist must not add a line to a config
+	// the user never asked about.
+	EnvAllowlist []string `yaml:"env_allowlist,omitempty"`
 }
 
 // MCPServerConfig declares an MCP server exposed to the Worker. Servers are
@@ -197,6 +213,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyDefaults(cfg)
+
+	// Publish the sandbox env allowlist for this process, so the components
+	// that forward host credentials into a sandboxed child honour the user's
+	// `sandbox.env_allowlist` without threading it through every constructor.
+	SetActiveEnvAllowlist(cfg.Sandbox.EnvAllowlist)
 
 	// Auto-source dotenv files into the process environment so `${VAR}`
 	// placeholders in this config — most notably `mcp_servers[].env` — can

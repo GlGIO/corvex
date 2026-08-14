@@ -38,7 +38,7 @@ package cmd
 //     coisas e nada mais: iterar rapido enquanto voce mexe num comando, e
 //     regravar golden. Ele nao serve para decidir se a fase pode commitar.
 //     Toda funcao desta rede usa o prefixo TestCharacterize justamente para que
-//     `-run TestCharacterize` cubra 228/228 — mas mesmo assim isso deixa de
+//     `-run TestCharacterize` cubra 229/229 — mas mesmo assim isso deixa de
 //     fora os testes unitarios antigos de cmd/, que tambem travam saida
 //     (doctor_test.go, status_test.go, list_test.go, ...). Prefixo consistente
 //     resolve o falso verde por regex; nao promove subconjunto a evidencia.

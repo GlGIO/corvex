@@ -1,4 +1,4 @@
-package orchestrator
+package planning
 
 import (
 	"context"
@@ -33,7 +33,7 @@ type BrainstormStep struct {
 // Brainstormer conducts an AI-driven Q&A to explore a vague feature idea,
 // then synthesises the answers into a spec.md.
 type Brainstormer struct {
-	progressBase
+	provider.ProgressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -55,7 +55,7 @@ func (b *Brainstormer) Interview(ctx context.Context, description, qaPath string
 
 	prompt := buildBrainstormerPrompt(description, string(qaContent))
 
-	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
+	result, err := b.RunStep(ctx, b.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,
@@ -80,7 +80,7 @@ func (b *Brainstormer) Interview(ctx context.Context, description, qaPath string
 // advancing the Q&A loop. The model receives the feature description, the
 // accumulated Q&A, and the user's question, and returns a plain-text reply
 // (no JSON envelope) that the CLI prints back. Streaming events still flow
-// through `progressBase`, so the user sees Read/Glob calls if the model
+// through `provider.ProgressBase`, so the user sees Read/Glob calls if the model
 // looks things up to answer.
 func (b *Brainstormer) AskFollowup(ctx context.Context, description, qaPath, question string) (string, error) {
 	qaContent, err := os.ReadFile(qaPath)
@@ -90,7 +90,7 @@ func (b *Brainstormer) AskFollowup(ctx context.Context, description, qaPath, que
 
 	prompt := buildAskFollowupPrompt(description, string(qaContent), question)
 
-	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
+	result, err := b.RunStep(ctx, b.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,
@@ -111,7 +111,7 @@ func (b *Brainstormer) GenerateSpec(ctx context.Context, description, qaPath, sp
 
 	prompt := buildSpecGenPrompt(description, string(qaContent))
 
-	result, err := b.runStep(ctx, b.provider, types.ExecuteRequest{
+	result, err := b.RunStep(ctx, b.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        b.model,
 		WorkDir:      b.workDir,

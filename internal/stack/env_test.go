@@ -1,4 +1,4 @@
-package cmd
+package stack
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func TestLoadEnvFileVars(t *testing.T) {
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	vars, err := loadEnvFileVars(p)
+	vars, err := LoadEnvFileVars(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestLoadEnvFileVars(t *testing.T) {
 }
 
 func TestLoadEnvFileVars_Missing(t *testing.T) {
-	if _, err := loadEnvFileVars(filepath.Join(t.TempDir(), "nope.env")); err == nil {
+	if _, err := LoadEnvFileVars(filepath.Join(t.TempDir(), "nope.env")); err == nil {
 		t.Error("expected error for missing env file")
 	}
 }

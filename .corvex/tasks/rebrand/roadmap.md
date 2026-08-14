@@ -279,8 +279,12 @@ Além disso:
   - `go test ./...` verde e `./cmd/` **não abaixo** dos 60% da F-1.
   - `grep -rl "spf13/cobra" internal/` → **vazio**. Cobra só existe em `cmd/`.
   - `grep -rnE "fmt\.Print|os\.Exit" internal/ops/` → **vazio**.
-  - Nenhum arquivo em `cmd/` acima de **150 linhas**.
-  - Nenhum arquivo em `internal/` acima de **400 linhas**.
+  - Nenhum arquivo em `cmd/` acima de **150 linhas**. **Decidido:** o limite vale para fonte
+    de **produção**; arquivo de teste golden não conta (a rede da F-1 é deliberadamente
+    verbosa e cortá-la para caber num limite de linha enfraqueceria a prova).
+  - Nenhum arquivo em `internal/` acima de **400 linhas**. **Decidido:** o limite **não tem
+    exceção** — inclui `internal/tui/model.go` e `internal/provider/claude/claude.go`, os dois
+    candidatos naturais a "mas esse é especial"; ambos foram divididos na F0 (wave 1).
   - `internal/ops/` não importa `internal/tui`.
   - Os golden tests da F-1 passam **sem alteração**. Se um precisar mudar, o
     comportamento mudou → **PARE** (ver Condições de parada).

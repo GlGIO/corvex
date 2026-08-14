@@ -36,6 +36,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	charmlog "github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/stack"
 	"github.com/muesli/termenv"
 	"gopkg.in/yaml.v3"
 )
@@ -103,6 +104,13 @@ func validateCapture(t *testing.T, stdinContent string, fn func(reader *bufio.Re
 
 	fn(bufio.NewReader(os.Stdin))
 	return
+}
+
+// validateStreams is what cmd/ hands internal/stack: the process stdout/stderr,
+// read at CALL time. Inside validateCapture those are the capture pipes, which
+// is exactly what the stack used to pick up from os.Stdout directly.
+func validateStreams() stack.Streams {
+	return stack.Streams{Out: os.Stdout, Err: os.Stderr}
 }
 
 // validateTranscript is transcript() for a direct function call: same

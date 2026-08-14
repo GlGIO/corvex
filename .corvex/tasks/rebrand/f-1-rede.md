@@ -22,7 +22,7 @@ go test ./cmd/ -count=2     # obrigatorio antes de commitar fase
 2. **Nunca julgue regressao por subconjunto.** `-run` serve para duas coisas:
    iterar rapido enquanto voce mexe num comando, e regravar golden. Nao serve
    para decidir se a fase pode commitar. Mesmo `-run TestCharacterize`, que hoje
-   cobre 228/228 testes de caracterizacao, deixa de fora os testes unitarios
+   cobre 229/229 testes de caracterizacao, deixa de fora os testes unitarios
    antigos de `cmd/` (`doctor_test.go`, `status_test.go`, `list_test.go`, ...),
    que tambem travam saida.
 3. **Nunca `GOMAXPROCS=1`.** Ver secao 4 — sob um unico P, praticamente todos os
@@ -41,7 +41,7 @@ A mesma regra esta no header de `cmd/characterize_test.go`, secao
 
 Na entrega original da F-1, 54 testes usavam o prefixo `TestCharStatuslogs`,
 que `-run TestCharacterize` **nao pegava**. Mutacoes em `cmd/status.go:130` e
-`cmd/logs.go:87` passavam VERDES. Hoje todos os 228 usam o prefixo
+`cmd/logs.go:87` passavam VERDES. Hoje todos os 229 usam o prefixo
 `TestCharacterize` e as mesmas mutacoes ficam VERMELHAS (14 testes acusam).
 A licao nao e "o prefixo estava errado" — e que **qualquer** regex de `-run`
 e uma oportunidade de falso verde. Por isso a regra 1.
@@ -70,7 +70,7 @@ go test ./cmd/ -run TestCharacterizeStatuslogs -update-golden # um grupo
 
 ## 3. O que a rede cobre, por comando
 
-249 goldens, 228 funcoes `TestCharacterize*`, `cmd/` a 88.3% de cobertura.
+249 goldens, 229 funcoes `TestCharacterize*`, `cmd/` a 88.3% de cobertura.
 Todos os testes rodam **in-process** (`rootCmd.Execute()` de verdade, num temp
 dir), nunca chamam rede, IA ou docker.
 
@@ -81,7 +81,15 @@ dir), nunca chamam rede, IA ou docker.
 | `char_doctorinspect_test.go` | `doctor`, `inspect` | 45 | 45 |
 | `char_run_test.go` | `run` (dry-run, replan, gate, `--ab` flags) | 42 | 42 |
 | `char_planstart_test.go` | `plan`, `start` | 30 | 41 |
+| `char_run_drain_test.go` | o guarda do drain: falha se o renderer do `run` for SILENCIADO | 1 | 0 |
 | `characterize_test.go` | o harness em si (3 auto-testes) | 3 | 3 |
+
+O guarda do drain e o unico teste da rede **sem golden**: ele compara o stdout do
+renderer linha a linha em memoria (a saida do renderer nunca entra em golden —
+ver `runRendererPlaceholder`) e repete a invocacao N vezes, porque o que ele
+mede — "chegou alguma linha?" — depende do escalonador, nao do texto. Os outros
+grupos travam texto e ordem; este travam a existencia da saida. Ler o cabecalho
+do arquivo antes de mexer nele.
 
 Cada golden e um **transcript**: os args, o stdout, o stderr e o erro
 retornado, na mesma ordem, passados por `scrub()`. O `scrub()` remove **apenas**

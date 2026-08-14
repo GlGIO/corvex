@@ -34,14 +34,6 @@ const (
 	EventInsight        EventType = "insight"
 )
 
-// InsightData carries an agent-creation suggestion from the Advisor.
-type InsightData struct {
-	TaskType         string
-	Count            int
-	SuggestedPath    string
-	SuggestedContent string
-}
-
 // Event carries orchestration progress data to the TUI layer.
 type Event struct {
 	Type       EventType
@@ -57,5 +49,5 @@ type Event struct {
 	TokensOut  int
 	DurationMs int64
 	Timestamp  time.Time
-	Insight    *InsightData
+	Insight    *types.InsightData
 }

@@ -1,4 +1,4 @@
-package orchestrator
+package planning
 
 import (
 	"context"
@@ -16,7 +16,7 @@ const defaultInsightThreshold = 3
 
 // Advisor analyses completed tasks and suggests new agent files for recurring patterns.
 type Advisor struct {
-	progressBase
+	provider.ProgressBase
 	provider provider.Provider
 	model    string
 	workDir  string
@@ -27,10 +27,14 @@ func NewAdvisor(p provider.Provider, model, workDir string) *Advisor {
 	return &Advisor{provider: p, model: model, workDir: workDir}
 }
 
+// Model returns the model the Advisor runs on. The orchestrator reuses it for
+// the one-shot investigation prompt it fires on its own.
+func (a *Advisor) Model() string { return a.model }
+
 // Analyze scans completed tasks for types that exceed the threshold and lack a configured agent.
 // For each qualifying type it generates a suggested agent prompt and writes it to
 // .corvex/insights/<type>-agent-suggestion.md. Returns the list of insights produced.
-func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[string]string, threshold int) ([]InsightData, error) {
+func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[string]string, threshold int) ([]types.InsightData, error) {
 	if threshold == 0 {
 		return nil, nil
 	}
@@ -53,7 +57,7 @@ func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[s
 	}
 	sort.Strings(sortedTypes)
 
-	var insights []InsightData
+	var insights []types.InsightData
 	for _, typ := range sortedTypes {
 		typeTasks := byType[typ]
 		if len(typeTasks) < threshold {
@@ -69,7 +73,7 @@ func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[s
 		}
 
 		suggestedPath := ".corvex/agents/" + typ + ".md"
-		insight := InsightData{
+		insight := types.InsightData{
 			TaskType:         typ,
 			Count:            len(typeTasks),
 			SuggestedPath:    suggestedPath,
@@ -88,7 +92,7 @@ func (a *Advisor) Analyze(ctx context.Context, tasks []types.Task, routing map[s
 func (a *Advisor) generateAgentSuggestion(ctx context.Context, taskType string, tasks []types.Task) (string, error) {
 	prompt := buildAdvisorPrompt(taskType, tasks)
 
-	result, err := a.runStep(ctx, a.provider, types.ExecuteRequest{
+	result, err := a.RunStep(ctx, a.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        a.model,
 		WorkDir:      a.workDir,

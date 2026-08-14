@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/giovannialves/corvex/internal/orchestrator"
+	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -56,14 +56,14 @@ func runGrill(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating provider: %w", err)
 	}
 
-	griller := orchestrator.NewGriller(p, cfg.Provider.Models.Planner, workDir)
+	griller := planning.NewGriller(p, cfg.Provider.Models.Planner, workDir)
 	griller.SetProgressWriter(os.Stdout)
 	reader := bufio.NewReader(os.Stdin)
 	return runGrillLoop(cmd.Context(), griller, reader, project, specPath, decisionsPath)
 }
 
 // runGrillLoop is the shared interactive Q&A loop used by both `grill` and `start`.
-func runGrillLoop(ctx context.Context, griller *orchestrator.Griller, reader *bufio.Reader, project, specPath, decisionsPath string) error {
+func runGrillLoop(ctx context.Context, griller *planning.Griller, reader *bufio.Reader, project, specPath, decisionsPath string) error {
 	totalCost := 0.0
 	answered := 0
 
@@ -123,7 +123,7 @@ func runGrillLoop(ctx context.Context, griller *orchestrator.Griller, reader *bu
 // readGrillAnswer mirrors readBrainstormAnswer for the grill loop:
 // supports /ask (Griller.AskFollowup), /summary, /skip, /done, and re-prompts
 // after any interjection so the user keeps the same 🔍 in front of them.
-func readGrillAnswer(ctx context.Context, reader *bufio.Reader, griller *orchestrator.Griller, specPath, decisionsPath, recommended string) (string, answerAction, error) {
+func readGrillAnswer(ctx context.Context, reader *bufio.Reader, griller *planning.Griller, specPath, decisionsPath, recommended string) (string, answerAction, error) {
 	for {
 		fmt.Print("Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): ")
 		raw, err := reader.ReadString('\n')

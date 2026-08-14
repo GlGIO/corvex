@@ -17,6 +17,7 @@ import (
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/dag"
 	"github.com/giovannialves/corvex/internal/hooks"
+	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/recovery"
 	"github.com/giovannialves/corvex/internal/sandbox"
@@ -63,10 +64,10 @@ type Orchestrator struct {
 	provider   provider.Provider
 	hooks      *hooks.Runner
 	recovery   *recovery.Manager
-	planner    *Planner
+	planner    *planning.Planner
 	worker     *Worker
 	reviewer   *Reviewer
-	advisor    *Advisor
+	advisor    *planning.Advisor
 	sandbox    sandbox.Sandbox
 	events     chan<- Event
 	workDir    string
@@ -124,10 +125,10 @@ func New(opts Options) *Orchestrator {
 		provider:   opts.Provider,
 		hooks:      hooks.NewRunner(opts.WorkDir, 0),
 		recovery:   recovery.NewManager(opts.WorkDir),
-		planner:    NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir, opts.Config.AgentRouting, opts.Config.Plan.ContextCommand),
+		planner:    planning.NewPlanner(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir, opts.Config.AgentRouting, opts.Config.Plan.ContextCommand),
 		worker:     NewWorker(opts.Provider, opts.Config.Provider.Models.Worker, opts.WorkDir, opts.Sandbox, opts.Config.SkillRouting),
 		reviewer:   NewReviewer(opts.Provider, opts.Config.Provider.Models.Reviewer, opts.WorkDir, opts.Config.SkillRouting["review"]),
-		advisor:    NewAdvisor(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir),
+		advisor:    planning.NewAdvisor(opts.Provider, opts.Config.Provider.Models.Planner, opts.WorkDir),
 		sandbox:    opts.Sandbox,
 		events:     opts.Events,
 		workDir:    opts.WorkDir,
@@ -876,7 +877,7 @@ func (o *Orchestrator) runInvestigation(ctx context.Context, t *types.Task, revi
 	prompt := buildInvestigationPrompt(t, reviewerSummary)
 	result, err := o.provider.Execute(ctx, types.ExecuteRequest{
 		Prompt:       prompt,
-		Model:        o.advisor.model,
+		Model:        o.advisor.Model(),
 		WorkDir:      o.workDir,
 		AllowedTools: []string{"Read", "Glob", "Grep"},
 	})

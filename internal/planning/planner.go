@@ -1,4 +1,4 @@
-package orchestrator
+package planning
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ func (p *Planner) runContextCommand(ctx context.Context) string {
 
 // Planner runs the AI provider with read-only tools to generate or update a tasks.md file.
 type Planner struct {
-	progressBase
+	provider.ProgressBase
 	provider       provider.Provider
 	model          string
 	workDir        string
@@ -112,7 +112,7 @@ func (p *Planner) Plan(ctx context.Context, specPath, anchorPath, tasksPath stri
 				attempt, maxPlanAttempts)
 		}
 
-		result, err := p.runStep(ctx, p.provider, types.ExecuteRequest{
+		result, err := p.RunStep(ctx, p.provider, types.ExecuteRequest{
 			Prompt:       prompt,
 			Model:        p.model,
 			WorkDir:      p.workDir,

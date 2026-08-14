@@ -1,4 +1,4 @@
-package cmd
+package stack
 
 import (
 	"net"
@@ -12,12 +12,12 @@ func TestPortInUse(t *testing.T) {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 
-	if !portInUse(port) {
+	if !PortInUse(port) {
 		t.Errorf("portInUse(%d) = false while a listener is active, want true", port)
 	}
 
 	ln.Close()
-	if portInUse(port) {
+	if PortInUse(port) {
 		t.Errorf("portInUse(%d) = true after the listener closed, want false", port)
 	}
 }

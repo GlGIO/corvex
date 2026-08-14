@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
@@ -130,7 +131,7 @@ func (w *Worker) executeViaSandbox(
 ) (*types.ExecuteResult, error) {
 	bin, args, env := cb.BuildCommand(req)
 
-	authEnv := collectAuthEnv()
+	authEnv := collectAuthEnv(config.ActiveEnvAllowlist())
 	for k, v := range env {
 		authEnv[k] = v
 	}
@@ -163,23 +164,15 @@ func (w *Worker) executeViaSandbox(
 	return result, nil
 }
 
-var authEnvPrefixes = []string{
-	"ANTHROPIC_",
-	"CLAUDE_",
-	"AWS_ACCESS_KEY",
-	"AWS_SECRET_ACCESS",
-	"AWS_SESSION_TOKEN",
-	"AWS_DEFAULT_REGION",
-	"AWS_REGION",
-	"AWS_PROFILE",
-	"OPENAI_",
-	"CORVEX_",
-	// Azure CLI / Azure DevOps — lets skills like `az` authenticate inside a
-	// container sandbox (e.g. AZURE_DEVOPS_EXT_PAT, AZURE_TENANT_ID).
-	"AZURE_",
-}
-
-func collectAuthEnv() map[string]string {
+// collectAuthEnv picks the host environment variables whose name starts with
+// one of prefixes. Values never reach a log or the ledger — they are read here
+// and handed straight to the sandbox.
+//
+// The prefix list is configuration, not code: config.ActiveEnvAllowlist()
+// returns the built-in credentials plus whatever `sandbox.env_allowlist`
+// declares, so a user can grant a new credential (a cloud CLI, an issue
+// tracker token) without a new binary.
+func collectAuthEnv(prefixes []string) map[string]string {
 	env := make(map[string]string)
 	for _, e := range os.Environ() {
 		parts := strings.SplitN(e, "=", 2)
@@ -187,7 +180,7 @@ func collectAuthEnv() map[string]string {
 			continue
 		}
 		key := parts[0]
-		for _, prefix := range authEnvPrefixes {
+		for _, prefix := range prefixes {
 			if strings.HasPrefix(key, prefix) {
 				env[key] = parts[1]
 				break

@@ -225,8 +225,16 @@ esta nos transcripts dos cinco agentes, nao aqui.
 - **Observado:** unica ocorrencia de dominio antigo que sobrou no codigo de
   producao (`cmd` + `internal`, fora de testes e comentarios).
 - **Esperado:** removido pela F0.
-- **Status:** deixado no lugar de proposito nesta fase. E o valor 1 esperado do
-  grep de invariante do roadmap.
+- **Status:** **RESOLVIDA NA F0** (frente C, wave 1 — commit da wave). Era a unica
+  anomalia com conserto autorizado pela LEI B.
+- **Como:** a allowlist deixou de ser lista cravada em Go. Os defaults ficaram
+  genericos (`ANTHROPIC_`, `CLAUDE_`, `AWS_*`, `OPENAI_`, `CORVEX_`) e nasceu
+  `sandbox.env_allowlist` no `config.yaml`, que **acrescenta** aos defaults e nunca
+  remove (`internal/config/envallowlist.go`). `AZURE_` agora e um exemplo de
+  configuracao do usuario, nao codigo. Testes de uniao em
+  `internal/config/envallowlist_test.go`; heranca real em
+  `TestCollectAuthEnv_ConfiguredPrefix` (`internal/orchestrator/worker_test.go`).
+  Nenhum golden de `cmd/` mudou — o filtro de env nunca era exercido por eles.
 
 ---
 

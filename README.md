@@ -287,6 +287,9 @@ sandbox:
   workdir: /app
   worker_extra_args:     # Optional: CLI flags applied only to the Worker
     - "--dangerously-skip-permissions"
+  env_allowlist:         # Optional: extra host env prefixes forwarded to the sandbox
+    - AZURE_             # e.g. AZURE_DEVOPS_EXT_PAT for the `az` CLI
+    - GH_TOKEN
 
 execution:
   max_retries: 2                 # Retry failed tasks
@@ -403,7 +406,19 @@ Each model executes in its own git worktree under `.corvex/worktrees/`. The Revi
 
 #### Environment and worker flags
 
-**Environment variables** for authentication (`ANTHROPIC_API_KEY`, `CLAUDE_*`, `AWS_*`, etc.) are automatically forwarded from the host process to the sandbox — secrets are never stored in `config.yaml`.
+**Environment variables** for authentication are forwarded from the host process into the sandbox by name prefix — secrets are never stored in `config.yaml`. Built in, and always present: `ANTHROPIC_`, `CLAUDE_`, `AWS_ACCESS_KEY`, `AWS_SECRET_ACCESS`, `AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, `AWS_REGION`, `AWS_PROFILE`, `OPENAI_`, `CORVEX_`.
+
+Anything else your repo's tooling needs goes in `sandbox.env_allowlist`:
+
+```yaml
+sandbox:
+  env_allowlist:
+    - AZURE_          # az / Azure DevOps CLI: AZURE_DEVOPS_EXT_PAT, AZURE_TENANT_ID, ...
+    - GH_TOKEN
+    - VAULT_
+```
+
+The list **adds to** the built-in prefixes — it never replaces them, so no entry here can lock the Worker out of its own model credentials. Only names are matched; the values stay in your shell and never reach the YAML, the logs or the ledger. Granting a new credential is a config edit, not a new build.
 
 **Worker extra args** (`sandbox.worker_extra_args`) allow flags like `--dangerously-skip-permissions` that skip interactive tool confirmations. These are only safe inside Docker isolation — using them with `type: local` is at your own risk.
 

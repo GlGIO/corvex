@@ -11,6 +11,13 @@ provider:
 
 sandbox:
   type: local
+  # Extra env-var name prefixes forwarded from your shell into the sandbox, on
+  # top of the built-in ones (ANTHROPIC_, CLAUDE_, AWS_*, OPENAI_, CORVEX_).
+  # Add the credentials your repo's tooling needs — values stay in your
+  # environment, only names are listed here. This only ever adds.
+  # env_allowlist:
+  #   - AZURE_      # az / Azure DevOps CLI (AZURE_DEVOPS_EXT_PAT, ...)
+  #   - GH_TOKEN
 
 execution:
   max_retries: 2

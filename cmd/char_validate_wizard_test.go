@@ -19,11 +19,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
-	"github.com/giovannialves/corvex/internal/orchestrator"
+	"github.com/giovannialves/corvex/internal/planning"
+	"github.com/giovannialves/corvex/internal/wizard"
 )
 
 // validateDraftJSON is the ```config payload the fake claude returns for the
@@ -81,7 +83,7 @@ func TestCharacterizeValidateConfigured(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("# validateConfigured(v) — true means \"skip the wizard\"\n\n")
 	for _, c := range cases {
-		fmt.Fprintf(&b, "%-40s → %v\n", c.label, validateConfigured(c.cfg))
+		fmt.Fprintf(&b, "%-40s → %v\n", c.label, wizard.Configured(c.cfg))
 	}
 	goldenAssert(t, "validate_configured_table", b.String())
 }
@@ -114,7 +116,7 @@ func TestCharacterizeValidateWizardPrompt(t *testing.T) {
 	for _, c := range cases {
 		var got string
 		stdout, stderr := validateCapture(t, c.stdin, func(r *bufio.Reader) {
-			got = wizardPrompt(r, c.question, c.defaultVal)
+			got = wizard.New(r, os.Stdout).Prompt(c.question, c.defaultVal)
 		})
 		fmt.Fprintf(&b, "## %s\nstdin=%q question=%q default=%q\nprinted=%q\nreturned=%q\nstderr=%q\n\n",
 			c.label, c.stdin, c.question, c.defaultVal, stdout, got, stderr)
@@ -128,7 +130,7 @@ func TestCharacterizeValidatePrintDetected(t *testing.T) {
 	var b strings.Builder
 
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		printDetected([]orchestrator.DetectedField{
+		wizard.New(nil, os.Stdout).PrintDetected([]planning.DetectedField{
 			{Field: "stack.runtime", Value: "node", Source: "package.json"},
 			{Field: "stack.port", Value: "3000", Source: "src/main.ts"},
 			{Field: "database.type", Value: "none", Source: ""},
@@ -139,7 +141,7 @@ func TestCharacterizeValidatePrintDetected(t *testing.T) {
 	b.WriteString("\n")
 
 	stdout, stderr = validateCapture(t, "", func(*bufio.Reader) {
-		printDetected(nil)
+		wizard.New(nil, os.Stdout).PrintDetected(nil)
 	})
 	b.WriteString(validateTranscript("printDetected with nothing detected", stdout, stderr, nil))
 
@@ -153,7 +155,7 @@ func TestCharacterizeValidatePrintDetected(t *testing.T) {
 // routed through applyFieldOverride and a typo in a field name is dropped in
 // silence.
 func TestCharacterizeValidateConfirmUncertain(t *testing.T) {
-	uncertain := []orchestrator.UncertainField{
+	uncertain := []planning.UncertainField{
 		{Field: "stack.health_path", Guess: "/health", Reason: "no explicit health endpoint found"},
 		{Field: "stack.port", Guess: "3000", Reason: ""},
 		{Field: "stack.ready_timeout", Guess: "30", Reason: "convention"},
@@ -169,7 +171,7 @@ func TestCharacterizeValidateConfirmUncertain(t *testing.T) {
 
 	v := config.ValidateConfig{Stack: config.ValidateStackConfig{Runtime: "node"}}
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		confirmUncertain(r, &v, uncertain)
+		wizard.New(r, os.Stdout).ConfirmUncertain(&v, uncertain)
 	})
 
 	body := validateTranscript("confirmUncertain with 5 fields", stdout, stderr, nil) +
@@ -178,7 +180,7 @@ func TestCharacterizeValidateConfirmUncertain(t *testing.T) {
 	// Empty list must print nothing at all.
 	stdout2, stderr2 := validateCapture(t, "", func(r *bufio.Reader) {
 		empty := config.ValidateConfig{}
-		confirmUncertain(r, &empty, nil)
+		wizard.New(r, os.Stdout).ConfirmUncertain(&empty, nil)
 	})
 	body += "\n" + validateTranscript("confirmUncertain with no uncertain fields", stdout2, stderr2, nil)
 
@@ -234,7 +236,7 @@ func TestCharacterizeValidateApplyFieldOverride(t *testing.T) {
 	for _, c := range cases {
 		before := seed()
 		after := seed()
-		applyFieldOverride(&after, c.field, c.value)
+		wizard.ApplyFieldOverride(&after, c.field, c.value)
 		fmt.Fprintf(&b, "%-28s value=%-18q → %s\n", c.field, c.value, validateDiffFields(before, after))
 	}
 	goldenAssert(t, "validate_apply_field_override", b.String())
@@ -296,7 +298,7 @@ func TestCharacterizeValidateManualOverride(t *testing.T) {
 
 	v := current
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		manualOverride(r, &v)
+		wizard.New(r, os.Stdout).ManualOverride(&v)
 	})
 	body := validateTranscript("manualOverride (all 9 prompts)", stdout, stderr, nil) +
 		"\n" + validateDumpConfig(t, v)
@@ -305,7 +307,7 @@ func TestCharacterizeValidateManualOverride(t *testing.T) {
 	// prints as "0"), which changes the bracket rendering.
 	zero := config.ValidateConfig{}
 	stdout2, stderr2 := validateCapture(t, "", func(r *bufio.Reader) {
-		manualOverride(r, &zero)
+		wizard.New(r, os.Stdout).ManualOverride(&zero)
 	})
 	body += "\n" + validateTranscript("manualOverride on a zero config, stdin at EOF", stdout2, stderr2, nil) +
 		"\n" + validateDumpConfig(t, zero)
@@ -329,7 +331,7 @@ func TestCharacterizeValidateManualWizardPostgres(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = manualValidateWizard(r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Manual(f.Dir, cfg)
 	})
 
 	body := validateTranscript("manualValidateWizard — postgres", stdout, stderr, err) +
@@ -352,7 +354,7 @@ func TestCharacterizeValidateManualWizardNoDB(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = manualValidateWizard(r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Manual(f.Dir, cfg)
 	})
 
 	body := validateTranscript("manualValidateWizard — database none", stdout, stderr, err) +
@@ -376,7 +378,7 @@ func TestCharacterizeValidateManualWizardDBDefaults(t *testing.T) {
 
 		var err error
 		stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-			err = manualValidateWizard(r, f.Dir, cfg)
+			err = wizard.New(r, os.Stdout).Manual(f.Dir, cfg)
 		})
 		b.WriteString(validateTranscript("manualValidateWizard — database "+dbType, stdout, stderr, err))
 		b.WriteString("\n" + validateDumpConfig(t, cfg.Validate) + "\n")
@@ -393,7 +395,7 @@ func TestCharacterizeValidateManualWizardEOF(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(r *bufio.Reader) {
-		err = manualValidateWizard(r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Manual(f.Dir, cfg)
 	})
 
 	body := validateTranscript("manualValidateWizard — stdin at EOF", stdout, stderr, err) +
@@ -409,7 +411,7 @@ func TestCharacterizeValidateManualWizardSaveFailure(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(r *bufio.Reader) {
-		err = manualValidateWizard(r, dir, cfg)
+		err = wizard.New(r, os.Stdout).Manual(dir, cfg)
 	})
 
 	body := validateTranscript("manualValidateWizard — .corvex missing", stdout, stderr, err)
@@ -437,7 +439,7 @@ func TestCharacterizeValidateWizardAI(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = runValidateWizard(context.Background(), r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Run(context.Background(), f.Dir, cfg)
 	})
 
 	body := validateTranscript("runValidateWizard — AI inference succeeds", stdout, stderr, err) +
@@ -461,7 +463,7 @@ func TestCharacterizeValidateWizardAIManualEdit(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = runValidateWizard(context.Background(), r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Run(context.Background(), f.Dir, cfg)
 	})
 
 	body := validateTranscript("runValidateWizard — AI draft then manual edit", stdout, stderr, err) +
@@ -485,7 +487,7 @@ func TestCharacterizeValidateWizardAIFailure(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = runValidateWizard(context.Background(), r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Run(context.Background(), f.Dir, cfg)
 	})
 
 	body := validateTranscript("runValidateWizard — provider fails, manual fallback", stdout, stderr, err) +
@@ -506,7 +508,7 @@ func TestCharacterizeValidateWizardBadBlock(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = runValidateWizard(context.Background(), r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Run(context.Background(), f.Dir, cfg)
 	})
 
 	body := validateTranscript("runValidateWizard — no config block in AI output", stdout, stderr, err) +
@@ -526,7 +528,7 @@ func TestCharacterizeValidateWizardUnknownProvider(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, stdin, func(r *bufio.Reader) {
-		err = runValidateWizard(context.Background(), r, f.Dir, cfg)
+		err = wizard.New(r, os.Stdout).Run(context.Background(), f.Dir, cfg)
 	})
 
 	body := validateTranscript("runValidateWizard — unknown provider", stdout, stderr, err)

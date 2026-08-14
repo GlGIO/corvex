@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
-	"github.com/giovannialves/corvex/internal/orchestrator"
+	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -150,9 +150,9 @@ func brainstormPath(ctx context.Context, p provider.Provider, model, workDir, pr
 		return fmt.Errorf("feature description cannot be empty")
 	}
 
-	br := orchestrator.NewBrainstormer(p, model, workDir)
+	br := planning.NewBrainstormer(p, model, workDir)
 	br.SetProgressWriter(os.Stdout) // surface tool calls live so the model never looks hung
-	griller := orchestrator.NewGriller(p, model, workDir)
+	griller := planning.NewGriller(p, model, workDir)
 	griller.SetProgressWriter(os.Stdout)
 
 	fmt.Println()
@@ -227,14 +227,14 @@ func grillPath(ctx context.Context, p provider.Provider, model, workDir, project
 	}
 	fmt.Printf("✓ spec.md written to %s\n\n", specPath)
 
-	griller := orchestrator.NewGriller(p, model, workDir)
+	griller := planning.NewGriller(p, model, workDir)
 	griller.SetProgressWriter(os.Stdout)
 	return runGrillLoop(ctx, griller, reader, project, specPath, decisionsPath)
 }
 
 // planPath runs the grill loop on an existing spec.md.
 func planPath(ctx context.Context, p provider.Provider, model, workDir, project, specPath, decisionsPath string, reader *bufio.Reader) error {
-	griller := orchestrator.NewGriller(p, model, workDir)
+	griller := planning.NewGriller(p, model, workDir)
 	griller.SetProgressWriter(os.Stdout)
 	return runGrillLoop(ctx, griller, reader, project, specPath, decisionsPath)
 }
@@ -255,7 +255,7 @@ const (
 //
 // The hint line is printed every time so the user remembers the commands
 // after an interjection.
-func readBrainstormAnswer(ctx context.Context, reader *bufio.Reader, br *orchestrator.Brainstormer, description, qaPath, recommended string) (string, answerAction, error) {
+func readBrainstormAnswer(ctx context.Context, reader *bufio.Reader, br *planning.Brainstormer, description, qaPath, recommended string) (string, answerAction, error) {
 	for {
 		fmt.Print("Your answer (Enter to accept, /ask <q>, /summary, /skip, /done): ")
 		raw, err := reader.ReadString('\n')

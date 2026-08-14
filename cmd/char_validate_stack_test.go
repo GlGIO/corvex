@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/stack"
 )
 
 // validateStubDocker installs a `docker` stub that appends its argv to a log
@@ -86,8 +87,8 @@ func TestCharacterizeStackEmptyStartCommand(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -105,8 +106,8 @@ func TestCharacterizeStackMissingAppBinary(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -135,8 +136,8 @@ func TestCharacterizeStackPortInUse(t *testing.T) {
 
 	var setupErr error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, setupErr = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, setupErr = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -156,8 +157,8 @@ func TestCharacterizeStackPortZeroSkipsPreflight(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -177,8 +178,8 @@ func TestCharacterizeStackEnvFileMissing(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -211,8 +212,8 @@ func TestCharacterizeStackEnvFileSourced(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -235,8 +236,8 @@ func TestCharacterizeStackMigrationsFail(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -266,7 +267,7 @@ func TestCharacterizeStackDBPostgres(t *testing.T) {
 	var err error
 	var stop func()
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		stop, err = startDBContainer(context.Background(), "alpha", dbCfg)
+		stop, err = stack.StartDBContainer(context.Background(), "alpha", dbCfg)
 		if stop != nil {
 			stop()
 		}
@@ -288,7 +289,7 @@ func TestCharacterizeStackDBMysql(t *testing.T) {
 	var err error
 	var stop func()
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		stop, err = startDBContainer(context.Background(), "beta", dbCfg)
+		stop, err = stack.StartDBContainer(context.Background(), "beta", dbCfg)
 		if stop != nil {
 			stop()
 		}
@@ -310,7 +311,7 @@ func TestCharacterizeStackDBUnknownType(t *testing.T) {
 	var err error
 	var stop func()
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		stop, err = startDBContainer(context.Background(), "gamma", dbCfg)
+		stop, err = stack.StartDBContainer(context.Background(), "gamma", dbCfg)
 		if stop != nil {
 			stop()
 		}
@@ -334,7 +335,7 @@ exit 0`)
 	var err error
 	var stop func()
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		stop, err = startDBContainer(context.Background(), "alpha", dbCfg)
+		stop, err = stack.StartDBContainer(context.Background(), "alpha", dbCfg)
 		if stop != nil {
 			stop()
 		}
@@ -361,8 +362,8 @@ exit 0`)
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -385,8 +386,8 @@ func TestCharacterizeStackSqliteSkipsDocker(t *testing.T) {
 
 		var err error
 		stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-			var cleanup cleanupFn
-			cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+			var cleanup stack.CleanupFn
+			cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 			if cleanup != nil {
 				cleanup()
 			}
@@ -415,7 +416,7 @@ func TestCharacterizeStartApp(t *testing.T) {
 		var err error
 		var pid int
 		stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-			c, e := startApp(f.Dir, config.ValidateStackConfig{StartCommand: cmdStr}, os.Environ())
+			c, e := stack.StartApp(f.Dir, config.ValidateStackConfig{StartCommand: cmdStr}, os.Environ(), validateStreams())
 			err = e
 			if c != nil && c.Process != nil {
 				pid = c.Process.Pid
@@ -463,7 +464,7 @@ func TestCharacterizeLoadEnvFileVars(t *testing.T) {
 		t.Fatalf("writing env file: %v", err)
 	}
 
-	vars, err := loadEnvFileVars(path)
+	vars, err := stack.LoadEnvFileVars(path)
 
 	var b strings.Builder
 	b.WriteString("# loadEnvFileVars — input\n")
@@ -474,7 +475,7 @@ func TestCharacterizeLoadEnvFileVars(t *testing.T) {
 	}
 	fmt.Fprintf(&b, "\nerror: %v\n", err)
 
-	_, missingErr := loadEnvFileVars(filepath.Join(dir, "does-not-exist.env"))
+	_, missingErr := stack.LoadEnvFileVars(filepath.Join(dir, "does-not-exist.env"))
 	fmt.Fprintf(&b, "\n# missing file\nerror: %v\n", missingErr)
 
 	goldenAssert(t, "validate_load_env_file_vars", scrub(b.String()))
@@ -509,7 +510,7 @@ func TestCharacterizeWaitForHealth(t *testing.T) {
 		go func() { _ = srv.Serve(ln) }()
 
 		cfg := config.ValidateStackConfig{Port: port, HealthPath: "/health", ReadyTimeout: 1}
-		hErr := waitForHealth(context.Background(), cfg)
+		hErr := stack.WaitForHealth(context.Background(), cfg)
 		_ = srv.Close()
 
 		fmt.Fprintf(&b, "## %s\nerror: %v\n\n", c.label, validateScrubPort(fmt.Sprint(hErr), port))
@@ -517,17 +518,17 @@ func TestCharacterizeWaitForHealth(t *testing.T) {
 
 	// Nothing listening at all.
 	dead := validateFreePort(t)
-	deadErr := waitForHealth(context.Background(), config.ValidateStackConfig{Port: dead, HealthPath: "/health", ReadyTimeout: 1})
+	deadErr := stack.WaitForHealth(context.Background(), config.ValidateStackConfig{Port: dead, HealthPath: "/health", ReadyTimeout: 1})
 	fmt.Fprintf(&b, "## nothing listening\nerror: %v\n\n", validateScrubPort(fmt.Sprint(deadErr), dead))
 
 	// Empty health path → "/" is used.
-	deadErr = waitForHealth(context.Background(), config.ValidateStackConfig{Port: dead, ReadyTimeout: 1})
+	deadErr = stack.WaitForHealth(context.Background(), config.ValidateStackConfig{Port: dead, ReadyTimeout: 1})
 	fmt.Fprintf(&b, "## empty health_path falls back to /\nerror: %v\n\n", validateScrubPort(fmt.Sprint(deadErr), dead))
 
 	// Cancelled context → the first loop iteration returns ctx.Err().
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	ctxErr := waitForHealth(ctx, config.ValidateStackConfig{Port: dead, ReadyTimeout: 1})
+	ctxErr := stack.WaitForHealth(ctx, config.ValidateStackConfig{Port: dead, ReadyTimeout: 1})
 	fmt.Fprintf(&b, "## cancelled context\nerror: %v\n", ctxErr)
 
 	// "dur" is kept: every "within 1s" comes from ready_timeout, not a clock.
@@ -544,7 +545,7 @@ func TestCharacterizeStartChromeNoBinary(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		c, e := startChrome(context.Background())
+		c, e := stack.StartChrome(context.Background())
 		err = e
 		if c != nil && c.Process != nil {
 			_ = c.Process.Kill()
@@ -588,7 +589,7 @@ func TestCharacterizeStartChromeReady(t *testing.T) {
 	var err error
 	var started bool
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		c, e := startChrome(context.Background())
+		c, e := stack.StartChrome(context.Background())
 		err = e
 		if c != nil && c.Process != nil {
 			started = true
@@ -626,8 +627,8 @@ func TestCharacterizeStackFullSuccess(t *testing.T) {
 	var err error
 	var openBeforeCleanup, closedAfterCleanup bool
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if err != nil {
 			return
 		}
@@ -660,8 +661,8 @@ func TestCharacterizeStackUIEnabled(t *testing.T) {
 	var err error
 	var closedAfterFailure bool
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if cleanup != nil {
 			cleanup()
 		}
@@ -693,8 +694,8 @@ func TestCharacterizeStackUISuccess(t *testing.T) {
 	var err error
 	var appOpen, appClosed, chromeWasAlive, chromeAlive bool
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		if err != nil {
 			return
 		}
@@ -738,8 +739,8 @@ func TestCharacterizeStackTeardownLeavesGrandchildren(t *testing.T) {
 
 	var err error
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
-		var cleanup cleanupFn
-		cleanup, err = setupValidationStack(context.Background(), f.Dir, "alpha", cfg)
+		var cleanup stack.CleanupFn
+		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
 		// On failure setupValidationStack already ran its own cleanup and
 		// returns a nil cleanupFn, so this is a no-op here — the kill that
 		// matters already happened inside.
@@ -814,16 +815,16 @@ func validateReadPID(t *testing.T, path string) int {
 func TestCharacterizePortInUse(t *testing.T) {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "portInUse(0) with nothing bound: %v\n", portInUse(0))
+	fmt.Fprintf(&b, "portInUse(0) with nothing bound: %v\n", stack.PortInUse(0))
 
 	wildcard, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("listening on the wildcard address: %v", err)
 	}
 	wildcardPort := wildcard.Addr().(*net.TCPAddr).Port
-	fmt.Fprintf(&b, "portInUse(p) while :p (wildcard) is bound: %v\n", portInUse(wildcardPort))
+	fmt.Fprintf(&b, "portInUse(p) while :p (wildcard) is bound: %v\n", stack.PortInUse(wildcardPort))
 	_ = wildcard.Close()
-	fmt.Fprintf(&b, "portInUse(p) after the wildcard listener closed: %v\n", portInUse(wildcardPort))
+	fmt.Fprintf(&b, "portInUse(p) after the wildcard listener closed: %v\n", stack.PortInUse(wildcardPort))
 
 	goldenAssert(t, "validate_port_in_use", b.String())
 
@@ -833,7 +834,7 @@ func TestCharacterizePortInUse(t *testing.T) {
 	}
 	defer loopback.Close()
 	loopbackPort := loopback.Addr().(*net.TCPAddr).Port
-	detected := portInUse(loopbackPort)
+	detected := stack.PortInUse(loopbackPort)
 	t.Logf("portInUse(p) while 127.0.0.1:p is bound = %v (GOOS=%s)", detected, runtime.GOOS)
 	if runtime.GOOS == "darwin" && detected {
 		t.Errorf("portInUse now detects a loopback-only listener on darwin; the preflight behaviour changed")
