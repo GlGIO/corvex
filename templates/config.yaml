@@ -16,8 +16,8 @@ sandbox:
   # Add the credentials your repo's tooling needs — values stay in your
   # environment, only names are listed here. This only ever adds.
   # env_allowlist:
-  #   - AZURE_      # az / Azure DevOps CLI (AZURE_DEVOPS_EXT_PAT, ...)
-  #   - GH_TOKEN
+  #   - GH_TOKEN    # one exact name
+  #   - NPM_        # or a prefix, covering NPM_TOKEN, NPM_CONFIG_*, ...
 
 execution:
   max_retries: 2
