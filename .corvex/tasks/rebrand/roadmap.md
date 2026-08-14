@@ -173,17 +173,34 @@ que qualquer instrução de prompt — se houver conflito, a que está aqui ganh
 ### Invariantes — conferidos ao FIM DE CADA FASE, sem exceção
 
 1. `go test ./...` verde.
-2. Cobertura de `./cmd/` **não cai** abaixo do piso estabelecido na F-1 (60%).
+2. **Cobertura não cai** abaixo do piso estabelecido na F-1 (60%) — medida sobre a regra,
+   onde ela estiver:
+   ```sh
+   go test ./cmd/ -coverpkg=./cmd/...,./internal/ops/...,./internal/stack/...,./internal/wizard/... -cover
+   ```
+   *Por que não é mais só `./cmd/`:* o piso original media `./cmd/` porque era lá que a regra
+   morava. A F0 mudou isso — `cmd/` virou casca fina (84.2%, mas de pouca coisa) e a regra
+   desceu para `internal/ops` (nasceu com 24.1%). Medir só `./cmd/` a partir daqui é medir o
+   lugar que esvaziou: passaria verde com `ops` inteiro descoberto. A rede golden **atravessa**
+   a fronteira de pacote (provado por mutação em `internal/ops`), então o número existe — só
+   precisa do `-coverpkg` para aparecer. Reporte os dois números; o piso vale para o combinado.
 3. `corvex run <project>` (caminho `spec.md` legado) continua funcionando ponta a ponta.
 4. **Zero domínio no binário.** Domínio mora em recipe e tools no repo do usuário.
    ```sh
+   # (a) fonte de produção
    grep -rn -iE "azure|smartcare|yandeh|dev\.azure\.com" --include="*.go" cmd internal \
      | grep -vE ':[0-9]+:[[:space:]]*//' | grep -v "_test.go"
+   # (b) o binário de verdade — pega o que entra por go:embed
+   go build -o /tmp/corvex-inv4 . && strings /tmp/corvex-inv4 | grep -iE "azure|smartcare|yandeh"
    ```
-   → deve ser **vazio**. (Comentários que citam Azure como exemplo são permitidos; fixture
-   de teste também.) **Vazio desde a F0 (`e6d06dc`)**: a única linha que existia era o
-   `"AZURE_"` cravado em `authEnvPrefixes` (`internal/orchestrator/worker.go:179`), hoje
-   substituído por `sandbox.env_allowlist` no `config.yaml` unido aos defaults genéricos.
+   → **os dois** devem ser vazios. (Comentário em `.go` citando Azure como exemplo é
+   permitido; fixture de teste também. Comentário em arquivo **embedado** não é: ele vai
+   para o binário.)
+   *Por que (b) existe:* na F0 o `(a)` passou verde enquanto `strings corvex | grep Azure`
+   achava uma linha — o `"AZURE_"` saiu de `authEnvPrefixes` em Go e voltou como exemplo
+   comentado em `templates/config.yaml`, que entra no binário via `embed.FS`. Um invariante
+   que só olha `*.go` é cego para `templates/`, e foi assim que o domínio voltou dentro da
+   fase que o removeu. Corrigido em `9e15335`.
 5. Nenhum segredo, token ou credencial em log, ledger ou commit.
 6. Um commit por fase, no mínimo. Mensagem descrevendo o que mudou e o que **não** mudou.
 
