@@ -134,6 +134,14 @@ func runRendererTranscript(args []string, stderr string, err error) string {
 // race described above, so the only invariant that holds is "what arrived is a
 // prefix of what was expected". That still fails loudly when a line's text or
 // order changes (a real output regression); it only tolerates truncation.
+//
+// DO NOT turn the t.Logf below into t.Errorf. It looks like a hole and it is
+// one, but closing it here makes ~15 call sites go red in proportion to CI load
+// (measured: 0-11 of them come back empty depending on GOMAXPROCS and machine
+// load), and a suite that fails at random teaches a refactorer to ignore red.
+// The hole is closed ONCE, deterministically, in char_run_drain_test.go
+// (TestCharacterizeRunRendererNotSilenced) — read the header of that file before
+// touching this function.
 func runAssertRendererLines(t *testing.T, stdout string, want ...string) {
 	t.Helper()
 

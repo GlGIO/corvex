@@ -14,8 +14,10 @@
 > vai ficar vermelho — isso e o sistema funcionando. Regrave o golden no mesmo
 > commit da correcao, nunca antes.
 >
-> Zero arquivo de producao foi alterado nesta fase (`git status`: 257 adicoes, 0
-> modificacoes).
+> Zero arquivo de producao foi alterado nesta fase: `git diff --name-only -- '*.go'
+> | grep -v _test.go` volta **vazio**. Cada anomalia abaixo foi conferida contra o
+> codigo, e as que dizem "provado por mutacao" tiveram a mutacao aplicada, medida e
+> desfeita.
 
 ## Nota de procedencia
 
@@ -47,6 +49,53 @@ esta nos transcripts dos cinco agentes, nao aqui.
   nenhum golden**. Ele e verificado por `runAssertRendererLines`, que exige apenas
   que o que chegou seja PREFIXO exato do esperado. Uma mudanca de texto/ordem das
   linhas e pega; uma regressao que silencie o renderer por completo **passaria**.
+- **Status: BACKLOG POS-F0.** Nao pode ser consertado dentro da F0, e a razao nao e
+  preguica:
+  1. Aguardar o drain **muda comportamento observavel**. Hoje a saida do `run` e
+     nao-deterministica (medido abaixo); depois do conserto ela passa a ser
+     sempre completa. Isso obriga a mover o stdout do renderer para dentro dos
+     goldens e **regravar** os goldens de `run` — e a condicao de parada do
+     roadmap para a F0 e exatamente "zero mudanca de comportamento, zero
+     regravacao de golden". Conserto e regravacao no mesmo commit em que se
+     tenta provar nao-regressao destroi a prova.
+  2. O conserto certo nao e uma linha. `events` nunca e fechado; fechar o canal
+     depois de `orc.Run` exige saber que nenhum emissor sobreviveu ao retorno
+     (o caminho da TUI compartilha o mesmo canal), senao troca-se saida perdida
+     por `send on closed channel`. Isso e trabalho de design, com teste proprio,
+     nao um efeito colateral de um rebrand.
+- **Como a rede se protege enquanto o bug existe:** `TestCharacterizeRunRendererNotSilenced`
+  (`cmd/char_run_drain_test.go`). Ele nao conserta nada em producao: espera pelas
+  linhas **do lado do teste** (`runCLIAwait`, em `characterize_test.go`), porque
+  metade da perda vinha do proprio harness fechando o pipe de captura no instante
+  em que `runRun` retorna. Assim "o renderer emudeceu" vira vermelho deterministico
+  sem tocar em `.go` de producao e sem mexer em golden nenhum.
+- **Medicao (10 CPUs, 200 amostras por linha, uma invocacao de `run` por amostra,
+  contando amostras em que ALGUMA linha do renderer chegou ao stdout):**
+
+  | escalonamento | sem await | com await |
+  |---|---|---|
+  | `GOMAXPROCS=1`, ociosa | 2/200 | 200/200 |
+  | `GOMAXPROCS=1`, 8 CPU hogs | 0/200 | 200/200 |
+  | `GOMAXPROCS=2`, ociosa | 199/200 | 200/200 |
+  | `GOMAXPROCS=2`, 8 CPU hogs | 2/200 | — |
+  | `GOMAXPROCS=2`, 32 CPU hogs | 1/200 | 200/200 |
+  | `GOMAXPROCS=4`, 32 CPU hogs | 1/200 | — |
+  | `GOMAXPROCS=10`, ociosa | 199-200/200 | 200/200 |
+
+  Leia a primeira coluna com cuidado: a taxa **nao e uma constante do codigo**, e
+  funcao da saturacao de CPU da maquina, e chega a **zero**. Por isso "rodar N
+  vezes e falhar se nunca imprimiu" nao resolve sozinho: com p=0 nenhum N resolve,
+  e com p=0.005 nem N=200 resolve (0.995^200 = 37% de chance de passar vazio). O
+  determinismo vem do await; a repeticao e a segunda linha de defesa.
+- **Prova por mutacao (feita, e desfeita):**
+  - `go renderer.Drain(events)` removido de `cmd/run.go:171` → o teste novo e o
+    **unico** vermelho de toda a rede (`-run TestCharacterize`). Todos os outros
+    asserts de renderer passam vazios. E precisamente o buraco que o auditor
+    apontou.
+  - `EventTaskStart` silenciado em `internal/orchestrator/orchestrator.go:611` →
+    teste novo vermelho com `GOMAXPROCS=10` **e** com `GOMAXPROCS=1`. Para
+    comparar: `TestCharacterizeRunTaskPasses` pega essa mutacao com 10 P e
+    **passa verde** com 1 P.
 
 ### `--dry-run` ignora silenciosamente `--task`
 - **Local:** `cmd/run.go` (ramo de dry-run, antes do orquestrador ver `TargetTask`)

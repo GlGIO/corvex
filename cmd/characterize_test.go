@@ -19,6 +19,73 @@ package cmd
 //
 // HARD RULE: none of these helpers is safe under t.Parallel(). They chdir the
 // process and call t.Setenv. Never mark a characterization test parallel.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// COMO RODAR ESTA REDE (F0)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Esta rede existe para provar "zero mudanca de comportamento". Rodada errada,
+// ela da falso verde — e um falso verde aqui e pior que nao ter rede nenhuma,
+// porque a F0 vai commitar acreditando que provou algo. Quatro regras:
+//
+//  1. SEMPRE o pacote inteiro:
+//
+//     go test ./cmd/
+//
+//     Esse e o unico comando cujo verde vale como evidencia de nao-regressao.
+//
+//  2. NUNCA julgue regressao por subconjunto (-run). O `-run` serve para DUAS
+//     coisas e nada mais: iterar rapido enquanto voce mexe num comando, e
+//     regravar golden. Ele nao serve para decidir se a fase pode commitar.
+//     Toda funcao desta rede usa o prefixo TestCharacterize justamente para que
+//     `-run TestCharacterize` cubra 228/228 — mas mesmo assim isso deixa de
+//     fora os testes unitarios antigos de cmd/, que tambem travam saida
+//     (doctor_test.go, status_test.go, list_test.go, ...). Prefixo consistente
+//     resolve o falso verde por regex; nao promove subconjunto a evidencia.
+//     Se voce esta prestes a colar `-run` num relatorio, esta errado.
+//
+//  3. NUNCA GOMAXPROCS=1. O renderer do `run` e drenado numa goroutine que
+//     ninguem espera (cmd/run.go:171 — anomalia conhecida, congelada de
+//     proposito). Com um unico P essa goroutine quase nunca e escalonada antes
+//     do fim da invocacao, o stdout chega vazio, e runAssertRendererLines cai no
+//     ramo "nao chegou nada", que LOGA e PASSA. Medido nesta maquina (10 CPUs),
+//     200 amostras por linha, contando amostras em que ALGUMA linha do renderer
+//     chegou:
+//
+//     GOMAXPROCS=1,  ociosa           2/200   (p=0.010)
+//     GOMAXPROCS=1,  8 CPU hogs       0/200   (p=0)
+//     GOMAXPROCS=2,  ociosa         199/200   (p=0.995)
+//     GOMAXPROCS=2,  8 CPU hogs       2/200   (p=0.010)
+//     GOMAXPROCS=10, ociosa         200/200
+//
+//     Ou seja: o ramo e sensivel a SATURACAO de CPU, nao so a GOMAXPROCS — numa
+//     maquina carregada ele dispara no default tambem, e num container de 1 cpu
+//     ele e praticamente garantido. Se `go test ./cmd/ -v` mostrar "no
+//     PlainRenderer lines reached stdout", aquele teste nao verificou o stdout do
+//     renderer nessa execucao — trate como nao-executado, nao como verde.
+//
+//     A UNICA excecao e TestCharacterizeRunRendererNotSilenced
+//     (char_run_drain_test.go): ele usa runCLIAwait e por isso vale em qualquer
+//     escalonamento (medido 800/800, incluindo as duas linhas de p=0 acima). E
+//     ele que garante que "o renderer emudeceu" nao passa verde. Se voce so pode
+//     confiar em um teste de renderer numa maquina apertada, e nesse.
+//
+//  4. ANTES DE COMMITAR FASE:
+//
+//     go test ./cmd/ -count=2
+//
+//     Dois passes na mesma invocacao pegam ordem-dependencia e estado global
+//     vazado entre testes (cwd, env, flags de cobra, goldens regravados no
+//     meio do caminho). Uma rede que so passa no primeiro pass nao e rede.
+//
+// Regravar golden e um ATO DELIBERADO. Golden vermelho depois de um refactor
+// que devia ser puramente mecanico e a rede fazendo o trabalho dela: leia o
+// diff antes de rodar -update-golden. Regrave no mesmo commit da mudanca de
+// comportamento que a justifica, nunca antes e nunca "para limpar".
+//
+// Mapa da rede, lacunas declaradas e o que cada grupo cobre:
+// .corvex/tasks/rebrand/f-1-rede.md
+// Anomalias congeladas de proposito: .corvex/tasks/rebrand/f-1-anomalias.md
 
 import (
 	"bytes"
@@ -86,6 +153,50 @@ func runCLIIn(t *testing.T, dir string, args ...string) (stdout, stderr string, 
 // binary. If a golden needs to show it, render it yourself.
 func runCLIStdin(t *testing.T, dir, stdinContent string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
+	return runCLIExec(t, dir, stdinContent, awaitStdout{}, args...)
+}
+
+// awaitStdout asks runCLIExec to wait for stdout to carry `lines` complete lines
+// before it closes the capture pipe. Zero lines means "do not wait", which is
+// what every existing characterization test uses.
+//
+// This exists for exactly ONE caller: the drain guard in char_run_drain_test.go.
+// `corvex run` prints through a renderer drained on a goroutine nobody awaits
+// (cmd/run.go:171), so by default this harness closes the capture pipe the
+// instant runRun returns and whatever the drain had not written yet is dropped.
+// Waiting here removes the race from the TEST side — no production file is
+// touched, no golden changes (renderer stdout is never in a golden, see
+// runRendererPlaceholder) — so a test can state "the renderer printed X"
+// deterministically instead of rolling dice with the scheduler.
+//
+// Measured on this machine (10 CPUs), one `run` invocation, 200 samples each:
+//
+//	                          lines reached stdout
+//	GOMAXPROCS=1, idle                   2 / 200
+//	GOMAXPROCS=1, 8 CPU hogs             0 / 200
+//	GOMAXPROCS=2, idle                 199 / 200
+//	GOMAXPROCS=2, 8 CPU hogs             2 / 200
+//	GOMAXPROCS=10, idle              199-200 / 200
+//	any of the above, with await       200 / 200
+//
+// The sleep in the wait loop is the mechanism: it parks the goroutine that would
+// otherwise close the pipe, which is the only thing the drain was ever waiting
+// for.
+type awaitStdout struct {
+	lines   int
+	timeout time.Duration
+}
+
+// runCLIAwait is runCLIIn plus a bounded wait for `lines` lines of stdout. On
+// timeout it returns whatever did arrive (possibly nothing) instead of failing,
+// so the caller decides what an empty stdout means.
+func runCLIAwait(t *testing.T, dir string, lines int, timeout time.Duration, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	return runCLIExec(t, dir, "", awaitStdout{lines: lines, timeout: timeout}, args...)
+}
+
+func runCLIExec(t *testing.T, dir, stdinContent string, await awaitStdout, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
 
 	// A variadic call with no arguments yields a nil slice, and cobra falls back
 	// to os.Args[1:] when args is nil — which would feed `go test` flags to the
@@ -140,9 +251,10 @@ func runCLIStdin(t *testing.T, dir, stdinContent string, args ...string) (stdout
 	// Drain concurrently: a command printing more than the pipe buffer (64KB)
 	// would otherwise deadlock against itself.
 	var wg sync.WaitGroup
-	var outBuf, errBuf bytes.Buffer
+	outBuf := &lineBuf{}
+	var errBuf bytes.Buffer
 	wg.Add(2)
-	go func() { defer wg.Done(); _, _ = io.Copy(&outBuf, outR) }()
+	go func() { defer wg.Done(); _, _ = io.Copy(outBuf, outR) }()
 	go func() { defer wg.Done(); _, _ = io.Copy(&errBuf, errR) }()
 
 	rootCmd.SetArgs(args)
@@ -153,6 +265,13 @@ func runCLIStdin(t *testing.T, dir, stdinContent string, args ...string) (stdout
 	// Named returns are filled in the defer so output survives a panic inside
 	// the command under test.
 	defer func() {
+		// Only the drain guard sets this; see awaitStdout.
+		if await.lines > 0 {
+			deadline := time.Now().Add(await.timeout)
+			for outBuf.Lines() < await.lines && time.Now().Before(deadline) {
+				time.Sleep(200 * time.Microsecond)
+			}
+		}
 		_ = outW.Close()
 		_ = errW.Close()
 		wg.Wait()
@@ -165,6 +284,34 @@ func runCLIStdin(t *testing.T, dir, stdinContent string, args ...string) (stdout
 
 	err = rootCmd.Execute()
 	return
+}
+
+// lineBuf is a bytes.Buffer that also counts newlines, so runCLIExec's await can
+// poll "has stdout got N lines yet?" without racing the io.Copy goroutine that
+// fills it (go test -race would flag a bare bytes.Buffer read here).
+type lineBuf struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	lines int
+}
+
+func (b *lineBuf) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.lines += bytes.Count(p, []byte{'\n'})
+	return b.buf.Write(p)
+}
+
+func (b *lineBuf) Lines() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lines
+}
+
+func (b *lineBuf) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func writeStdinFile(t *testing.T, content string) *os.File {

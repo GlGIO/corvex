@@ -16,6 +16,9 @@ package cmd
 // Rewrite every golden in this file with:
 //
 //	go test ./cmd/ -run TestCharacterizeDoctorinspect -update-golden
+//
+// Esse -run serve para iterar e regravar, NUNCA para julgar regressao. Regra de
+// execucao completa no header de characterize_test.go ("COMO RODAR ESTA REDE").
 
 import (
 	"path/filepath"

@@ -46,7 +46,7 @@ stages:
 
 // Main path: compile the recipe. Locks stdout (two lines), the charmlog line on
 // stderr, and — separately — the generated tasks.md.
-func TestCharStatuslogsRecipeCompile(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeCompile(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "demo.yaml"), statuslogsRecipeYAML)
 
@@ -59,7 +59,7 @@ func TestCharStatuslogsRecipeCompile(t *testing.T) {
 // Compiling twice must be idempotent (the second run overwrites with identical
 // bytes). This is the property a refactor of WriteTasksFile could break without
 // any visible output change.
-func TestCharStatuslogsRecipeCompileTwice(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeCompileTwice(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "demo.yaml"), statuslogsRecipeYAML)
 
@@ -79,7 +79,7 @@ func TestCharStatuslogsRecipeCompileTwice(t *testing.T) {
 
 // After compiling, the project shows up in `list` as "no spec" (tasks.md but no
 // spec.md) — the cross-command consequence of recipe writing only tasks.md.
-func TestCharStatuslogsRecipeThenList(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeThenList(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "demo.yaml"), statuslogsRecipeYAML)
 
@@ -94,7 +94,7 @@ func TestCharStatuslogsRecipeThenList(t *testing.T) {
 
 // And `status` reads the compiled DAG back: every stage PENDING, dependencies
 // preserved. Proves the writer/parser round-trip that the recipe path relies on.
-func TestCharStatuslogsRecipeThenStatus(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeThenStatus(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "demo.yaml"), statuslogsRecipeYAML)
 
@@ -108,7 +108,7 @@ func TestCharStatuslogsRecipeThenStatus(t *testing.T) {
 }
 
 // No such recipe file: the error carries the absolute path it looked at.
-func TestCharStatuslogsRecipeNotFound(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeNotFound(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"recipe", "nope"}
@@ -117,7 +117,7 @@ func TestCharStatuslogsRecipeNotFound(t *testing.T) {
 }
 
 // Malformed YAML: recipe.Parse's error, unwrapped by runRecipe.
-func TestCharStatuslogsRecipeParseError(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeParseError(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "broken.yaml"), "name: broken\nstages: [oops\n")
 
@@ -128,7 +128,7 @@ func TestCharStatuslogsRecipeParseError(t *testing.T) {
 
 // Valid YAML, invalid recipe: a dependency on a stage that does not exist.
 // Compile() runs Validate() first, so nothing is written.
-func TestCharStatuslogsRecipeUnknownDependency(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeUnknownDependency(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "bad.yaml"),
 		"name: bad\nstages:\n  - id: S01\n    title: One\n    depends_on: [S99]\n")
@@ -143,7 +143,7 @@ func TestCharStatuslogsRecipeUnknownDependency(t *testing.T) {
 }
 
 // A recipe with no stages at all.
-func TestCharStatuslogsRecipeNoStages(t *testing.T) {
+func TestCharacterizeStatuslogsRecipeNoStages(t *testing.T) {
 	f := newFixture(t)
 	f.Write(filepath.Join(".corvex", "recipes", "hollow.yaml"), "name: hollow\ndescription: nothing\n")
 
@@ -157,7 +157,7 @@ func TestCharStatuslogsRecipeNoStages(t *testing.T) {
 // Main path: reset the PASSED S01 back to PENDING. Two goldens — the transcript
 // (stdout empty, one charmlog line on stderr) and the rewritten tasks.md, which
 // is where a writer refactor would show up.
-func TestCharStatuslogsResetTask(t *testing.T) {
+func TestCharacterizeStatuslogsResetTask(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "alpha", "S01"}
@@ -167,7 +167,7 @@ func TestCharStatuslogsResetTask(t *testing.T) {
 }
 
 // The rewrite is observable through status too: 1/3 done becomes 0/3.
-func TestCharStatuslogsResetThenStatus(t *testing.T) {
+func TestCharacterizeStatuslogsResetThenStatus(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	if _, _, err := runCLIIn(t, f.Dir, "reset", "alpha", "S01"); err != nil {
@@ -180,7 +180,7 @@ func TestCharStatuslogsResetThenStatus(t *testing.T) {
 }
 
 // Lower-case task arg is upper-cased before the lookup, same as logs.
-func TestCharStatuslogsResetLowercaseArg(t *testing.T) {
+func TestCharacterizeStatuslogsResetLowercaseArg(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "alpha", "s02"}
@@ -190,7 +190,7 @@ func TestCharStatuslogsResetLowercaseArg(t *testing.T) {
 }
 
 // Resetting an already-PENDING task is accepted and still rewrites the file.
-func TestCharStatuslogsResetAlreadyPending(t *testing.T) {
+func TestCharacterizeStatuslogsResetAlreadyPending(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "alpha", "S03"}
@@ -199,7 +199,7 @@ func TestCharStatuslogsResetAlreadyPending(t *testing.T) {
 }
 
 // Unknown task ID: the error names the tasks.md path.
-func TestCharStatuslogsResetTaskNotFound(t *testing.T) {
+func TestCharacterizeStatuslogsResetTaskNotFound(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "alpha", "S99"}
@@ -209,7 +209,7 @@ func TestCharStatuslogsResetTaskNotFound(t *testing.T) {
 
 // Unknown project: the failure comes from ParseTasksFile, wrapped by reset's
 // own "resetting task:" prefix.
-func TestCharStatuslogsResetUnknownProject(t *testing.T) {
+func TestCharacterizeStatuslogsResetUnknownProject(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "nope", "S01"}
@@ -218,7 +218,7 @@ func TestCharStatuslogsResetUnknownProject(t *testing.T) {
 }
 
 // Arity: reset needs exactly two args.
-func TestCharStatuslogsResetMissingTaskArg(t *testing.T) {
+func TestCharacterizeStatuslogsResetMissingTaskArg(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"reset", "alpha"}
@@ -231,7 +231,7 @@ func TestCharStatuslogsResetMissingTaskArg(t *testing.T) {
 // Main path in a virgin directory. Two goldens: the transcript, and the tree of
 // everything created (mode + relative path), which locks both the directory set
 // and the file permissions.
-func TestCharStatuslogsInit(t *testing.T) {
+func TestCharacterizeStatuslogsInit(t *testing.T) {
 	dir := t.TempDir()
 
 	args := []string{"init"}
@@ -241,7 +241,7 @@ func TestCharStatuslogsInit(t *testing.T) {
 }
 
 // The .corvex/.gitignore init drops so materialised secrets never get committed.
-func TestCharStatuslogsInitGitignore(t *testing.T) {
+func TestCharacterizeStatuslogsInitGitignore(t *testing.T) {
 	dir := t.TempDir()
 
 	if _, _, err := runCLIIn(t, dir, "init"); err != nil {
@@ -256,7 +256,7 @@ func TestCharStatuslogsInitGitignore(t *testing.T) {
 
 // Second init in the same directory refuses. Note the check is a bare Stat on
 // .corvex — nothing else is inspected, and no file already written is touched.
-func TestCharStatuslogsInitAlreadyExists(t *testing.T) {
+func TestCharacterizeStatuslogsInitAlreadyExists(t *testing.T) {
 	dir := t.TempDir()
 	if _, _, err := runCLIIn(t, dir, "init"); err != nil {
 		t.Fatalf("first init failed: %v", err)
@@ -269,7 +269,7 @@ func TestCharStatuslogsInitAlreadyExists(t *testing.T) {
 
 // A pre-existing .corvex/ that init did not create is enough to block it, which
 // is how every fixture in this file behaves.
-func TestCharStatuslogsInitRefusesExistingFixture(t *testing.T) {
+func TestCharacterizeStatuslogsInitRefusesExistingFixture(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"init"}
@@ -279,7 +279,7 @@ func TestCharStatuslogsInitRefusesExistingFixture(t *testing.T) {
 
 // After init, list works and reports no projects — the scaffold is consistent
 // with what the readers in this group expect.
-func TestCharStatuslogsInitThenList(t *testing.T) {
+func TestCharacterizeStatuslogsInitThenList(t *testing.T) {
 	dir := t.TempDir()
 	if _, _, err := runCLIIn(t, dir, "init"); err != nil {
 		t.Fatalf("init failed: %v", err)

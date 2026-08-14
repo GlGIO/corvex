@@ -19,7 +19,7 @@ const statuslogsMinimalTasksMD = "---\ngenerated_by: characterize\ndag:\n  S01: 
 // The title is 60+ bytes and byte 39 falls inside the "ç" of "configuração",
 // so status.go's title[:maxTitleLen-1] cut splits a UTF-8 rune. The golden
 // records the resulting replacement character. NOT a fix — see the report.
-func TestCharStatuslogsStatusSplitRuneTitle(t *testing.T) {
+func TestCharacterizeStatuslogsStatusSplitRuneTitle(t *testing.T) {
 	tasks := "---\ngenerated_by: characterize\ndag:\n  S01: []\n---\n\n" +
 		"## S01 — Migração para o padrão de configuração unificada e validação ⬜ PENDING\n\n" +
 		"```yaml\ntype: general\n```\n\n" +
@@ -35,7 +35,7 @@ func TestCharStatuslogsStatusSplitRuneTitle(t *testing.T) {
 
 // Main path, whole project: three task blocks separated by "---" + blank line,
 // each ending with the extra blank line showTaskLog prints.
-func TestCharStatuslogsLogsAll(t *testing.T) {
+func TestCharacterizeStatuslogsLogsAll(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"logs", "alpha"}
@@ -45,7 +45,7 @@ func TestCharStatuslogsLogsAll(t *testing.T) {
 
 // Single PASSED task: criteria render as "[✓]" and the Files block lists
 // created ("+") before modified ("~").
-func TestCharStatuslogsLogsSingleTaskPassed(t *testing.T) {
+func TestCharacterizeStatuslogsLogsSingleTaskPassed(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"logs", "alpha", "S01"}
@@ -55,7 +55,7 @@ func TestCharStatuslogsLogsSingleTaskPassed(t *testing.T) {
 
 // Single non-PASSED task, requested in lower case: runLogs upper-cases the arg
 // before lookup, and criteria stay unchecked ("[ ]").
-func TestCharStatuslogsLogsSingleTaskLowercaseArg(t *testing.T) {
+func TestCharacterizeStatuslogsLogsSingleTaskLowercaseArg(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"logs", "alpha", "s02"}
@@ -66,7 +66,7 @@ func TestCharStatuslogsLogsSingleTaskLowercaseArg(t *testing.T) {
 // With anchor.yaml present, the completed entry for S01 contributes Summary and
 // Decisions blocks. Note which anchor fields do NOT surface (files_created /
 // files_modified) — that asymmetry is part of the recorded behaviour.
-func TestCharStatuslogsLogsWithAnchor(t *testing.T) {
+func TestCharacterizeStatuslogsLogsWithAnchor(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 	f.Write(filepath.Join(".corvex", "tasks", "alpha", "anchor.yaml"), statuslogsAnchorYAML)
 
@@ -77,7 +77,7 @@ func TestCharStatuslogsLogsWithAnchor(t *testing.T) {
 
 // Whole project with an anchor: proves the completion block only attaches to the
 // task the anchor names, and that block ordering survives the "---" separators.
-func TestCharStatuslogsLogsAllWithAnchor(t *testing.T) {
+func TestCharacterizeStatuslogsLogsAllWithAnchor(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 	f.Write(filepath.Join(".corvex", "tasks", "alpha", "anchor.yaml"), statuslogsAnchorYAML)
 
@@ -88,7 +88,7 @@ func TestCharStatuslogsLogsAllWithAnchor(t *testing.T) {
 
 // A task with none of the optional sections: only the heading line and the
 // trailing blank line.
-func TestCharStatuslogsLogsMinimalTask(t *testing.T) {
+func TestCharacterizeStatuslogsLogsMinimalTask(t *testing.T) {
 	f := newFixture(t).AddProject("bare", fixtureSpecMD, statuslogsMinimalTasksMD)
 
 	args := []string{"logs", "bare"}
@@ -97,7 +97,7 @@ func TestCharStatuslogsLogsMinimalTask(t *testing.T) {
 }
 
 // Unknown task ID: showTaskLog's error, returned before anything is printed.
-func TestCharStatuslogsLogsTaskNotFound(t *testing.T) {
+func TestCharacterizeStatuslogsLogsTaskNotFound(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"logs", "alpha", "S99"}
@@ -106,7 +106,7 @@ func TestCharStatuslogsLogsTaskNotFound(t *testing.T) {
 }
 
 // Missing tasks.md: same wrapped ReadFile error as status.
-func TestCharStatuslogsLogsMissingTasks(t *testing.T) {
+func TestCharacterizeStatuslogsLogsMissingTasks(t *testing.T) {
 	f := newFixture(t).AddProject("beta", fixtureSpecMD, "")
 
 	args := []string{"logs", "beta"}
@@ -115,7 +115,7 @@ func TestCharStatuslogsLogsMissingTasks(t *testing.T) {
 }
 
 // Empty tasks.md: the loop body never runs, so logs succeeds printing nothing.
-func TestCharStatuslogsLogsEmptyTasks(t *testing.T) {
+func TestCharacterizeStatuslogsLogsEmptyTasks(t *testing.T) {
 	f := newFixture(t).AddProject("empty", fixtureSpecMD, "\n\n")
 
 	args := []string{"logs", "empty"}
@@ -124,7 +124,7 @@ func TestCharStatuslogsLogsEmptyTasks(t *testing.T) {
 }
 
 // Arity: logs accepts 1 or 2 args.
-func TestCharStatuslogsLogsTooManyArgs(t *testing.T) {
+func TestCharacterizeStatuslogsLogsTooManyArgs(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"logs", "alpha", "S01", "extra"}
@@ -133,7 +133,7 @@ func TestCharStatuslogsLogsTooManyArgs(t *testing.T) {
 }
 
 // No .corvex/ at all: requireCorvexDir fires before any parsing.
-func TestCharStatuslogsLogsNoCorvexDir(t *testing.T) {
+func TestCharacterizeStatuslogsLogsNoCorvexDir(t *testing.T) {
 	args := []string{"logs", "alpha"}
 	stdout, stderr, err := runCLI(t, args...)
 	goldenAssert(t, "statuslogs_logs_no_corvex", scrub(transcript(args, stdout, stderr, err)))

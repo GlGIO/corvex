@@ -8,7 +8,10 @@ package cmd
 // as an observation, never into a fix.
 //
 // Rewrite the goldens with:
-//   go test ./cmd/ -run TestCharStatuslogs -update-golden
+//   go test ./cmd/ -run TestCharacterizeStatuslogs -update-golden
+//
+// Esse -run serve para iterar e regravar, NUNCA para julgar regressao. Regra de
+// execucao completa no header de characterize_test.go ("COMO RODAR ESTA REDE").
 //
 // Every test here is sequential on purpose (runCLI* chdirs the process).
 
@@ -129,7 +132,7 @@ func statuslogsReadFile(path string) (string, error) {
 
 // Main path: three projects covering all three status strings runList can
 // derive (ready / needs planning / no spec).
-func TestCharStatuslogsListHuman(t *testing.T) {
+func TestCharacterizeStatuslogsListHuman(t *testing.T) {
 	f := newFixture(t).
 		AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD).
 		AddProject("beta", fixtureSpecMD, "").
@@ -142,7 +145,7 @@ func TestCharStatuslogsListHuman(t *testing.T) {
 
 // Same fixture through the machine-readable branch: locks the JSON field names
 // and the key order MarshalIndent produces from listProject.
-func TestCharStatuslogsListJSON(t *testing.T) {
+func TestCharacterizeStatuslogsListJSON(t *testing.T) {
 	f := newFixture(t).
 		AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD).
 		AddProject("beta", fixtureSpecMD, "").
@@ -154,7 +157,7 @@ func TestCharStatuslogsListJSON(t *testing.T) {
 }
 
 // Empty .corvex/tasks/: the human branch prints the "create a spec" hint.
-func TestCharStatuslogsListEmpty(t *testing.T) {
+func TestCharacterizeStatuslogsListEmpty(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"list"}
@@ -163,7 +166,7 @@ func TestCharStatuslogsListEmpty(t *testing.T) {
 }
 
 // Empty .corvex/tasks/ with --json: an empty JSON array, not the hint.
-func TestCharStatuslogsListEmptyJSON(t *testing.T) {
+func TestCharacterizeStatuslogsListEmptyJSON(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"list", "--json"}
@@ -173,7 +176,7 @@ func TestCharStatuslogsListEmptyJSON(t *testing.T) {
 
 // No .corvex/ at all — requireCorvexDir's long hint, returned as an error (the
 // "Error: %s" prefix belongs to cmd.Execute, which the harness does not call).
-func TestCharStatuslogsListNoCorvexDir(t *testing.T) {
+func TestCharacterizeStatuslogsListNoCorvexDir(t *testing.T) {
 	args := []string{"list"}
 	stdout, stderr, err := runCLI(t, args...)
 	goldenAssert(t, "statuslogs_list_no_corvex", scrub(transcript(args, stdout, stderr, err)))
@@ -181,7 +184,7 @@ func TestCharStatuslogsListNoCorvexDir(t *testing.T) {
 
 // list takes no positional args: locks cobra's arity error and the usage dump
 // that comes with it.
-func TestCharStatuslogsListRejectsArgs(t *testing.T) {
+func TestCharacterizeStatuslogsListRejectsArgs(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"list", "alpha"}
@@ -194,7 +197,7 @@ func TestCharStatuslogsListRejectsArgs(t *testing.T) {
 // Main path. Locks the header block, the column padding computed from the
 // longest ID/title, the "← [S01, S02]" dependency suffix, the >40 truncation of
 // S03's accented title, and the pending footer.
-func TestCharStatuslogsStatusHuman(t *testing.T) {
+func TestCharacterizeStatuslogsStatusHuman(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"status", "alpha"}
@@ -205,7 +208,7 @@ func TestCharStatuslogsStatusHuman(t *testing.T) {
 // Same project with an anchor.yaml present: the only difference should be the
 // extra "Intent:" line. Everything else must stay byte-identical to
 // statuslogs_status_human.
-func TestCharStatuslogsStatusWithAnchor(t *testing.T) {
+func TestCharacterizeStatuslogsStatusWithAnchor(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 	f.Write(filepath.Join(".corvex", "tasks", "alpha", "anchor.yaml"), statuslogsAnchorYAML)
 
@@ -217,7 +220,7 @@ func TestCharStatuslogsStatusWithAnchor(t *testing.T) {
 // JSON branch: locks the statusOutput/statusTask field names, the counters, and
 // the fact that tasks are emitted in DAG-resolved order with dependsOn never
 // null (nil is normalised to []).
-func TestCharStatuslogsStatusJSON(t *testing.T) {
+func TestCharacterizeStatuslogsStatusJSON(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"status", "alpha", "--json"}
@@ -227,7 +230,7 @@ func TestCharStatuslogsStatusJSON(t *testing.T) {
 
 // Everything PASSED: the footer switches to "All tasks complete." and no run
 // hint is printed.
-func TestCharStatuslogsStatusAllDone(t *testing.T) {
+func TestCharacterizeStatuslogsStatusAllDone(t *testing.T) {
 	f := newFixture(t).AddProject("done", fixtureSpecMD, statuslogsAllDoneTasksMD)
 
 	args := []string{"status", "done"}
@@ -237,7 +240,7 @@ func TestCharStatuslogsStatusAllDone(t *testing.T) {
 
 // tasks.md missing: the error is the wrapped os.ReadFile failure, and nothing
 // is printed on either stream.
-func TestCharStatuslogsStatusMissingTasks(t *testing.T) {
+func TestCharacterizeStatuslogsStatusMissingTasks(t *testing.T) {
 	f := newFixture(t).AddProject("beta", fixtureSpecMD, "")
 
 	args := []string{"status", "beta"}
@@ -248,7 +251,7 @@ func TestCharStatuslogsStatusMissingTasks(t *testing.T) {
 // A project that does not exist at all takes the same path as a missing
 // tasks.md — no "did you mean" suggestion is offered by status today, even
 // though suggestProject exists in helpers.go.
-func TestCharStatuslogsStatusUnknownProject(t *testing.T) {
+func TestCharacterizeStatuslogsStatusUnknownProject(t *testing.T) {
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, statuslogsRichTasksMD)
 
 	args := []string{"status", "alfa"}
@@ -258,7 +261,7 @@ func TestCharStatuslogsStatusUnknownProject(t *testing.T) {
 
 // Empty tasks.md: ParseTasksFile returns (nil, nil) rather than an error, so
 // status prints "0/0 done" and then nothing at all — no task rows, no footer.
-func TestCharStatuslogsStatusEmptyTasksFile(t *testing.T) {
+func TestCharacterizeStatuslogsStatusEmptyTasksFile(t *testing.T) {
 	f := newFixture(t).AddProject("empty", fixtureSpecMD, "\n\n")
 
 	args := []string{"status", "empty"}
@@ -268,7 +271,7 @@ func TestCharStatuslogsStatusEmptyTasksFile(t *testing.T) {
 
 // Malformed heading (status word the parser does not know): locks the
 // multi-line parse error, including the reported line number and the hint.
-func TestCharStatuslogsStatusMalformedTasks(t *testing.T) {
+func TestCharacterizeStatuslogsStatusMalformedTasks(t *testing.T) {
 	bad := "---\ngenerated_by: characterize\ndag:\n  S01: []\n---\n\n" +
 		"## S01 — Broken ✅ ALMOST\n\n" +
 		"### O que fazer\nBroken heading.\n"
@@ -282,7 +285,7 @@ func TestCharStatuslogsStatusMalformedTasks(t *testing.T) {
 // A dependency cycle makes dag.Resolve fail; status swallows the error and
 // falls back to file order instead of reporting it. Locking that fallback is
 // the point of this case.
-func TestCharStatuslogsStatusCyclicDAG(t *testing.T) {
+func TestCharacterizeStatuslogsStatusCyclicDAG(t *testing.T) {
 	cyclic := "---\ngenerated_by: characterize\ndag:\n  S01: [S02]\n  S02: [S01]\n---\n\n" +
 		"## S01 — Alpha ⬜ PENDING\n\n" +
 		"```yaml\ntype: general\ndepends_on: [S02]\n```\n\n" +
@@ -298,7 +301,7 @@ func TestCharStatuslogsStatusCyclicDAG(t *testing.T) {
 }
 
 // status requires exactly one argument.
-func TestCharStatuslogsStatusNoArgs(t *testing.T) {
+func TestCharacterizeStatuslogsStatusNoArgs(t *testing.T) {
 	f := newFixture(t)
 
 	args := []string{"status"}
