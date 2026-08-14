@@ -358,11 +358,128 @@ Além disso:
     comportamento mudou → **PARE** (ver Condições de parada).
 - **Autonomia:** ✅ autônoma **enquanto os golden tests da F-1 não precisarem mudar**.
 
-### F1 — Identidade de run
+### F1 — Identidade de run — ✅ CONCLUÍDA
+**Concluída em `fe9fcae`** (`feat(f1): identidade de run — run_id/repo/recipe no ledger,
+registro em disco com heartbeat, indice global`), sobre a F0 (`e6d06dc`) e a rede da F-1
+(`9d09810`).
+
 - `run_id`, `repo`, `recipe` no ledger; registro de run em disco (pid, início, status) +
   heartbeat; índice global em `~/.corvex/runs.jsonl`.
 - **Aceite:** dois runs do mesmo projeto são distinguíveis; um segundo processo consegue
   listar o que está vivo.
+
+**Aceite provado com processos reais, não com chamada de função.** Binário construído,
+fixture `spec.md` legado, `CORVEX_HOME` de scratch: dois `corvex run demo` (exit 0 nos dois)
+deixaram `run_b70a` (11 linhas de ledger) e `run_69d7` (6 linhas), ids e pids distintos,
+ambos `done`. Um terceiro run com stub bloqueante foi listado como `alive` por um **leitor
+estrangeiro** — script Python que não compartilha uma linha de Go com o corvex, lendo
+`runs.jsonl` + `.corvex/runs/*.json` e sondando com `kill(pid,0)` — enquanto o `ps`
+confirmava o processo de pé; depois de `kill -9`, o mesmo leitor passou a dizer `dead`
+com o `status` em disco **ainda em `running``. É essa a razão de liveness nunca poder ser
+lida do campo `status`. O contrato que atravessa a fronteira de processo é o formato em
+disco, não o pacote.
+
+#### Decisões de desenho tomadas
+| Decisão | Forma escolhida | Por quê |
+|---|---|---|
+| Formato do id | `run_` + 4 dígitos hex (`run_8f21`), de `crypto/rand`, gerador **injetável** (`run.IDFunc`) | curto o bastante para digitar de memória e caber em coluna de tabela; 4 dígitos colidem por aniversário perto de 300 ids, então largura vem com **oráculo de unicidade** — índice global + `O_EXCL` no caminho do record, que *reivindica* em vez de só checar |
+| Onde mora o registro | um arquivo por run em `<repo>/.corvex/runs/<run_id>.json`, escrito temp+rename | um arquivo por run é o que torna o diretório seguro sob concorrência: dois runs nunca escrevem o mesmo path; rename atômico garante que um run morto no meio da escrita deixa o record anterior íntegro, nunca meio JSON. `.gitignore` com `*` na primeira escrita: pid + path absoluto desta máquina não vão para a história do usuário |
+| Semântica de liveness | `status` terminal → `finished`; senão exige **pid vivo E heartbeat fresco**; `dead`/`stale`/`unknown` são estados próprios | os dois sinais falham em direções opostas: `status` é cego a SIGKILL (fica `running` para sempre), pid é cego a reuso de pid. Exigir os dois faz cada um cobrir o outro. Heartbeat de 10s, `stale` após 4 intervalos (3 batidas perdidas) — uma batida perdida é pausa de GC, não morte. **Risco aceito e escrito:** dentro da janela de 40s um pid reciclado é indistinguível; nada destrutivo pende desse bit (nunca matamos nem reescrevemos com base nele) |
+| Forma do índice | `$CORVEX_HOME/runs.jsonl` (default `~/.corvex/runs.jsonl`), append-only, **snapshot inteiro por linha**, leitura consolida por `run_id` com última-linha-vence | append-only é suficiente *porque* cada linha é snapshot: o fim do run é uma segunda linha, nunca uma reescrita, então leitor e escritor nunca disputam e um crash no meio do append custa só a última linha. `O_APPEND` + um único `Write` é onde vive a atomicidade. O heartbeat **não** appenda (cresceria sem limite): frescor vem do overlay do record local. `0600` dentro de `0700` — o HOME é mais exposto que o ledger do repo |
+| `recipe` no caminho legado | **vazio** (`omitempty`, chave ausente do JSON) | nome inventado é campo que mente: `recipe show <nome>` daria 404 ou — pior — resolveria uma recipe homônima sem relação com o run. Sentinela (`implicit`) quebraria o que o pacote vende ("grepar uma linha e entender"). A informação não se perde: `Record.Project` é campo próprio. E `recipe == ""` é exatamente o discriminador que a F2 vai querer ("quais runs não usaram recipe") |
+| Onde nasce e morre o run | nasce em `ops.NewRunner` → `startIdentity`, **depois** de provider/sandbox/`--ab`; morre em `ops.Runner.Execute` | uma invocação recusada por `--ab` malformado não pode deixar registro `running` que ninguém fecha. `finalStatus` checa **ctx antes do erro**: Ctrl-C cancela o ctx e o escalonador devolve o erro do step interrompido — gravar `failed` culparia o trabalho pelo Ctrl-C do operador |
+| Falha de registro | reportada (`IdentityErr`), **nunca** aborta o run | HOME read-only ou disco cheio não podem recusar trabalho que o usuário vai pagar. O modo degradado (linhas sem `run_id`) é o que já existe em disco |
+| Identidade no ledger | em **toda** linha, não em linha de cabeçalho por run | dois runs do mesmo projeto appendam no mesmo arquivo concorrentemente, então ordem de linha não estabelece posse; cabeçalho truncado orfanaria tudo depois dele |
+| `Summarize` | segue **cumulativo por projeto**; `SummarizeRun` é a visão por run | escopar ao run atual reintroduziria o bug do "$0.00 após resume". Contagem dupla já é impossível: métrica é chaveada por task e o último `PASSED` vence |
+
+#### Estado no fecho — os dez invariantes, um comando cada
+| # | Comando | Estado |
+|---|---|---|
+| 1 | `go test ./... -count=1` | **verde**, 20 pacotes. `./cmd/ -count=3` verde (121s), `./cmd/ -shuffle=on` verde, `go test ./... -race` **verde** |
+| 2 | `go test ./cmd/ -coverpkg=./cmd/...,./internal/ops/...,./internal/stack/...,./internal/wizard/... -cover` | **86.2%** (piso 60; baseline F0 86.9% → −0.7pp). Com `./internal/run/...` no coverpkg: **82.0%** |
+| 3 | binário real, fixture `spec.md` legado, dois `corvex run demo --plain --yes` | **exit 0** nos dois, `S01 passed . 2s . $0.04`, `+ done`; ledger/record/índice corretos |
+| 4a | `grep -rn -iE "azure\|smartcare\|yandeh\|dev\.azure\.com" --include="*.go" cmd internal` (sem comentário, sem teste) | **vazio** |
+| 4b | `strings <binário construído> \| grep -iE "azure\|smartcare\|yandeh"` | **0 matches** |
+| 5 | segredos exportados no ambiente do run (`ANTHROPIC_API_KEY=sk-…`, canário), depois `grep` em `.corvex/runs/`, `activity.jsonl` e `runs.jsonl` | **limpo**; índice `-rw-------` em dir `drwx------`. A `Record` é struct fechada: não há forma para um segredo viajar |
+| 6 | `grep -rl "spf13/cobra" internal/` | **vazio** |
+| 7 | `grep -rnE "fmt\.Print\|os\.Exit" internal/ops/*.go` (sem testes) | **vazio** |
+| 8 | maior fonte de produção em `cmd/` | **150** (`plain_renderer.go`, pré-existente); `run_render.go` 145, `run.go` 141 — teto respeitado |
+| 9 | maior fonte de produção em `internal/` | **373** (`task/parser.go`); o maior arquivo novo da fase é `ops/run_identity.go` com 196 |
+| 10 | `grep -rn "internal/tui" internal/ops/` | **vazio** |
+
+#### LEI 1 — nenhum golden regravado
+`git diff 217f17d -- cmd/testdata/golden/` é **vazio**: os 249 goldens da F-1 estão
+byte-idênticos. Isso foi investigado, não celebrado. A razão é que `run_id` só alcança saída
+comparada por golden via `inspect --task --json`, e o golden existente daquele comando é
+construído por `fixture.AddLedger`, que abre o ledger com `activity.Identity{}` — logo
+continua idêntico. **Uma rede que fica verde porque não alcança a mudança é lacuna, não
+prova**, e foi fechada de duas formas:
+
+1. **Normalizador `<RUN_ID>`** em `scrub()` (`cmd/characterize_test.go`), registrado
+   **antes** do scrubber de hash (um id com 7+ dígitos hex seria comido como `<HASH>`).
+   Normalizar > regravar: nenhum id concreto entra em golden, então nenhum golden fica flaky.
+2. **Um golden novo**, `run_identity_inspect_task_json.txt` — `inspect --task --json`
+   *depois de um run real*, com `run_id: "<RUN_ID>"` e `repo: "<TMP>"` e `recipe` ausente.
+   Par deliberado com o golden pré-F1 do mesmo comando: um diz "run identificado ganha os
+   campos", o outro diz "ledger sem identidade mantém os bytes exatos".
+
+Sensibilidade provada por mutação (feita e desfeita, md5 conferido na volta):
+`openLedger` voltando a `activity.Identity{}` → **4 testes de `cmd/` + e2e vermelhos, o
+golden novo incluído**; `finalStatus` sempre `StatusDone` → vermelho nas **três** camadas
+(`cmd/`, `internal/ops`, e2e); `hb.Stop()` removido → `1 goroutine(s) leaked by Execute`.
+
+#### LEI 2 — os 14 bugs seguem congelados
+Nenhum arquivo dos bugs foi tocado (`status_render.go`, `inspect*.go`, `validate.go`,
+`plain_renderer.go`, `orchestrator/worker.go`, `recovery/`), e os dois que moram em
+`cmd/run.go` sobreviveram ao diff: `--dry-run` continua retornando **antes** de olhar
+`--task`, e `--force` continua silencioso. Conferido no código de hoje, não por fé:
+`status_render.go:96` ainda corta `title[:maxTitleLen-1]` por byte, `inspect_format.go:52`
+ainda corta `title[:49]`, `inspect_render.go:43` ainda usa `%-8s`, e `Setpgid` não existe
+em nenhum lugar do repo (teardown segue matando só o filho direto).
+
+#### LEI 4c — HOME real intocado, verificado ativamente
+`~/.corvex` **não existia** antes e **não existe** depois de `go test ./...` inteiro (ida e
+volta, incluindo a rodada com `-race`) — a melhor canária possível: qualquer escrita no HOME
+real teria de criar o diretório. Além disso `cmd/`, `internal/ops/`, `internal/run/` e `e2e/`
+ganharam `TestMain` com guarda dupla — `CORVEX_HOME` para scratch antes de qualquer teste, e
+fingerprint do `~/.corvex/runs.jsonl` real antes/depois, falhando alto se mexeu — cada um com
+um teste provando que a guarda não é vácua. `override por env var` é requisito, não
+conveniência: um teste que suja o `~/.corvex` do usuário é defeito de produto.
+
+#### Dívidas e riscos registrados
+- **`hostOnce`/`hostName` em `internal/run/liveness.go` é var de pacote.** Memo write-once,
+  guardado por `sync.Once`, de um fato imutável do processo, e ambos os consumidores
+  (`Registry.Host`, `Resolver.Host`) têm override injetável — não é o modo de falha que a F0
+  matou (a allowlist global carregava *configuração* e tornava o comportamento dependente de
+  ordem). Fica registrado como a única var de pacote nova da fase.
+- **Ordenação `Stop` antes de `SetStatus` não é discriminável por teste** (medido: mover o
+  `Stop` para depois mantém verde — a janela tem nanossegundos). Continua sendo o código
+  certo; a única consequência é `updated_at` sujo num run finalizado, e status terminal vence
+  na liveness de qualquer forma. Está escrito no comentário de
+  `TestExecuteLeavesNoHeartbeatBehind` para ninguém ler mais do que ele prova. **O vazamento
+  de goroutine, que é a parte que quebra de verdade, É detectado.**
+- **Caminho da TUI verificado só por leitura.** `isInteractive()` é falso sob pipe, então
+  nenhum teste da rede passa por `runWithTUI`. O comportamento pré-existente ("run que falha
+  sob TUI sai 0") foi preservado de propósito, e por isso `runRun` descarta o retorno de
+  `Execute` e devolve só `tuiErr`. O receive do outcome é `select`+`default`: esperar ali
+  transformaria `q` em travamento. Quando a F3/F4 decidir que run falho sob TUI deve sair
+  ≠ 0, essa acrobacia desaparece.
+- **`.corvex/runs/.gitignore` com `*` ignora a si mesmo**, então não é commitado. Funcional
+  (os records são scratch da máquina que os gerou), mas vale saber antes de alguém depender
+  do arquivo estar na história.
+- **Reuso de pid dentro da janela de 40s** — analisado, aceito e documentado em
+  `liveness.go`. Revisitar se o supervisor da F7 passar a agir automaticamente sobre liveness.
+- **`gofmt -l e2e/corvex_test.go`** acusa 1 linha — **pré-existente em `217f17d`**, conferido
+  contra `git show 217f17d:e2e/corvex_test.go`. Não formatada para não poluir o diff.
+- **Para a F2:** `orchestrator.Options.Identity` é onde `Recipe` passa a ser preenchido;
+  `run.StartOptions` já aceita `Recipe`. Um único call site (`ops.startIdentity`).
+- **Para a F7:** a UI tem de spawnar runs desacoplados (reapados pelo init), não como filhos
+  que ela nunca espera — senão ela mesma cria zumbis que respondem a sinal 0 e *parecem
+  vivos*. É a armadilha que o teste de SIGKILL documenta (ele chama `cmd.Wait()` de propósito).
+
+**LEI 3 respeitada:** `git diff 217f17d -- cmd/ | grep -E "cobra.Command|AddCommand"` é
+vazio, e nenhuma flag nova. O aceite foi provado com **função + teste**, não com comando —
+`corvex runs` continua sendo assunto da F3, que é gate humano.
 
 ### F2 — Taxonomia, gates e evidência
 - `kind: code|tool|test|repro` na recipe; 4 naturezas de gate; contrato de evidência
