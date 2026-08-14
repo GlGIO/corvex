@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/log"
 
 	"github.com/giovannialves/corvex/internal/anchor"
+	"github.com/giovannialves/corvex/internal/event"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -36,25 +37,25 @@ type abStatsRun struct {
 	TaskID    string   `json:"task_id"`
 	TaskType  string   `json:"task_type"`
 	Models    []string `json:"models"`
-	Winner    string   `json:"winner"`     // empty when neither passed
-	Reason    string   `json:"reason"`     // e.g. "a-passed-b-failed", "tie-picked-a", "both-failed"
+	Winner    string   `json:"winner"` // empty when neither passed
+	Reason    string   `json:"reason"` // e.g. "a-passed-b-failed", "tie-picked-a", "both-failed"
 	Timestamp string   `json:"timestamp"`
 }
 
-// runAB executes a single task on two worktrees with different models,
+// RunAB executes a single task on two worktrees with different models,
 // reviews each side independently, merges the winner's branch back into the
 // current HEAD, and removes the loser. Stats are appended to
 // .corvex/ab-stats.json. Sandbox isolation is bypassed during A/B because
 // each side runs in a dedicated worktree on disk; future work can wire
 // per-worktree containerised sandboxes.
-func (o *Orchestrator) runAB(ctx context.Context, t *types.Task, models []string) error {
+func (e *Executor) RunAB(ctx context.Context, t *types.Task, models []string) error {
 	if len(models) != 2 {
 		return fmt.Errorf("a/b run requires exactly 2 models, got %d", len(models))
 	}
 
-	contextDocs := loadContextDocs(o.workDir, o.cfg.Context.AlwaysInclude)
-	agentPrompt := loadAgentPrompt(o.workDir, o.cfg.AgentRouting, t.Type)
-	anchorState, _ := anchor.Load(filepath.Join(o.workDir, ".corvex", "tasks", o.cfg.Project.Name, "anchor.yaml"))
+	contextDocs := loadContextDocs(e.workDir, e.cfg.Context.AlwaysInclude)
+	agentPrompt := loadAgentPrompt(e.workDir, e.cfg.AgentRouting, t.Type)
+	anchorState, _ := anchor.Load(filepath.Join(e.workDir, ".corvex", "tasks", e.cfg.Project.Name, "anchor.yaml"))
 	anchorCtx := anchor.GenerateContext(anchorState, t.ID)
 
 	results := make([]abRunResult, 2)
@@ -64,7 +65,7 @@ func (o *Orchestrator) runAB(ctx context.Context, t *types.Task, models []string
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = o.runABSide(ctx, t, m, abSideSuffix(t.ID, i), anchorCtx, contextDocs, agentPrompt)
+			results[i] = e.runABSide(ctx, t, m, abSideSuffix(t.ID, i), anchorCtx, contextDocs, agentPrompt)
 		}()
 	}
 	wg.Wait()
@@ -74,21 +75,21 @@ func (o *Orchestrator) runAB(ctx context.Context, t *types.Task, models []string
 		// abnormal early returns so we never leak worktrees on disk.
 		for _, r := range results {
 			if r.Worktree != nil {
-				_ = r.Worktree.Remove(context.Background(), o.workDir)
+				_ = r.Worktree.Remove(context.Background(), e.workDir)
 			}
 		}
 	}()
 
 	winner, reason := decideABWinner(results)
 
-	o.emit(Event{
-		Type:    EventTaskComplete,
+	e.emit(event.Event{
+		Type:    event.TaskComplete,
 		TaskID:  t.ID,
 		Status:  statusForWinner(winner),
 		Message: fmt.Sprintf("a/b: %s (%s)", reason, summariseModels(models, winner)),
 	})
 
-	if err := appendABStats(o.workDir, abStatsRun{
+	if err := appendABStats(e.workDir, abStatsRun{
 		TaskID:    t.ID,
 		TaskType:  string(t.Type),
 		Models:    models,
@@ -108,14 +109,14 @@ func (o *Orchestrator) runAB(ctx context.Context, t *types.Task, models []string
 	winnerWT := results[winner].Worktree
 	results[winner].Worktree = nil
 
-	if err := mergeBranchIntoHEAD(ctx, o.workDir, winnerWT.Branch); err != nil {
+	if err := mergeBranchIntoHEAD(ctx, e.workDir, winnerWT.Branch); err != nil {
 		// Re-add to cleanup list so it is removed.
 		results[winner].Worktree = winnerWT
 		return fmt.Errorf("merging winner branch %s: %w", winnerWT.Branch, err)
 	}
 
 	// Successful merge → remove winner worktree now (kept its commits, not the dir).
-	if err := winnerWT.Remove(ctx, o.workDir); err != nil {
+	if err := winnerWT.Remove(ctx, e.workDir); err != nil {
 		log.Warn("removing winner worktree after merge", "path", winnerWT.Path, "err", err)
 	}
 
@@ -123,25 +124,25 @@ func (o *Orchestrator) runAB(ctx context.Context, t *types.Task, models []string
 	return nil
 }
 
-func (o *Orchestrator) runABSide(
+func (e *Executor) runABSide(
 	ctx context.Context,
 	t *types.Task,
 	model, suffix, anchorCtx string,
 	contextDocs []string,
 	agentPrompt string,
 ) abRunResult {
-	wt, err := sandbox.CreateWorktree(ctx, o.workDir, suffix)
+	wt, err := sandbox.CreateWorktree(ctx, e.workDir, suffix)
 	if err != nil {
 		return abRunResult{Model: model, Err: fmt.Errorf("create worktree: %w", err)}
 	}
 
-	worker := NewWorker(o.provider, model, wt.Path, nil, o.cfg.SkillRouting)
+	worker := NewWorker(e.provider, model, wt.Path, nil, e.cfg.SkillRouting)
 	workerResult, err := worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, "")
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Err: fmt.Errorf("worker: %w", err)}
 	}
 
-	reviewer := NewReviewer(o.provider, o.cfg.Provider.Models.Reviewer, wt.Path, o.cfg.SkillRouting["review"])
+	reviewer := NewReviewer(e.provider, e.cfg.Provider.Models.Reviewer, wt.Path, e.cfg.SkillRouting["review"])
 	reviewResult, err := reviewer.Review(ctx, t)
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Worker: workerResult, Err: fmt.Errorf("reviewer: %w", err)}

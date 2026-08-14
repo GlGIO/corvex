@@ -2,36 +2,13 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/step"
 	"github.com/giovannialves/corvex/internal/types"
 )
-
-func TestIsFatal(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{"nil", nil, false},
-		{"plain error", fmt.Errorf("plain"), false},
-		{"fatal wrapped", fatal(fmt.Errorf("boom")), true},
-		{"fatal wrapped in %w", fmt.Errorf("outer: %w", fatal(fmt.Errorf("inner"))), true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := isFatal(tc.err); got != tc.want {
-				t.Errorf("isFatal(%v) = %v, want %v", tc.err, got, tc.want)
-			}
-		})
-	}
-}
 
 func TestRun_CostCeilingBreach_IsFatal(t *testing.T) {
 	dir := t.TempDir()
@@ -64,7 +41,7 @@ func TestRun_CostCeilingBreach_IsFatal(t *testing.T) {
 	if !strings.Contains(err.Error(), "run aborted: cumulative cost") {
 		t.Errorf("error %q should contain 'run aborted: cumulative cost'", err.Error())
 	}
-	if !isFatal(err) {
+	if !step.IsFatal(err) {
 		t.Error("cost ceiling breach must be a fatal error")
 	}
 }
@@ -96,7 +73,7 @@ func TestRun_TaskFailure_IsNotFatal(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected task failure error, got nil")
 	}
-	if isFatal(err) {
+	if step.IsFatal(err) {
 		t.Errorf("task-level failure must NOT be fatal, got: %v", err)
 	}
 }

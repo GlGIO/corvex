@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"fmt"
@@ -12,9 +12,9 @@ import (
 
 // Escalation action identifiers used in config.EscalationPolicy.Action.
 const (
-	ActionUpgradeModel        = "upgrade-model"
-	ActionSpawnInvestigation  = "spawn-investigation"
-	ActionHumanPrompt         = "human-prompt"
+	ActionUpgradeModel       = "upgrade-model"
+	ActionSpawnInvestigation = "spawn-investigation"
+	ActionHumanPrompt        = "human-prompt"
 )
 
 // escalationDecision is produced by the policy engine for a given task and

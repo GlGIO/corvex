@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/event"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -86,7 +87,7 @@ func (f *timeoutFlag) reason() string {
 // it exceeds the wall-clock ceiling or goes idle past the stream-idle ceiling.
 // It exits as soon as the attempt finishes (watchDone closed) or the context
 // is cancelled.
-func (o *Orchestrator) watchTask(
+func (e *Executor) watchTask(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	watchDone <-chan struct{},
@@ -95,9 +96,9 @@ func (o *Orchestrator) watchTask(
 	timedOut *timeoutFlag,
 	streaming bool,
 ) {
-	warnAt := time.Duration(o.cfg.Execution.TaskWarnMinutes) * time.Minute
-	hardAt := time.Duration(o.cfg.Execution.TaskTimeoutMinutes) * time.Minute
-	idleAt := time.Duration(o.cfg.Execution.StreamIdleTimeoutSeconds) * time.Second
+	warnAt := time.Duration(e.cfg.Execution.TaskWarnMinutes) * time.Minute
+	hardAt := time.Duration(e.cfg.Execution.TaskTimeoutMinutes) * time.Minute
+	idleAt := time.Duration(e.cfg.Execution.StreamIdleTimeoutSeconds) * time.Second
 	if !streaming {
 		idleAt = 0 // no per-chunk events to measure idleness against
 	}
@@ -117,8 +118,8 @@ func (o *Orchestrator) watchTask(
 
 			if warnAt > 0 && !warned && elapsed >= warnAt {
 				warned = true
-				o.emit(Event{
-					Type:    EventTaskWarn,
+				e.emit(event.Event{
+					Type:    event.TaskWarn,
 					TaskID:  taskID,
 					Message: fmt.Sprintf("task running > %s — consider pausing if stuck", warnAt),
 				})
@@ -128,7 +129,7 @@ func (o *Orchestrator) watchTask(
 				msg := fmt.Sprintf("task %s aborted: wall-clock timeout after %s (last activity: %s)",
 					taskID, elapsed.Round(time.Second), describeLast(live))
 				timedOut.set(msg)
-				o.emit(Event{Type: EventTaskTimeout, TaskID: taskID, Message: msg})
+				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Message: msg})
 				cancel()
 				return
 			}
@@ -137,7 +138,7 @@ func (o *Orchestrator) watchTask(
 				msg := fmt.Sprintf("task %s aborted: no provider output for %s (last activity: %s)",
 					taskID, live.idleFor().Round(time.Second), describeLast(live))
 				timedOut.set(msg)
-				o.emit(Event{Type: EventTaskTimeout, TaskID: taskID, Message: msg})
+				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Message: msg})
 				cancel()
 				return
 			}

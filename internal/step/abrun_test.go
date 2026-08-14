@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"encoding/json"

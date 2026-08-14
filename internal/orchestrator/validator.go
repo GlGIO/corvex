@@ -8,6 +8,7 @@ import (
 
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/provider"
+	"github.com/giovannialves/corvex/internal/step"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -58,7 +59,7 @@ func (v *Validator) Validate(ctx context.Context, specPath, tasksPath string, cf
 		return nil, fmt.Errorf("validator execution: %w", err)
 	}
 
-	rr := parseVerdict(result.Output)
+	rr := step.ParseVerdict(result.Output)
 	return &ValidationResult{
 		Verdict:    rr.Verdict,
 		Summary:    rr.Summary,

@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 func TestParseVerdict_Pass(t *testing.T) {
 	t.Parallel()
 	output := "All checks passed.\nVERDICT: PASS"
-	result := parseVerdict(output)
+	result := ParseVerdict(output)
 	if result.Verdict != VerdictPass {
 		t.Errorf("Verdict = %q, want %q", result.Verdict, VerdictPass)
 	}
@@ -21,7 +21,7 @@ func TestParseVerdict_Pass(t *testing.T) {
 func TestParseVerdict_Fail(t *testing.T) {
 	t.Parallel()
 	output := "Files missing.\nVERDICT: FAIL"
-	result := parseVerdict(output)
+	result := ParseVerdict(output)
 	if result.Verdict != VerdictFail {
 		t.Errorf("Verdict = %q, want %q", result.Verdict, VerdictFail)
 	}
@@ -42,7 +42,7 @@ func TestParseVerdict_CaseInsensitive(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := parseVerdict(tt.input)
+			result := ParseVerdict(tt.input)
 			if result.Verdict != tt.want {
 				t.Errorf("Verdict = %q, want %q", result.Verdict, tt.want)
 			}
@@ -53,7 +53,7 @@ func TestParseVerdict_CaseInsensitive(t *testing.T) {
 func TestParseVerdict_NoMarker(t *testing.T) {
 	t.Parallel()
 	output := "Some analysis output without any verdict marker."
-	result := parseVerdict(output)
+	result := ParseVerdict(output)
 	if result.Verdict != VerdictIndeterminate {
 		t.Errorf("Verdict = %q, want %q (default)", result.Verdict, VerdictIndeterminate)
 	}
@@ -82,7 +82,7 @@ func TestParseVerdict_Tolerant(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := parseVerdict(tt.input)
+			result := ParseVerdict(tt.input)
 			if result.Verdict != tt.verdict {
 				t.Errorf("Verdict = %q, want %q", result.Verdict, tt.verdict)
 			}
@@ -111,7 +111,7 @@ func TestParseVerdict_MultipleLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := parseVerdict(tt.input)
+			result := ParseVerdict(tt.input)
 			if result.Verdict != tt.want {
 				t.Errorf("Verdict = %q, want %q", result.Verdict, tt.want)
 			}
@@ -155,7 +155,7 @@ func TestParseVerdict_Category(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := parseVerdict(tt.input)
+			got := ParseVerdict(tt.input)
 			if got.Verdict != tt.verdict {
 				t.Errorf("Verdict = %q, want %q", got.Verdict, tt.verdict)
 			}
@@ -169,7 +169,7 @@ func TestParseVerdict_Category(t *testing.T) {
 func TestParseVerdict_SummaryExtraction(t *testing.T) {
 	t.Parallel()
 	output := "Check 1 ok\nCheck 2 ok\nVERDICT: PASS"
-	result := parseVerdict(output)
+	result := ParseVerdict(output)
 	if result.Verdict != VerdictPass {
 		t.Errorf("Verdict = %q, want PASS", result.Verdict)
 	}

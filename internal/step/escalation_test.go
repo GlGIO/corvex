@@ -1,4 +1,4 @@
-package orchestrator
+package step
 
 import (
 	"os"
@@ -22,11 +22,11 @@ func TestResolveEscalation(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		category  string
-		count     int
-		wantAct   string
-		wantUp    string
+		name     string
+		category string
+		count    int
+		wantAct  string
+		wantUp   string
 	}{
 		{"empty category never fires", "", 99, "", ""},
 		{"unknown category never fires", "stylistic", 5, "", ""},
