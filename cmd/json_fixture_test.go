@@ -41,7 +41,7 @@ func setupCombinedFixture(t *testing.T) (tmpDir string, cleanup func()) {
 		t.Fatalf("writing tasks.md: %v", err)
 	}
 
-	ledger, err := activity.New(tmpDir, "fixture")
+	ledger, err := activity.New(tmpDir, "fixture", activity.Identity{})
 	if err != nil {
 		t.Fatalf("creating ledger: %v", err)
 	}

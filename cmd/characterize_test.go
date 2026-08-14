@@ -435,13 +435,14 @@ var (
 	reDur      = regexp.MustCompile(`\b\d+(\.\d+)?(ns|µs|us|ms|s|m|h)\b`)
 	reHex      = regexp.MustCompile(`\b[0-9a-f]{7,64}\b`)
 	reHexLower = regexp.MustCompile(`[a-f]`)
+	reRunID    = regexp.MustCompile(`\brun_[0-9a-f]{4,}\b`)
 )
 
 // scrub replaces every source of non-determinism we know about with a stable
 // token. It deliberately does NOT reformat, sort or prettify anything else —
 // what the CLI printed is what the golden records, bugs included.
 //
-// Tokens: <TMP> <HOME> <TS> <COST> <DUR> <HASH>
+// Tokens: <TMP> <HOME> <TS> <COST> <DUR> <HASH> <RUN_ID>
 func scrub(s string) string {
 	return scrubExcept(s)
 }
@@ -451,7 +452,7 @@ func scrub(s string) string {
 // ceilings printed by `run`'s preview come from config.yaml, so
 // scrubExcept(s, "cost") keeps "$25.00/run" visible in the golden.
 //
-// Valid names: "tmp", "home", "ts", "cost", "dur", "hash".
+// Valid names: "tmp", "home", "ts", "cost", "dur", "hash", "runid".
 func scrubExcept(s string, skip ...string) string {
 	skipped := make(map[string]bool, len(skip))
 	for _, k := range skip {
@@ -493,6 +494,14 @@ func scrubbers() []scrubber {
 			s = reTSRFC.ReplaceAllString(s, "<TS>")
 			return reTSCharm.ReplaceAllString(s, "<TS>")
 		}},
+		// Run ids before the hash scrubber. A run id is `run_` + 4 hex digits,
+		// minted from crypto/rand at the start of every run (internal/run), so it
+		// is genuine non-determinism of exactly the kind this function exists to
+		// absorb — the F1 rule is to NORMALISE it here, never to bake a concrete
+		// id into a golden. Ordering matters twice over: an id wide enough to
+		// reach 7 hex digits would otherwise be eaten as <HASH>, and the `\b`
+		// anchor needs the literal `run_` still intact.
+		{"runid", func(s string) string { return reRunID.ReplaceAllString(s, "<RUN_ID>") }},
 		// Cost before duration: "$25.00" must not be half-eaten by the "s"/"m"
 		// duration pattern.
 		{"cost", func(s string) string { return reCost.ReplaceAllString(s, "<COST>") }},
@@ -741,9 +750,14 @@ func (f *fixture) AddProject(name, spec, tasks string) *fixture {
 // AddLedger appends entries to .corvex/tasks/<project>/activity.jsonl. Entries
 // with a zero Timestamp get fixtureLedgerTime so the file stays deterministic.
 // The project directory must already exist (activity.New stats it).
+//
+// The ledger is opened with the zero activity.Identity on purpose: these
+// fixtures characterize the pre-run-identity output, so run_id/repo/recipe stay
+// absent (omitempty) and the goldens keep their current bytes. Run identity gets
+// its own tests in internal/activity, not by moving this network.
 func (f *fixture) AddLedger(project string, entries ...activity.Entry) *fixture {
 	f.t.Helper()
-	ledger, err := activity.New(f.Dir, project)
+	ledger, err := activity.New(f.Dir, project, activity.Identity{})
 	if err != nil {
 		f.t.Fatalf("creating ledger for %s: %v", project, err)
 	}

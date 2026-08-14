@@ -52,6 +52,12 @@ type Options struct {
 	// (default), reaching a gate stops the run with an actionable message
 	// instead of blocking; re-run with this set to proceed past the gate.
 	ApproveGates bool
+	// Identity is the run these events belong to. It is stamped onto every
+	// ledger line, which is what keeps a project's ledger attributable once it
+	// holds more than one run. The orchestrator never mints it: ops.NewRunner
+	// registers the run and hands the identity down. The zero value is legal and
+	// means "unidentified", which is how every ledger written before F1 reads.
+	Identity activity.Identity
 }
 
 // Orchestrator schedules a run: it plans, resolves the DAG, walks it wave by
@@ -147,8 +153,13 @@ func (o *Orchestrator) needsPlanning(specPath, tasksPath string, state types.Anc
 // openLedger opens the activity ledger early so every emitted event gets
 // persisted. Failure to open (e.g. project not yet planned) is non-fatal —
 // emit() no-ops when ledger is nil.
+//
+// The identity comes from Options, minted by ops.NewRunner: the orchestrator is
+// told which run it is, it never decides. With the zero Identity the lines come
+// out exactly as they did before F1 (the three fields are omitempty), which is
+// what keeps an unidentified run readable rather than special.
 func (o *Orchestrator) openLedger(project string) {
-	if l, lerr := activity.New(o.workDir, project); lerr == nil {
+	if l, lerr := activity.New(o.workDir, project, o.opts.Identity); lerr == nil {
 		o.ledger = l
 	} else {
 		charmbraceletlog.Warn("activity ledger unavailable", "err", lerr)

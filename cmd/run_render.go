@@ -91,7 +91,14 @@ func printDryRun(w io.Writer, tasksPath, project string) error {
 // runWithTUI runs the orchestrator behind the full-screen TUI, seeding the DAG
 // panel and the cost header from disk so the first frame is already populated
 // (without this the panel says "no tasks loaded" until the first event).
-func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, commands chan orchestrator.Command, cancel context.CancelFunc, project, workDir string) error {
+//
+// Two errors come back, and they are not the same thing: orcErr is how the run
+// itself ended (what decides the recorded status: done, failed, canceled) and
+// tuiErr is a failure of the screen. Only tuiErr has ever reached the exit code
+// on this path — a failed run under the TUI exits 0, which is pre-existing and
+// left alone — but the run record has to be honest either way, so the outcome is
+// no longer discarded here.
+func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan orchestrator.Event, commands chan orchestrator.Command, cancel context.CancelFunc, project, workDir string) (orcErr error, tuiErr error) {
 	m := tui.NewWithCommands(events, commands, cancel, project)
 
 	if progress, err := ops.LoadProjectProgress(workDir, project); err == nil {
@@ -113,13 +120,26 @@ func runWithTUI(ctx context.Context, orc *orchestrator.Orchestrator, events chan
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
+	// Buffered so the orchestrator goroutine never blocks handing its outcome
+	// over, even when nobody is left to read it.
+	outcome := make(chan error, 1)
 	go func() {
-		_ = orc.Run(ctx, project)
+		outcome <- orc.Run(ctx, project)
 		close(events)
 	}()
 
 	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("TUI error: %w", err)
+		tuiErr = fmt.Errorf("TUI error: %w", err)
 	}
-	return nil
+
+	// Deliberately not a blocking receive. Quitting the TUI has always returned
+	// straight away, and waiting for the scheduler here would turn `q` into a
+	// hang. When the outcome is not there yet the run was still going, and the
+	// TUI's own quit path already cancelled ctx — which is what makes the
+	// recorded status `canceled` rather than a fabricated `done`.
+	select {
+	case orcErr = <-outcome:
+	default:
+	}
+	return orcErr, tuiErr
 }

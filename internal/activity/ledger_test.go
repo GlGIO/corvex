@@ -21,14 +21,14 @@ func setupProjectDir(t *testing.T) (workDir, project string) {
 }
 
 func TestNew_MissingDirFails(t *testing.T) {
-	if _, err := activity.New(t.TempDir(), "nope"); err == nil {
+	if _, err := activity.New(t.TempDir(), "nope", activity.Identity{}); err == nil {
 		t.Fatal("expected error for missing project dir, got nil")
 	}
 }
 
 func TestAppendAndRead_RoundTrip(t *testing.T) {
 	workDir, project := setupProjectDir(t)
-	l, err := activity.New(workDir, project)
+	l, err := activity.New(workDir, project, activity.Identity{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestAppend_NilLedgerNoOp(t *testing.T) {
 
 func TestRead_TolerantOfMalformedLines(t *testing.T) {
 	workDir, project := setupProjectDir(t)
-	l, err := activity.New(workDir, project)
+	l, err := activity.New(workDir, project, activity.Identity{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestRead_TolerantOfMalformedLines(t *testing.T) {
 
 func TestSummarize_PerTaskAndTotals(t *testing.T) {
 	workDir, project := setupProjectDir(t)
-	l, err := activity.New(workDir, project)
+	l, err := activity.New(workDir, project, activity.Identity{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

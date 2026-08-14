@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/giovannialves/corvex/internal/anchor"
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/orchestrator"
+	"github.com/giovannialves/corvex/internal/run"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -31,9 +33,54 @@ func TestMain(m *testing.M) {
 		panic("failed to build corvex binary: " + err.Error())
 	}
 
+	// HOME ISOLATION (LEI 4c). These tests exec the real binary, which from F1 on
+	// appends a line to `$CORVEX_HOME/runs.jsonl` for every run it starts —
+	// `~/.corvex/runs.jsonl` by default. Point it at scratch before anything runs
+	// (exec.Cmd inherits this process's environment, so every child is covered)
+	// and fingerprint the real index to prove nothing leaked out.
+	realIndex := realHomeIndexPath()
+	before := fingerprintPath(realIndex)
+	home, err := os.MkdirTemp("", "corvex-e2e-home-*")
+	if err != nil {
+		os.RemoveAll(tmp)
+		panic(err)
+	}
+	if err := os.Setenv(run.HomeEnv, home); err != nil {
+		os.RemoveAll(tmp)
+		panic(err)
+	}
+
 	code := m.Run()
 	os.RemoveAll(tmp)
+	os.RemoveAll(home)
+
+	if after := fingerprintPath(realIndex); after != before {
+		fmt.Fprintf(os.Stderr, "FAIL: an e2e test touched the real home index %s (%s -> %s)\n",
+			realIndex, before, after)
+		if code == 0 {
+			code = 1
+		}
+	}
 	os.Exit(code)
+}
+
+func realHomeIndexPath() string {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(h, ".corvex", run.IndexFile)
+}
+
+func fingerprintPath(path string) string {
+	if path == "" {
+		return "no-home"
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return "absent"
+	}
+	return fmt.Sprintf("size=%d mtime=%d", st.Size(), st.ModTime().UnixNano())
 }
 
 // mockProvider implements provider.Provider for testing.

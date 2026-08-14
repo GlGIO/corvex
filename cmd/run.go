@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	charmbraceletlog "github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/ops"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/wizard"
@@ -79,8 +80,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	orc, err := ops.NewRunner(ops.RunRequest{
+	runner, err := ops.NewRunner(ops.RunRequest{
 		Config:       cfg,
+		Project:      project,
 		WorkDir:      workDir,
 		TargetTask:   runTask,
 		SingleTask:   runSingle,
@@ -94,15 +96,38 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// A run whose identity could not be registered still runs — see
+	// ops.Runner.IdentityErr — but it must say so, or "the run is missing from
+	// the list" becomes an unexplained mystery later.
+	if runner.IdentityErr != nil {
+		charmbraceletlog.Warn("run identity unavailable", "err", runner.IdentityErr)
+	}
+	defer func() {
+		if runner.StatusErr != nil {
+			charmbraceletlog.Warn("recording run status", "run", runner.RunID, "err", runner.StatusErr)
+		}
+	}()
 
 	if !runPlain && isInteractive() {
-		return runWithTUI(ctx, orc, events, commands, cancel, project, workDir)
+		// The TUI path has always returned nil for a failed run (the failure is
+		// on screen, not in the exit code) — pre-existing, and not F1's to
+		// change. The run record must still say `failed`, so the orchestrator's
+		// error goes to Execute while runRun keeps returning only the TUI's.
+		var tuiErr error
+		_ = runner.Execute(ctx, func(ctx context.Context) error {
+			var orcErr error
+			orcErr, tuiErr = runWithTUI(ctx, runner.Orchestrator, events, commands, cancel, runner.Project, workDir)
+			return orcErr
+		})
+		return tuiErr
 	}
 
 	renderer := newRunRenderer(cmd)
 	go renderer.Drain(events)
 
-	if err := orc.Run(ctx, project); err != nil {
+	if err := runner.Execute(ctx, func(ctx context.Context) error {
+		return runner.Orchestrator.Run(ctx, runner.Project)
+	}); err != nil {
 		return fmt.Errorf("run failed: %w", err)
 	}
 

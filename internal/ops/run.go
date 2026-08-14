@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/provider"
+	"github.com/giovannialves/corvex/internal/run"
 	sandboxpkg "github.com/giovannialves/corvex/internal/sandbox"
 )
 
@@ -47,7 +49,11 @@ func CheckProject(workDir, project string) *MissingProject {
 // project, which task scope, which safety overrides, and the channels the caller
 // wants progress and control to flow through.
 type RunRequest struct {
-	Config       *config.Config
+	Config *config.Config
+	// Project is the project this run executes. It belongs in the request, not
+	// only in the argument to Orchestrator.Run, because run identity is minted
+	// here and the record has to say which project it identifies.
+	Project      string
 	WorkDir      string
 	TargetTask   string
 	SingleTask   bool
@@ -60,12 +66,27 @@ type RunRequest struct {
 	ABSpec   string
 	Events   chan orchestrator.Event
 	Commands chan orchestrator.Command
+
+	// Repo is the absolute git root the run is recorded against. Empty means
+	// "resolve it from WorkDir".
+	Repo string
+	// Registry overrides how run identity is registered. The zero value is
+	// production: the real corvex home, a crypto/rand id, the real clock and
+	// this process's pid. Tests set NewID/Home/Now here so a run id never
+	// reaches golden-compared output by accident.
+	Registry *run.Registry
+	// HeartbeatInterval overrides the heartbeat period; 0 uses the package
+	// default (10s).
+	HeartbeatInterval time.Duration
 }
 
-// NewRunner builds the orchestrator for a run request: provider, sandbox and
-// the scheduler options. It only assembles and validates — nothing executes
-// until the caller calls Run, and nothing is printed here.
-func NewRunner(req RunRequest) (*orchestrator.Orchestrator, error) {
+// NewRunner assembles one run: provider, sandbox, scheduler options — and the
+// run's identity, which is minted here, once, and handed down by value.
+//
+// Nothing executes until Execute is called. Identity is registered *after* every
+// validation that can reject the invocation, so a run refused for a bad --ab
+// flag leaves no `running` record behind that nothing will ever close.
+func NewRunner(req RunRequest) (*Runner, error) {
 	p, err := provider.NewProvider(req.Config.Provider.Default, req.Config)
 	if err != nil {
 		return nil, fmt.Errorf("creating provider: %w", err)
@@ -84,7 +105,15 @@ func NewRunner(req RunRequest) (*orchestrator.Orchestrator, error) {
 		return nil, fmt.Errorf("--ab requires --task <id> or --single to scope the comparison")
 	}
 
-	return orchestrator.New(orchestrator.Options{
+	r := &Runner{Project: req.Project, interval: req.HeartbeatInterval}
+	handle, idErr := startIdentity(req)
+	r.handle, r.IdentityErr = handle, idErr
+	if handle != nil {
+		r.RunID = handle.RunID()
+		r.Repo = handle.Record().Repo
+	}
+
+	r.Orchestrator = orchestrator.New(orchestrator.Options{
 		Config:       req.Config,
 		Provider:     p,
 		WorkDir:      req.WorkDir,
@@ -97,7 +126,9 @@ func NewRunner(req RunRequest) (*orchestrator.Orchestrator, error) {
 		NoReplan:     req.NoReplan,
 		Force:        req.Force,
 		ApproveGates: req.ApproveGates,
-	}), nil
+		Identity:     r.Identity(),
+	})
+	return r, nil
 }
 
 // ParseABModels splits a comma-separated spec like "sonnet,opus" into a
