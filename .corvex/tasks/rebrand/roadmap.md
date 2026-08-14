@@ -157,19 +157,134 @@ descobertos em runtime, cada um pelo mesmo pipeline, com dependência **entre it
 
 ---
 
+## Como executar este roadmap
+
+Escrito para ser executado de uma vez, de forma autônoma. As travas abaixo valem **mais**
+que qualquer instrução de prompt — se houver conflito, a que está aqui ganha.
+
+### Marcos
+
+| Marco | Fases | O que é |
+|---|---|---|
+| **v2** | F-1 → F4 | Corvex com identidade de run, gates de verdade e superfície de comando nova. Utilizável e soltável. |
+| **v3** | F5 → F7 | Telemetria, ambiente por run, servidor + UI. |
+| **flutuam** | F8, F9 | F8 não toca em Go e pode rodar a qualquer momento. F9 depende da F8. |
+
+### Invariantes — conferidos ao FIM DE CADA FASE, sem exceção
+
+1. `go test ./...` verde.
+2. Cobertura de `./cmd/` **não cai** abaixo do piso estabelecido na F-1 (60%).
+3. `corvex run <project>` (caminho `spec.md` legado) continua funcionando ponta a ponta.
+4. **Zero domínio no binário.** Domínio mora em recipe e tools no repo do usuário.
+   ```sh
+   grep -rn -iE "azure|smartcare|yandeh|dev\.azure\.com" --include="*.go" cmd internal \
+     | grep -vE ':[0-9]+:[[:space:]]*//' | grep -v "_test.go"
+   ```
+   → deve ser **vazio**. (Comentários que citam Azure como exemplo são permitidos; fixture
+   de teste também. Hoje retorna **uma** linha — `internal/orchestrator/worker.go:179`,
+   o `"AZURE_"` cravado em `authEnvPrefixes` — que a F0 remove.)
+5. Nenhum segredo, token ou credencial em log, ledger ou commit.
+6. Um commit por fase, no mínimo. Mensagem descrevendo o que mudou e o que **não** mudou.
+
+### Autonomia por fase
+
+| Fase | Autonomia | Motivo |
+|---|---|---|
+| F-1 | ✅ autônoma | aditiva, não muda comportamento |
+| F0 | ✅ autônoma | arquitetura **prescrita** — é mover código para destino nomeado |
+| F1 | ✅ autônoma | schema + índice, mecânico |
+| F2 | ⚠️ **gate ao fim** | taxonomia, contrato de evidência e fan-out dinâmico são design novo. Ao terminar, escreva o desenho adotado em `f2-design.md` e **pare**. |
+| F3 | ⚠️ **gate ao fim** | entrega **documento**, zero Go. Ao terminar, pare — a tabela de comandos precisa de aprovação antes de virar código. |
+| F4 | ✅ autônoma | implementa a F3 já aprovada; fan-out sobre comandos independentes |
+| F5 | ✅ autônoma | mecânica |
+| F6 | ✅ autônoma | reusa `internal/stack` da F0 |
+| F7 | ⚠️ **contrato primeiro** | fixe API + design system num único passo, **depois** paralelize as telas. Oito telas em paralelo sem contrato = oito estilos. |
+| F8 | ✅ autônoma | N tools independentes — é onde fan-out mais paga |
+| F9 | ⚠️ **gate ao fim** | segurança. Custódia de credencial e `DisallowedTools` não se aprovam sozinhos. |
+
+### Condições de parada (PARE, não decida)
+
+Ao bater em qualquer uma: escreva o caso em `.corvex/tasks/rebrand/BLOCKED.md`
+(o que aconteceu, o que você faria, quais são as opções) e **interrompa a fase**.
+Não escolha por conta.
+
+- Um golden test da F-1 **precisa** mudar durante a F0 → o comportamento mudou.
+- Um invariante acima falha e o conserto exige mudar escopo.
+- Uma fase exige uma das **decisões em aberto** abaixo.
+- Custo acumulado passa do teto que você recebeu no goal.
+- A mesma fase falhou 2 vezes seguidas (política de 2 tentativas — a mesma da autopilot).
+
+### Decisões em aberto — NÃO invente
+
+1. **`repro` sem consumidor.** O tipo foi aprovado, mas a `pilot-incident` (único fluxo que
+   o usava) foi removida em 13/08. Implemente o tipo; **não** ressuscite eixo de incidente.
+2. **Herança de MCP do host.** O corvex hoje exige redeclarar `mcp_servers` no `config.yaml`
+   em vez de herdar do Claude Code. **Não está decidido.** Não implemente herança.
+3. **`gate answer` × `answer` no topo.** A escolha atual é do assistente, não confirmada
+   pelo usuário. Mantenha `gate answer`; se a F3 concluir o contrário, registre e pare.
+4. **Aliases.** Só os dois nomeados (`run <recipe>`, `gates`). Não crie outros.
+5. **Multi-repo (ii)** — um run **atravessando** repos está **adiado**. Não implemente.
+6. Qualquer coisa que ponha Azure/SmartCare/Yandeh no binário → viola o invariante 4.
+
+---
+
 ## Fases
 
-### F0 — Limpeza e modularização
-**Por quê:** pré-condição física da UI, não estética. A UI não consegue chamar o que está
-preso em `cmd/`.
+### F-1 — Rede de caracterização (bloqueia a F0)
+**Por quê:** `cmd/` está em **36% de cobertura** e é o pacote que a F0 esvazia (3.475 linhas).
+Refatorar isso sem rede é o cenário clássico de "compila, testa verde, comportamento mudou".
+O aceite da F0 (*"zero mudança de comportamento"*) não é verificável sem isto.
 
-- Extrair `internal/ops`: operações sem cobra, sem stdout, sem `os.Exit`. Toda regra sai de `cmd/`.
-- Tirar o stack de validação de `cmd/validate.go` → `internal/stack` (é o insumo da F6).
-- Quebrar `Orchestrator.Run` (412 linhas) e `executeTask` (317). Separar escalonador,
-  execução de step e bookkeeping.
-- Quebrar `internal/orchestrator` (4.009 linhas) em pacotes com fronteira nomeada.
-- **Aceite:** nenhum arquivo em `cmd/` acima de ~120 linhas; `go test ./...` verde; zero
-  mudança de comportamento observável.
+Testes de caracterização (golden) sobre o comportamento **observável** de cada comando que
+vai se mover — exit code, forma da saída, arquivos escritos, efeito no `tasks.md`/ledger:
+`run` (incl. `--dry-run`, `--task`, tree sujo), `plan`, `validate` (stack up/down, teardown
+por process-group), `doctor`, `inspect`, `status`, `logs`, `start`.
+
+- **Aceite mecânico:**
+  - `go test ./cmd/ -cover` ≥ **60%** (baseline atual: 36%).
+  - `go test ./... ` verde.
+  - Cada comando acima tem ao menos um teste golden que falha se a saída mudar.
+- **Autonomia:** ✅ autônoma. É trabalho aditivo, não muda comportamento.
+
+### F0 — Limpeza e modularização
+**Por quê:** pré-condição física da UI, não estética. A regra de paridade (2h) exige que UI
+e CLI chamem a mesma função, e hoje `setupValidationStack` só é alcançável pelo cobra.
+
+**A arquitetura alvo está prescrita abaixo de propósito** — para que esta fase seja
+mecânica (mover código para destinos nomeados) em vez de exigir julgamento sobre onde
+passam as costuras. Não invente uma decomposição diferente.
+
+| Destino | O que vai pra lá | Origem verificada |
+|---|---|---|
+| `internal/ops/` | Operações: sem cobra, sem stdout, sem `os.Exit`. Uma função por operação, retornando valor + erro. É o que o CLI **e** o servidor HTTP (F7) chamam. | toda a regra hoje em `cmd/` |
+| `internal/stack/` | `setupValidationStack`, `startDBContainer`, `startApp`, `portInUse`, `loadEnvFileVars`, `cleanupFn` | `cmd/validate.go:296-463` |
+| `internal/wizard/` | `runValidateWizard`, `inferValidateConfig`, `manualValidateWizard`, `wizardPrompt`, `confirmUncertain`, `manualOverride`, `applyFieldOverride`, `printDetected` | `cmd/validate.go:106-283` |
+| `internal/orchestrator/` (fica) | **só o escalonador**: laço de `Run`, ondas, pausa/skip, drain de comandos, emissão de evento | `orchestrator.go:146-558` |
+| `internal/step/` | execução de um step: worker, review, command-stage, human-gate, escalonamento de erro | `executeTask` (`orchestrator.go:558-875`), `runCommandStage`, `runHumanGate`, `runInvestigation` |
+| `internal/planning/` | `planner.go`, `griller.go`, `brainstormer.go`, `advisor.go`, `configurer.go` | movidos inteiros de `internal/orchestrator/` |
+| `cmd/` | só cobra: flags, args, chamada de `ops`, formatação da saída | — |
+
+Além disso:
+
+- Quebrar `Orchestrator.Run` (412 linhas) e `executeTask` (317) em funções nomeadas.
+  A struct `Orchestrator` perde os três campos "mirror of Options.X" (lê de `Options`).
+- **Tirar o domínio da allowlist de env.** `authEnvPrefixes` (`internal/orchestrator/worker.go:166-180`)
+  tem `"AZURE_"` cravado em Go — única violação atual do invariante 4. O padrão está errado
+  por si: adicionar credencial nova não pode exigir recompilar o binário. Mover para
+  `sandbox.env_allowlist` no `config.yaml`, **unida** com os defaults genéricos que ficam em
+  Go (`ANTHROPIC_`, `AWS_`, `OPENAI_`, `CORVEX_`). Config **acrescenta**, nunca remove default.
+  *(Achado preservado do grill arquivado do `host-inheritance`.)*
+
+- **Aceite mecânico** (cada item é um comando):
+  - `go test ./...` verde e `./cmd/` **não abaixo** dos 60% da F-1.
+  - `grep -rl "spf13/cobra" internal/` → **vazio**. Cobra só existe em `cmd/`.
+  - `grep -rnE "fmt\.Print|os\.Exit" internal/ops/` → **vazio**.
+  - Nenhum arquivo em `cmd/` acima de **150 linhas**.
+  - Nenhum arquivo em `internal/` acima de **400 linhas**.
+  - `internal/ops/` não importa `internal/tui`.
+  - Os golden tests da F-1 passam **sem alteração**. Se um precisar mudar, o
+    comportamento mudou → **PARE** (ver Condições de parada).
+- **Autonomia:** ✅ autônoma **enquanto os golden tests da F-1 não precisarem mudar**.
 
 ### F1 — Identidade de run
 - `run_id`, `repo`, `recipe` no ledger; registro de run em disco (pid, início, status) +
