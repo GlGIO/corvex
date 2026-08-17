@@ -16,8 +16,23 @@ import (
 type Status string
 
 const (
-	StatusRunning  Status = "running"
-	StatusParked   Status = "parked" // blocked on a human gate; the process is still up
+	StatusRunning Status = "running"
+	StatusParked  Status = "parked" // blocked on a human gate; the process is still up
+
+	// StatusCanceling: a stop has been requested and the run has not closed yet.
+	//
+	// This state exists because the gap between the two is real and can be long. A
+	// Ctrl-C cancels the context; the run then has to unwind — and when the
+	// teardown only kills the direct child, a grandchild holding the run's stdout
+	// can keep the body blocked indefinitely. Without a state for it, a supervisor
+	// reading the record cannot tell "working" from "already asked to stop", so it
+	// sees a fresh heartbeat and a live pid and concludes `alive`. That is what the
+	// audit measured for twenty seconds and then gave up on.
+	//
+	// It is NOT a gate state and has nothing to do with StatusParked: nobody is
+	// waiting for a human, the run is on its way out.
+	StatusCanceling Status = "canceling"
+
 	StatusDone     Status = "done"
 	StatusFailed   Status = "failed"
 	StatusCanceled Status = "canceled"
@@ -36,13 +51,23 @@ func (s Status) IsTerminal() bool {
 // Record is the on-disk identity of one run. Field set is deliberately closed:
 // there is nowhere to put an environment variable, a token or a resolved
 // allowlist.
+//
+// Host and Machine both name where the run lives and only one of them decides
+// anything. Machine is the stable id from $CORVEX_HOME (see MachineID) and is
+// what liveness keys on; Host is the hostname, kept because it is what a human
+// recognises in a listing, and ignored when a machine id is available on both
+// sides — the hostname is rewritten by the network (`box.local` becomes
+// `box-2.local` on a name collision), and a run's identity cannot depend on that.
+// Records written before machine ids existed carry only Host, so the hostname
+// remains the fallback.
 type Record struct {
 	RunID   string `json:"run_id"`
 	Repo    string `json:"repo"`              // absolute path of the git root
 	Recipe  string `json:"recipe,omitempty"`  // recipe-driven run
 	Project string `json:"project,omitempty"` // legacy spec.md path
 	PID     int    `json:"pid"`
-	Host    string `json:"host,omitempty"` // hostname; a pid from another host is not ours
+	Host    string `json:"host,omitempty"` // hostname, for humans to read: it is not stable
+	Machine string `json:"machine,omitempty"`
 	Status  Status `json:"status"`
 
 	StartedAt time.Time `json:"started_at"`

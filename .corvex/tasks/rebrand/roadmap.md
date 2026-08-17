@@ -363,8 +363,9 @@ Além disso:
 registro em disco com heartbeat, indice global`), sobre a F0 (`e6d06dc`) e a rede da F-1
 (`9d09810`).
 
-- `run_id`, `repo`, `recipe` no ledger; registro de run em disco (pid, início, status) +
-  heartbeat; índice global em `~/.corvex/runs.jsonl`.
+- `run_id` e `recipe` no ledger (o `repo` **saiu** — ver "Correção pós-fecho" no fim desta
+  seção); registro de run em disco (pid, início, status) + heartbeat; índice global em
+  `~/.corvex/runs.jsonl`.
 - **Aceite:** dois runs do mesmo projeto são distinguíveis; um segundo processo consegue
   listar o que está vivo.
 
@@ -419,9 +420,11 @@ prova**, e foi fechada de duas formas:
    **antes** do scrubber de hash (um id com 7+ dígitos hex seria comido como `<HASH>`).
    Normalizar > regravar: nenhum id concreto entra em golden, então nenhum golden fica flaky.
 2. **Um golden novo**, `run_identity_inspect_task_json.txt` — `inspect --task --json`
-   *depois de um run real*, com `run_id: "<RUN_ID>"` e `repo: "<TMP>"` e `recipe` ausente.
-   Par deliberado com o golden pré-F1 do mesmo comando: um diz "run identificado ganha os
-   campos", o outro diz "ledger sem identidade mantém os bytes exatos".
+   *depois de um run real*, com `run_id: "<RUN_ID>"` e (à época) `repo: "<TMP>"`, `recipe`
+   ausente. Par deliberado com o golden pré-F1 do mesmo comando: um diz "run identificado
+   ganha os campos", o outro diz "ledger sem identidade mantém os bytes exatos".
+   *(As 5 linhas `repo` foram removidas deste golden na correção pós-fecho abaixo — o único
+   golden regravado desde `9d09810`, e por deleção de campo, não por mudança de valor.)*
 
 Sensibilidade provada por mutação (feita e desfeita, md5 conferido na volta):
 `openLedger` voltando a `activity.Identity{}` → **4 testes de `cmd/` + e2e vermelhos, o
@@ -480,6 +483,167 @@ conveniência: um teste que suja o `~/.corvex` do usuário é defeito de produto
 **LEI 3 respeitada:** `git diff 217f17d -- cmd/ | grep -E "cobra.Command|AddCommand"` é
 vazio, e nenhuma flag nova. O aceite foi provado com **função + teste**, não com comando —
 `corvex runs` continua sendo assunto da F3, que é gate humano.
+
+#### Correção pós-fecho (auditoria adversarial): `repo` sai do ledger
+**Defeito.** A F1 passou a gravar `repo` = **path absoluto** em toda linha de
+`activity.jsonl` — e `activity.jsonl` é **commitado na prática**, pelo `auto_commit` do
+próprio corvex. Prova no histórico deste repo:
+`git log --all --diff-filter=A -- '.corvex/tasks/pilot-feedback/activity.jsonl'` → `101a40d
+corvex: checkpoint S01`; e `git check-ignore .corvex/tasks/rebrand/activity.jsonl` não casa.
+Reproduzido com o binário real (auto_commit ligado): o commit `corvex: checkpoint S01` levava
+`{"…","repo":"/Users/<username>/…"}` — **username e layout de máquina publicados para quem
+clona**. A própria F1 tinha esse raciocínio para o *registro* (`ensureRecordsIgnored` escreve
+`.gitignore` com `*` porque "pid + path absoluto desta máquina não vão para a história do
+usuário") e não o aplicou ao único arquivo que de fato entra na história.
+
+**Decisão: o campo é removido, não ofuscado.** `run_id` fica (é o que torna dois runs no
+mesmo arquivo distinguíveis, e não descreve a máquina); `recipe` fica (vocabulário do
+usuário). `repo` sai, por três razões:
+1. **Não compra nada para quem lê o arquivo.** O ledger já mora em
+   `<repo>/.corvex/tasks/<projeto>/activity.jsonl`: dentro de um arquivo o valor é constante
+   — zero bit de informação, repetido em toda linha.
+2. **O argumento que a F1 deu a favor é o argumento contra.** "Uma linha colada num issue
+   tem de ser legível sem o path" — colar uma linha num issue é exatamente o momento em que
+   `/Users/<username>/…` não pode viajar junto.
+3. **Nada se perde.** O path absoluto já está nos dois arquivos que nunca são commitados: o
+   record por run em `<repo>/.corvex/runs/` (gitignored com `*`) e o índice global em
+   `$CORVEX_HOME` (0600 em dir 0700). `run_id` é a chave de junção, então "em que diretório
+   rodou o `run_ab12`?" continua respondível — por quem tem a máquina, que é o único leitor
+   que deveria receber resposta.
+
+**Hash e basename foram considerados e rejeitados:** nenhum leitor consegue voltar de um
+hash para um path; o único caso de uso que justificariam (agrupar linhas de repos
+diferentes) já é servido pelo índice global, que tem os paths de verdade; e campo em que
+ninguém consegue agir é convite para o próximo alargar. A "contabilidade entre runs" que o
+roadmap pede é *por `run_id`*, não por repo.
+
+**Compatibilidade (três formas literais, fixadas em teste — `TestRead_AllThreeOnDiskLineShapesStayReadable`):**
+linha pré-F1 (sem identidade), linha F1 **com `repo` absoluto** (já existe em disco, inclusive
+no repo do usuário) e linha pós-correção. As três continuam legíveis, somáveis e endereçáveis
+por `FilterByRun`. A chave `repo` passa a ser desconhecida e é ignorada por `encoding/json`;
+o efeito colateral é bom: `inspect --json` re-serializa entries verbatim, então uma linha
+antiga **deixa de republicar o path** ao ser lida pelo código novo. Linhas já em disco **não
+são reescritas** — arquivo append-only já commitado não é nosso para reescrever, e o
+`git log -p` mostraria o path de qualquer jeito.
+
+**Tripwire.** `TestEntry_JSONKeysAreAnAllowlist` enumera por reflection as chaves JSON que
+`activity.Entry` pode emitir contra uma allowlist com justificativa por chave. Campo novo no
+ledger = teste vermelho = alguém tem de escrever por que aquele valor pode ser publicado. O
+vazamento da F1 não chegou por um campo chamado "path"; chegou porque ninguém teve esse
+momento.
+
+**Varredura do resto da F1:** `repo` era o único campo novo que alcançava arquivo versionado.
+`Entry.Message` é o outro vetor possível e está limpo hoje (`recovery` e `orchestrator` só
+emitem contagens — "working tree clean", "3 uncommitted change(s)" —, nenhum
+`Message: err.Error()` no repo); `host`, `pid` e `machine` só existem no record e no índice.
+
+**Golden:** 1 regravado (`run_identity_inspect_task_json.txt`, −5 linhas `"repo": "<TMP>",`,
+zero outras mudanças), pela única razão que justifica regravar: o campo deixou de existir no
+schema. Os outros 248 seguem byte-idênticos.
+
+**Canário do invariante 5, refeito com binário real e `auto_commit: true`:**
+`ANTHROPIC_API_KEY=sk-ant-CANARY111` + 4 amigos exportados no ambiente do run → run exit 0,
+ledger commitado em `corvex: checkpoint S01`, `grep -rn CANARY` em `.corvex/` e no
+`CORVEX_HOME` **vazio**, `git grep CANARY` em toda a história **vazio**, e nenhum arquivo
+rastreado contém o path do repo. Record e índice seguem com o path absoluto, `0600` em
+`drwx------`.
+
+#### Correção pós-fecho (auditoria adversarial): retenção, rotação e a janela cega
+A mesma auditoria derrubou quatro coisas além do `repo` no ledger. Todas eram do mesmo
+formato: a F1 tratou identidade como se o espaço de ids fosse infinito e o relógio, o
+hostname e o pid fossem confiáveis. Nenhuma era teórica — cada uma foi reproduzida com
+binário real.
+
+| Decisão | Forma escolhida | Por quê |
+|---|---|---|
+| **Teto de 65.536 ids** | unicidade deixa de valer contra *todo id já anunciado* e passa a valer contra o conjunto **endereçável**; o índice é **rotacionado** (`retention.go`) | medido: a 94% de ocupação **13 de 20 runs** não conseguiam mintar id, e o ledger voltava calado à forma pré-F1 (linhas sem `run_id`). Largura do id é superfície de UI (F3), então o conserto é do outro lado. **Consequência aceita e escrita:** id **é reciclável** — `run show run_8f21` de um run que fechou mês passado pode não achar nada, ou achar um run novo com o mesmo id. O contrário é uma ferramenta que não minta id nenhum depois do run 65.536 |
+| **Rotação, não reescrita** | `os.Rename` para `runs.jsonl.1` + re-append dos snapshots endereçáveis pelo mesmo caminho atômico de todos | reescrever no lugar (tmp+rename) tem janela em que uma linha appendada por fd já aberto cai num inode que vai ser unlinkado: run anunciado e silenciosamente esquecido. `O_APPEND` + um `Write` é a atomicidade que permite 8 processos sem lock. **Uma geração de archive** — archive sem limite anula o motivo de limitar o arquivo |
+| **Falha de registro deixa de ser não-fatal** | run **não começa** se não houver id (`ErrIDSpaceExhausted`, sentinela) | invertido de propósito em relação ao fecho da F1 ("reportada, nunca aborta"). Uma linha de ledger que ninguém consegue atribuir é pior que um run que se recusou a começar — e aparece exatamente quando alguém está tentando entender o que deu errado. Verificado no binário: espaço cheio de não-terminais → **exit 1**, mensagem nomeando o knob, **zero** record `*.json`, ledger nem criado |
+| **Não-terminal também envelhece** | `addressable` exige `now - freshness < retention * 8` para linha não-terminal (112 dias no default) | sem teto, `worthRotating` recusa rotacionar índice todo endereçável e a máquina fica **permanentemente incapaz de mintar sem knob nenhum** — medido: 65.536 órfãos `running`, índice de 14,5 MB, todo run recusado, e a mensagem mandava ajustar `CORVEX_RUN_RETENTION`, que não tocava em nada disso. Derivado da retenção em vez de duração absoluta **para a mensagem deixar de ser mentira**: verificado que `CORVEX_RUN_RETENTION=1h` resolve o estado doente. Fator generoso porque a idade de uma linha é a idade da última **mudança de status**, não do último sinal de vida — o índice não recebe heartbeat. Fronteira medida: 1/3/7/14/30/60/90/111 dias mantêm o id, 113 solta |
+| **Oráculo lê o archive, sempre** | `claimIndexEntries` lê `runs.jsonl` **e** `runs.jsonl.1`, live primeiro | entre o rename e o fim do carry-forward `runs.jsonl` não existe, e o índice global é o **único** oráculo que vê run de outro repositório (`O_EXCL` do record é por repo por construção). Medido: **207 ms** de cegueira por rotação, 2 de 39 claims na janela pegando id de run **vivo**. Fecha **por construção**, não estreitando janela: presença em arquivo nunca era o predicado — `addressable` é, e é aplicado à união. **Ordem é load-bearing:** archive primeiro deixaria uma rotação caber entre as duas leituras e a segunda devolveria o live novo e vazio |
+| **Rotação termina a anterior antes de começar a sua** | `resumeCarryForward` imediatamente antes do rename; se não consegue ler o archive, **não renomeia** | o furo real de "ler o archive": com uma geração guardada, o rename **destrói** o archive atual. Inofensivo depois de rotação completa (o carry-forward já devolveu tudo endereçável ao live); **destrutivo** depois de uma morta entre o rename e o carry-forward, quando o conjunto endereçável existe só no archive. Preferido a lock `.rotating` para leitores: lock em leitor tornaria o start do run dependente de um lock desenhado para ser não-bloqueante |
+| **`canceling` no record** | status próprio, escrito por um watcher no momento em que o contexto é cancelado — não quando o corpo desenrola | o teardown que mata só o filho direto é **bug congelado**; um neto segurando o stdout mantém o corpo bloqueado indefinidamente. Sem estado para isso, um supervisor lê heartbeat fresco + pid vivo e conclui `alive` — o que a auditoria mediu por 20s e desistiu. É sobre **sinal**, não sobre gate: nada a ver com `StatusParked`, e `LivenessCanceling` vence frescor porque "alguém pediu para parar" não deixa de ser verdade quando o heartbeat envelhece |
+| **Relógio clampado nos dois lados** | `freshness` mais de `FutureSkew` (5s) à frente de `now` → `stale`, não `alive` | `now - freshness > staleAfter` é metade do teste: timestamp no futuro dá diferença negativa, nunca cruza o limiar, e o run fica `alive` **para sempre** num pid reciclado. Não precisa de falha exótica — NTP corrigindo drift, snapshot de VM, RTC errado. Verificado: `+2s` → `alive`, `+1h` → `stale`, `-41s` → `stale` |
+| **Identidade de máquina** | `$CORVEX_HOME/machine-id`, número aleatório sem relação com hardware/hostname/usuário; hostname normalizado é o fallback | pid de outra máquina não significa nada aqui, e o hostname muda (`box.local` → `box-2.local` em rede). Ausência de identidade **não é evidência de localidade**: record com host e machine vazios agora dá `unknown`, não `alive` — a auditoria viu `host= -> alive` num pid reciclado. Verificado: `box.local` vs `box-2.local` com o mesmo machine-id → `alive`; ambos vazios com pid reciclado → `unknown` |
+| **O que o ledger grava** | `run_id` + `recipe`, e nada que descreva a máquina | ver a seção anterior. `host`, `pid`, `machine` e o path absoluto vivem só no record (gitignored com `*`) e no índice (`0600` em `0700`), que nunca entram na história do usuário |
+
+**Não consertado de propósito, e registrado:** a soma de custo agregado depende da ordem de
+iteração de um map (`aggregate` em `internal/activity/ledger.go`) — anomalia de BACKLOG em
+`f-1-anomalias.md`, porque já era não-determinística antes da F1, nenhum golden a observa, e
+ordenar a redução muda comportamento fora do escopo da F1. Enquanto isso **nenhum teste
+compara custo agregado com `==`**: `sameCost` (tolerância 1e-9) e um guarda que falha
+deterministicamente se alguém trocar o helper por igualdade exata.
+
+**Incoerência nomeada, não escondida:** `ReadIndex` (usada por `Resolver.List`/`Get`) continua
+lendo **só** o live — é a visão de **LISTAGEM**, e durante a janela de rotação um `run show`
+pode responder "não achei" para um run que o oráculo considera endereçável. Levá-la à união
+mudaria semântica de listagem e arrisca golden. Os dois papéis estão nomeados nos docs
+(`ReadIndex` = listagem, `claimIndexEntries` = oráculo) em vez de implícitos.
+
+#### Como cada conserto foi provado (auditoria adversarial, com controle positivo)
+Um verde só vale se o experimento **sabe ficar vermelho**. Cada linha abaixo foi
+reproduzida antes e depois, e as duas mais caras têm controle positivo explícito.
+
+| Achado | Repro (antes) | Prova (depois) |
+|---|---|---|
+| Teto de ids, terminais antigos | espaço todo anunciado, run recusado, ledger volta a linha sem `run_id` | **binário real**: 65.536 ids anunciados (14,6 MB), o run 65.537 **começa** (`run_003e`), **11/11** linhas de ledger com `run_id` |
+| Teto de ids, não-terminais | idem, mas sem saída — nenhum knob resolvia | **binário real**: **exit 1**, erro nomeando `CORVEX_RUN_RETENTION`, **zero** record `*.json`, ledger **nem criado**, índice inalterado, git limpo |
+| Máquina bricada por órfãos | 65.536 órfãos `running`, índice de 17,9 MB que não rotaciona, todo run recusado | **binário real**: 65.000 órfãos de 2 anos → run **começa** e o índice rotaciona (14,5 MB → 281 bytes). Órfãos de **1 dia** → recusa (correto: podem estar vivos), e `CORVEX_RUN_RETENTION=1h` **resolve** — a mensagem deixou de ser mentira |
+| Limiar não mata run longo legítimo | — | fronteira medida com a política default: **1/3/7/14/30/60/90/111 dias mantêm o id, 113 solta** (112 = 14 × 8) |
+| Falso `alive` após Ctrl-C | run fica `running` com `updated_at` avançando por +2/5/10/20s; só fecha quando alguém mata o neto na mão | **binário real**: SIGINT, leitor de **segundo processo** em +0.3/1/2/5/10/20s → **nunca `alive`**, sempre `canceling`, com o corvex **ainda de pé** e o neto órfão vivo com **ppid=1** nas seis amostras (bug congelado intacto) |
+| Relógio sem clamp | `updated_at` no futuro → `alive` para sempre num pid reciclado | `+2s` → `alive`, `+1h` → `stale`, `-41s` → `stale`, `-5s` → `alive` (controle) |
+| Hostname instável | `host=` vazio → `alive` num pid reciclado | `box.local` vs `box-2.local` com o mesmo machine-id → `alive`; host **e** machine vazios com pid reciclado → `unknown`; machine-ids diferentes → `unknown` |
+| `repo` no ledger | commit `corvex: checkpoint S01` levando `/Users/<username>/…` | **binário real com `auto_commit: true`**: o **blob commitado** tem zero `/Users`, zero path do repo, zero hostname/username; chaves JSON = allowlist fechada; `.corvex/runs/` gitignored com `*`; repo ainda resolvível pelo `run_id` |
+| Flake de float | suite **vermelha em ~3 de 10** rodadas (`0.44999999999999996` vs `0.45`) | **0 falhas em 40** rodadas do repro original; `./internal/activity/ -count=50` ok. **Controle positivo:** trocando `sameCost` por `==`, o guarda novo fica vermelho **8/8** e o flake original volta a aparecer **1/8** — a não-determinância de produção **não** foi consertada às escondidas |
+| Janela cega da rotação | 207 ms por rotação; 2 de 39 claims na janela pegando id de run **vivo**; a 99,6% de ocupação, 41 de 41 | experimento independente a **11% de ocupação** (7.200 runs vivos cross-repo), rotação contínua, **4 processos reais** claimando em repositórios próprios: **1.952 claims, ZERO colisões**, 243 deles com o live abaixo de 256 KiB (menor observado **438 bytes** — o fundo da janela). **Controle positivo:** revertendo o oráculo para ler só o live, **5.606 de 7.456 claims (75%)** pegaram id de run vivo |
+| Furo de "uma geração de archive" | rename destrói o archive que guarda o conjunto endereçável de uma rotação morta | **25 ciclos de SIGKILL** no rotator, archive sobrescrito repetidamente, live reconstruído do zero: **0 ids perdidos, 0 mintados** em todos os ciclos. Lock abandonado é limpo depois de 5 min (verificado: 4,0 MB → 130 KB) |
+| LOST/TORN não regrediu | garantia da leva 1 | **8 processos appenders reais** durante rotações contínuas: **LOST=0, TORN=0** em 20.320 linhas |
+| Guarda da goroutine morde | guarda antigo passa `context.Background()` (`Done()` nil), goroutine nunca criada | **controle positivo:** corpo de `stopWatching` virando no-op → os dois testes novos vermelhos **3/3**, guarda antigo **verde** (era cego, agora está provado que era) |
+
+**Invariantes hoje** (não os do fecho da F1, que ficam acima como registro histórico):
+`go test ./... -count=1` verde **20 de 20** rodadas consecutivas; `-race` limpo;
+`-shuffle=on` limpo; `./cmd/ -count=2` ok · **86.1%** no coverpkg do roadmap (piso 60),
+`internal/run` cobre a si mesma **90.3%**, `internal/activity` **88.9%** · 4a: só 3
+comentários pré-existentes usando "Azure DevOps" como **exemplo** de integração; 4b:
+`strings` do binário **0 matches** · 6: cobra só em `cmd/` (nem `main.go` importa) ·
+8: **150** (`plain_renderer.go`, pré-existente); 9: **373** (`task/parser.go`),
+`retention.go` 341 · asserts **1997 → 2239** (+242) e **zero** `t.Skip` removido — os 4
+novos são guardas de plataforma (`windows`, `root`, `-short`, "sem hostname"), nenhum
+desliga assertion no caminho normal.
+
+#### Dívida registrada para a F2
+- **`StatusParked` continua sem produtor nem consumidor.** A constante existe e o `record.go`
+  diz explicitamente que **não** é o mesmo eixo que `canceling`: `parked` é gate humano
+  (alguém tem de aprovar), `canceling` é sinal (alguém pediu para parar). Quem implementar o
+  `human-gate` da F2 escolhe se `parked` ganha liveness própria ou se vira só um status;
+  hoje `Resolver.Liveness` o trata como qualquer não-terminal (pid + heartbeat decidem), que é
+  a resposta certa para "o processo está de pé esperando gente".
+- **Liveness de run que sobrevive à sessão.** Hoje um run é `alive` porque o **pid** existe e
+  o heartbeat é fresco — os dois são fatos do processo que começou o run. Quando a F2/F7
+  tiver run que sobrevive à sessão que o criou (ou que roda em container/sandbox), pid deixa
+  de ser a pergunta certa e `machine` deixa de ser suficiente: um run em container tem pid de
+  outro namespace. É o ponto em que `ProcessProbe` precisa de uma segunda implementação, e é
+  por isso que ela já é injetável.
+- **Reuso de id é observável pela UI.** `run show <id>` pode achar um run diferente do que o
+  usuário lembra. A F3, que desenha a superfície, é quem decide se o id fica com 4 dígitos
+  (e a UI passa a mostrar `started_at` junto) ou se cresce.
+- **`staleNonTerminalFactor = 8` é julgamento, não medição.** Não há dado sobre distribuição
+  de duração de run real nesta ferramenta. Se existir caso de uso de run de meses, 8× é
+  apertado; se runs nunca passam de dias, o estado doente demora demais a se resolver.
+  Derivado de `RetentionEnv` justamente para dar alavanca ao operador hoje. Revisar quando
+  houver telemetria (F5).
+- **Archive ilegível recusa todo run da máquina.** Assimetria deliberada (`runs.jsonl.1`
+  regular mas sem permissão de leitura → o oráculo perdeu metade da evidência e recusa;
+  path que não é arquivo regular → tolera, porque nenhuma rotação teve sucesso ali e o live
+  está completo). O custo é que um `chmod` errado no archive vira outage até alguém mover o
+  arquivo — o erro nomeia "archive" exatamente para isso ser acionável.
+- **Ressurreição de snapshot pelo `resumeCarryForward`** (achado desta auditoria, não
+  bloqueante): se uma rotação interrompida deixou a linha não-terminal de um run no archive e
+  o run grava seu `done` no live **entre** a leitura do live e o append do resume, o snapshot
+  antigo volta depois do novo e a consolidação lê `running`. O erro é **conservador em todos
+  os caminhos** — o id fica retido 8× mais tempo, nunca é solto cedo — e `Resolver.List`
+  corrige a linha pelo overlay do record local, que é mais fresco. Requer rotação
+  interrompida **mais** a janela; anotado aqui em vez de consertado numa terceira leva.
 
 ### F2 — Taxonomia, gates e evidência
 - `kind: code|tool|test|repro` na recipe; 4 naturezas de gate; contrato de evidência

@@ -21,6 +21,14 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// Helper-process protocol: some claims (a SIGINT arriving at a run that will
+	// not unwind) are only provable across a process boundary. The child does its
+	// job and exits before m.Run, so it runs no test and prints no test output.
+	// It does NOT get a scratch home imposed on it — it is handed the parent's.
+	if mode := os.Getenv(opsHelperEnv); mode != "" {
+		os.Exit(opsHelperMain(mode))
+	}
+
 	realIndex := ""
 	if h, err := os.UserHomeDir(); err == nil {
 		realIndex = filepath.Join(h, ".corvex", run.IndexFile)

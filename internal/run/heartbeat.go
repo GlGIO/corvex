@@ -23,6 +23,17 @@ const (
 	// late. Four also keeps the false-alive window bounded, which is what makes
 	// the pid-reuse argument in liveness.go hold.
 	DefaultStaleAfter = 4 * DefaultHeartbeatInterval
+
+	// DefaultFutureSkew is how far ahead of now a record's freshness may be
+	// before it stops counting as freshness at all.
+	//
+	// Five seconds, and the size barely matters as long as it is finite: the
+	// writer and the reader are two processes on one machine reading one clock, so
+	// honest disagreement is sub-second, and a record from another machine never
+	// reaches the comparison. What matters is that the bound EXISTS — without it, a
+	// timestamp from the future reads as maximally fresh forever. See
+	// Resolver.Liveness.
+	DefaultFutureSkew = 5 * time.Second
 )
 
 // HeartbeatOptions configures StartHeartbeat.

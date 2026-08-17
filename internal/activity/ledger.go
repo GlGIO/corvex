@@ -8,10 +8,20 @@
 // transitions, retries, costs, and timings are persisted. A typical
 // 30-task run produces ~200–500 entries (a few hundred KB).
 //
-// Every line also carries the identity of the run that wrote it (run_id, repo,
+// Every line also carries the identity of the run that wrote it (run_id,
 // recipe), because one project's ledger accumulates many runs: without it, two
 // runs are indistinguishable. Lines written before run identity existed have the
 // fields absent and must keep reading fine — see Read.
+//
+// # This file is versioned: it holds no machine
+//
+// Unlike the run record (`<repo>/.corvex/runs/`, gitignored) and the global index
+// (`$CORVEX_HOME/runs.jsonl`, 0600 in $HOME), this file goes into the user's git
+// history — corvex's own auto_commit puts it there. So nothing that describes the
+// machine may reach a line: no absolute path, no home directory, no username, no
+// hostname, no pid. F1 briefly stamped `repo` = absolute path on every line; see
+// Identity for why that field is gone rather than obfuscated, and
+// TestEntry_JSONKeysAreAnAllowlist for the tripwire that keeps the next field out.
 package activity
 
 import (
@@ -23,24 +33,43 @@ import (
 	"time"
 )
 
-// Identity is the run that owns the lines a Ledger writes: which run, in which
-// repository, from which recipe. It is stamped onto every entry by Append so no
-// call site has to remember to fill it in — a caller that forgets is exactly how
-// a code path ends up producing unattributable lines.
+// Identity is the run that owns the lines a Ledger writes: which run, from which
+// recipe. It is stamped onto every entry by Append so no call site has to
+// remember to fill it in — a caller that forgets is exactly how a code path ends
+// up producing unattributable lines.
 //
 // The zero Identity is legal and means "not known yet": Append leaves the
 // entry's own values alone, and the fields are omitted from the JSON line. That
 // keeps pre-F1 output byte-identical while the run identity is being wired.
+//
+// There is deliberately NO repo field. F1 added one, carrying the absolute path
+// of the git root, and it was wrong for this file specifically:
+//
+//   - It buys nothing for the file's own reader. The ledger already lives at
+//     `<repo>/.corvex/tasks/<project>/activity.jsonl`, so within one file the
+//     value is constant — zero bits of information, repeated on every line.
+//   - The argument F1 gave for it ("a line pasted into an issue has to be
+//     readable without its path") is the argument against it: pasting a line into
+//     an issue is precisely the moment `/Users/<username>/…` must not travel.
+//   - Nothing is lost. run_id is the join key, and the absolute path is already
+//     held by the two files that never reach a commit: the per-run record under
+//     `<repo>/.corvex/runs/` (gitignored with `*` on first write) and the global
+//     index in $HOME (0600). "Which directory did run_ab12 run in?" is answered
+//     there, by whoever has the machine, which is the only reader who should get
+//     an answer.
+//
+// A hash or a basename was considered as a "non-leaking repo id" and rejected:
+// no reader can turn either back into a path, the only use case they would serve
+// (grouping lines from several repos) is already served properly by the global
+// index which holds the real paths, and a field nobody can act on is a field that
+// only invites the next person to widen it.
 type Identity struct {
 	// RunID identifies one execution. Generation belongs to the run registry,
 	// never to this package — the Ledger only transports the string it is given.
 	RunID string
-	// Repo is the repository the run executed in, as recorded by the run
-	// registry (an absolute path today). Redundant with the ledger's own
-	// location on disk, and kept anyway: a line pasted into an issue or shipped
-	// to the global index has to be readable without its path.
-	Repo string
 	// Recipe is the workflow the run executed. Empty until recipes exist (F2).
+	// Safe for a versioned file: a recipe name is the user's own vocabulary, not
+	// a fact about their machine.
 	Recipe string
 }
 
@@ -53,11 +82,16 @@ type Identity struct {
 // ownership; a truncated header would orphan every line after it; and stateful
 // reading would break the one property this package sells — that grepping a
 // single line tells you what happened.
+//
+// Adding a field here is adding a field to the user's git history: see the
+// package comment, and expect TestEntry_JSONKeysAreAnAllowlist to make you say so
+// out loud. A `repo` key existed between F1 and this change; Read still tolerates
+// it on lines already on disk (encoding/json drops unknown keys), it is simply
+// never written again and never re-emitted by `inspect --json`.
 type Entry struct {
 	Timestamp  time.Time `json:"ts"`
 	Type       string    `json:"type"`
 	RunID      string    `json:"run_id,omitempty"`
-	Repo       string    `json:"repo,omitempty"`
 	Recipe     string    `json:"recipe,omitempty"`
 	TaskID     string    `json:"task_id,omitempty"`
 	Phase      string    `json:"phase,omitempty"` // worker | review | plan | recovery
@@ -112,9 +146,6 @@ func (l *Ledger) Append(e Entry) error {
 	}
 	if l.id.RunID != "" {
 		e.RunID = l.id.RunID
-	}
-	if l.id.Repo != "" {
-		e.Repo = l.id.Repo
 	}
 	if l.id.Recipe != "" {
 		e.Recipe = l.id.Recipe

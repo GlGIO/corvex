@@ -165,6 +165,32 @@ func waitForRecord(t *testing.T, dir string, n int) []run.View {
 	return nil
 }
 
+// indexTrail is every status the global index recorded for one run, in the order
+// the lines were appended.
+//
+// The index is append-only, which makes it the one place where a state the run
+// passed through leaves permanent evidence. Polling the record file cannot prove a
+// transient state was ever written — lose the race and the state is simply gone —
+// whereas a line, once appended, stays.
+func indexTrail(t *testing.T, id string) []run.Status {
+	t.Helper()
+	home, err := run.Home()
+	if err != nil {
+		t.Fatalf("run.Home: %v", err)
+	}
+	entries, err := run.ReadIndex(home)
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	var trail []run.Status
+	for _, e := range entries {
+		if e.RunID == id {
+			trail = append(trail, e.Status)
+		}
+	}
+	return trail
+}
+
 // TestRunIdentitySurvivesTheProcessThatWroteIt runs the real binary twice on the
 // same project and then, from a third process (this test), lists what those two
 // runs left behind. Both writers have exited by the time anything is read, which
@@ -348,5 +374,31 @@ func TestInterruptedRunIsRecordedCanceled(t *testing.T) {
 	}
 	if v.Record.Status != run.StatusCanceled {
 		t.Errorf("index status = %q, want canceled", v.Record.Status)
+	}
+
+	// And the run went through `canceling` on the way, announced when the signal
+	// arrived rather than when the work finished unwinding. The gap between the two
+	// is real and can be long — corvex tears down only its direct child, so an
+	// orphaned grandchild holding the stdout pipe can keep a cancelled run up for
+	// as long as it likes (frozen defect, not this test's subject). What this
+	// asserts is that the state on disk does not wait for it: the F1 audit watched
+	// a record say `running` with an advancing updated_at at +2s, +5s, +10s and
+	// +20s after a Ctrl-C, and a supervisor reading that has no way to tell
+	// "working" from "already asked to stop".
+	trail := indexTrail(t, views[0].Record.RunID)
+	stopping := -1
+	for i, s := range trail {
+		if s == run.StatusCanceling {
+			stopping = i
+		}
+	}
+	if stopping < 0 {
+		t.Errorf("index trail for %s = %v; want a %q line before the terminal one",
+			views[0].Record.RunID, trail, run.StatusCanceling)
+	} else if stopping != len(trail)-2 {
+		t.Errorf("index trail = %v; the stop request must be the line before the end", trail)
+	}
+	if len(trail) > 0 && trail[len(trail)-1] != run.StatusCanceled {
+		t.Errorf("index trail ends with %q, want canceled", trail[len(trail)-1])
 	}
 }

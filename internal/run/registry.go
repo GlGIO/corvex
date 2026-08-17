@@ -29,6 +29,14 @@ type Registry struct {
 	PID int
 	// Host defaults to the machine hostname.
 	Host string
+	// Machine defaults to the id stored in Home (see MachineID).
+	Machine string
+	// Retention is how long a finished run keeps its id; 0 resolves via
+	// $CORVEX_RUN_RETENTION, then DefaultRetention.
+	Retention time.Duration
+	// IndexMaxBytes is the size at which the global index is rotated; 0 resolves
+	// via $CORVEX_RUN_INDEX_MAX_BYTES, then DefaultIndexMaxBytes.
+	IndexMaxBytes int64
 }
 
 // StartOptions describes the run being started. Exactly one of Recipe or
@@ -48,6 +56,8 @@ type Handle struct {
 	rec  Record
 	home string
 	now  func() time.Time
+
+	maintErr error
 }
 
 // Start mints a run and puts it on disk.
@@ -74,7 +84,14 @@ func (r Registry) Start(opts StartOptions) (*Handle, error) {
 	now := r.clock()
 	at := now().UTC()
 
-	id, err := r.claimID(home)
+	// Housekeeping first, so the id oracle sees the pruned index. It is
+	// best-effort by design: a run must not be refused because the index could not
+	// be rotated (nothing is lost, the file just stays big), which is the opposite
+	// of the identity failure below. The error is not swallowed either — it travels
+	// on the handle for the caller to report.
+	maintErr := rotateIndex(home, resolveIndexMax(r.IndexMaxBytes), resolveRetention(r.Retention), at)
+
+	id, err := r.claimID(home, at)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +107,7 @@ func (r Registry) Start(opts StartOptions) (*Handle, error) {
 		Project:   opts.Project,
 		PID:       r.pid(),
 		Host:      r.hostName(),
+		Machine:   r.machineID(home),
 		Status:    status,
 		StartedAt: at,
 		UpdatedAt: at,
@@ -104,7 +122,17 @@ func (r Registry) Start(opts StartOptions) (*Handle, error) {
 		r.releaseID(id)
 		return nil, err
 	}
-	return &Handle{rec: rec, home: home, now: now}, nil
+	return &Handle{rec: rec, home: home, now: now, maintErr: maintErr}, nil
+}
+
+// MaintenanceErr is why index housekeeping failed for this run, or nil. It never
+// affects the run; it exists so "the index is not being pruned" can be reported
+// instead of discovered a year later.
+func (h *Handle) MaintenanceErr() error {
+	if h == nil {
+		return nil
+	}
+	return h.maintErr
 }
 
 // Record returns a copy of the current record.
@@ -188,4 +216,18 @@ func (r Registry) hostName() string {
 		return r.Host
 	}
 	return hostname()
+}
+
+// machineID mints this machine's identity on first use. A home that cannot be
+// written to is not fatal here — the record falls back to being identified by
+// hostname, which is worse but not nothing, and Start is about to fail on the
+// index append anyway if the home is truly unusable.
+func (r Registry) machineID(home string) string {
+	if r.Machine != "" {
+		return r.Machine
+	}
+	if id, err := MachineID(home); err == nil {
+		return id
+	}
+	return ""
 }

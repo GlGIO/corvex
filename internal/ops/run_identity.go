@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
@@ -40,23 +41,24 @@ type Runner struct {
 
 	// RunID identifies this run everywhere it is observable: every ledger line,
 	// the record in `<repo>/.corvex/runs/`, and the line in the global index.
-	// Empty when identity could not be registered — see IdentityErr.
+	// Never empty: a Runner exists only if its identity was registered.
 	RunID string
 
 	// Repo is the absolute git root the run was recorded against.
 	Repo string
 
-	// IdentityErr is why this run has no identity, or nil.
+	// StatusErr is why the terminal status could not be written, or nil, plus any
+	// non-fatal problem recording state along the way (a failing heartbeat, index
+	// housekeeping that could not run). Reported, never allowed to change the
+	// run's own outcome — unlike registration, which is a precondition.
 	//
-	// Failing to register is deliberately NOT fatal. A read-only home or a
-	// full disk must not refuse work the user is about to pay for, and the
-	// degraded mode is one that already exists on disk: lines with no run_id,
-	// exactly like every ledger written before F1. The caller reports this;
-	// it never turns into an aborted run.
-	IdentityErr error
-
-	// StatusErr is why the terminal status could not be written, or nil. Same
-	// policy: reported, never allowed to change the run's own outcome.
+	// Registration used to be in this category too, reported through an
+	// IdentityErr field, on the argument that a read-only home must not refuse
+	// work the user is about to pay for. The F1 audit measured what that buys: at
+	// 94% id-space occupancy, 13 of 20 runs quietly reverted to writing ledger
+	// lines with no run_id — the exact shape F1 exists to eliminate, appearing
+	// without a word at the moment identity matters most. A refused run costs one
+	// error message; an unattributable ledger costs the premise of the phase.
 	StatusErr error
 
 	handle   *run.Handle
@@ -64,6 +66,12 @@ type Runner struct {
 }
 
 // Identity is what the ledger stamps on every line it writes for this run.
+//
+// r.Repo is deliberately NOT handed over. The ledger is the one corvex artifact
+// that reaches the user's git history, and r.Repo is an absolute path of this
+// machine; it stays in the record and the global index, neither of which is ever
+// committed, and the run id on the line is what joins a ledger line back to them.
+// See activity.Identity for the full argument.
 //
 // Recipe is deliberately empty on the legacy `corvex run <project>` path: there
 // is no recipe, and inventing a name for one (the project's name, or a sentinel
@@ -75,7 +83,7 @@ func (r *Runner) Identity() activity.Identity {
 	if r == nil {
 		return activity.Identity{}
 	}
-	return activity.Identity{RunID: r.RunID, Repo: r.Repo}
+	return activity.Identity{RunID: r.RunID}
 }
 
 // Execute runs body under this run's identity.
@@ -89,6 +97,8 @@ func (r *Runner) Identity() activity.Identity {
 //
 // Ordering is deliberate:
 //
+//   - the cancellation watcher is stopped (and waited for) BEFORE the terminal
+//     status is written, so a `canceling` write can never land on top of it;
 //   - the heartbeat is stopped BEFORE the status is written, so no beat lands
 //     after `done` and refreshes updated_at on a finished run;
 //   - Stop waits for its goroutine, so nothing outlives Execute — and it only
@@ -105,14 +115,19 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 		return fmt.Errorf("ops: Execute needs a body")
 	}
 	if r.handle == nil {
-		// No identity (see IdentityErr): run anyway, record nothing.
+		// Only reachable for a Runner assembled by hand (a test): NewRunner never
+		// produces one without a handle.
 		return body(ctx)
 	}
 
 	hb := r.handle.StartHeartbeat(r.interval)
+	// A stop request has to reach disk when it ARRIVES, not when body finally
+	// unwinds — see recordCancellation.
+	stopWatching := r.recordCancellation(ctx)
 	recorded := false
 	defer func() {
 		hb.Stop()
+		_ = stopWatching()
 		if !recorded {
 			_ = r.handle.SetStatus(run.StatusFailed)
 		}
@@ -121,12 +136,71 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 	err := body(ctx)
 
 	hb.Stop()
-	r.StatusErr = r.handle.SetStatus(finalStatus(ctx, err))
+	// Before the terminal write, and it waits for the watcher: that ordering is
+	// what guarantees a `canceling` write can never land on top of `canceled`.
+	// It is a separate statement for the same reason — as an argument below it
+	// would be evaluated after the SetStatus call, not before it.
+	cancelErr := stopWatching()
+	r.StatusErr = firstErr(
+		r.handle.SetStatus(finalStatus(ctx, err)),
+		cancelErr,
+		hb.LastErr(),
+		r.handle.MaintenanceErr(),
+	)
 	recorded = true
-	if r.StatusErr == nil {
-		r.StatusErr = hb.LastErr()
-	}
 	return err
+}
+
+// firstErr is "report the most important problem, keep the rest quiet": the
+// terminal write first, because it is the one that changes what a reader sees.
+func firstErr(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// recordCancellation writes the "stopping" state the moment the context is
+// cancelled, and returns a function that stops watching and waits for it.
+//
+// Why a watcher instead of the status write Execute already does on the way out:
+// Execute only reaches that write when body returns, and body is exactly what a
+// cancelled run cannot be relied on to finish. The audit's run stayed `running`
+// with an advancing updated_at through +2s, +5s, +10s, +20s, and only closed when
+// the operator manually killed the orphaned grandchild holding its stdout pipe.
+// That teardown bug is frozen and is not being fixed here; what is fixed is that
+// the record no longer waits for it. Between the Ctrl-C and the close, the state
+// on disk says a stop was requested.
+//
+// The returned function stops watching, waits for the goroutine to exit and
+// reports what the write cost, if anything. Waiting is what orders the caller's
+// terminal write after any write made here, and it is why no goroutine outlives
+// Execute. It is idempotent, so the deferred path can call it too.
+func (r *Runner) recordCancellation(ctx context.Context) func() error {
+	var cancelErr error
+	if ctx == nil || ctx.Done() == nil {
+		return func() error { return nil }
+	}
+	quit, done := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	go func() {
+		defer close(done)
+		select {
+		case <-ctx.Done():
+			// Not a terminal status: the run has not ended, it has been asked to.
+			// The pid and the heartbeat still decide what happens if it never
+			// closes.
+			cancelErr = r.handle.SetStatus(run.StatusCanceling)
+		case <-quit:
+		}
+	}()
+	return func() error {
+		once.Do(func() { close(quit) })
+		<-done
+		return cancelErr
+	}
 }
 
 // Record returns this run's current on-disk snapshot. Zero Record when the run

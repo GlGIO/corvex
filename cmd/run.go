@@ -96,12 +96,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// A run whose identity could not be registered still runs — see
-	// ops.Runner.IdentityErr — but it must say so, or "the run is missing from
-	// the list" becomes an unexplained mystery later.
-	if runner.IdentityErr != nil {
-		charmbraceletlog.Warn("run identity unavailable", "err", runner.IdentityErr)
-	}
+	// A run whose identity cannot be registered does not start at all: NewRunner
+	// returns the error above, and it reaches the user as the reason nothing ran.
+	// What is left to report here is the non-fatal half — a status write, a
+	// heartbeat or index housekeeping that failed while the work itself was fine.
 	defer func() {
 		if runner.StatusErr != nil {
 			charmbraceletlog.Warn("recording run status", "run", runner.RunID, "err", runner.StatusErr)

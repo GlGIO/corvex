@@ -85,15 +85,21 @@ func TestCharacterizeRunIdentityReachesLedgerRecordAndIndex(t *testing.T) {
 		if e.RunID != rec.RunID {
 			t.Fatalf("ledger entry %s carries run %q, want %q", e.Type, e.RunID, rec.RunID)
 		}
-		if e.Repo != rec.Repo {
-			t.Errorf("ledger entry %s carries repo %q, want %q", e.Type, e.Repo, rec.Repo)
-		}
 		if e.Recipe != "" {
 			t.Errorf("ledger entry %s carries recipe %q, want empty", e.Type, e.Recipe)
 		}
 	}
 	if got := len(activity.FilterByRun(entries, rec.RunID)); got != len(entries) {
 		t.Errorf("FilterByRun found %d of %d lines", got, len(entries))
+	}
+	// The run id is the whole of the ledger's identity: the repo path the record
+	// holds must NOT be on a line, because these lines get committed. The raw-byte
+	// version of this is TestCharacterizeLedgerCommittedLinesCarryNoMachinePath.
+	if rec.Repo == "" {
+		t.Fatal("the record has no repo path, so the next assertion proves nothing")
+	}
+	if raw := f.Read(filepath.Join(".corvex", "tasks", "alpha", "activity.jsonl")); strings.Contains(raw, rec.Repo) {
+		t.Errorf("the ledger carries the record's absolute repo path %q", rec.Repo)
 	}
 
 	// 3. The global index: a second reader finds the run without the repo's help.
@@ -293,7 +299,7 @@ func TestCharacterizeRunIdentityAppendsToALegacyLedger(t *testing.T) {
 
 // TestCharacterizeRunIdentityInspectJSONCarriesTheRunID is the one place run
 // identity becomes *observable CLI output*: `inspect --task --json` serialises
-// ledger entries verbatim, so from F1 on it emits run_id and repo.
+// ledger entries verbatim, so from F1 on it emits run_id.
 //
 // This is the golden the LEI 4b normaliser exists for. The id is drawn from
 // crypto/rand at run start, so it can never be a literal in a golden — it comes

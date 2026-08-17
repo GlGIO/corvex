@@ -85,7 +85,8 @@ type RunRequest struct {
 //
 // Nothing executes until Execute is called. Identity is registered *after* every
 // validation that can reject the invocation, so a run refused for a bad --ab
-// flag leaves no `running` record behind that nothing will ever close.
+// flag leaves no `running` record behind that nothing will ever close — and a run
+// whose identity cannot be registered is itself rejected, with no runner returned.
 func NewRunner(req RunRequest) (*Runner, error) {
 	p, err := provider.NewProvider(req.Config.Provider.Default, req.Config)
 	if err != nil {
@@ -105,12 +106,20 @@ func NewRunner(req RunRequest) (*Runner, error) {
 		return nil, fmt.Errorf("--ab requires --task <id> or --single to scope the comparison")
 	}
 
-	r := &Runner{Project: req.Project, interval: req.HeartbeatInterval}
-	handle, idErr := startIdentity(req)
-	r.handle, r.IdentityErr = handle, idErr
-	if handle != nil {
-		r.RunID = handle.RunID()
-		r.Repo = handle.Record().Repo
+	// Identity is a precondition, not a nicety. A run that cannot be identified
+	// writes a ledger nobody can attribute — the pre-F1 shape, arriving silently
+	// and precisely when the machine is under stress — so the invocation is
+	// refused instead. See Runner for the trade that was reversed here.
+	handle, err := startIdentity(req)
+	if err != nil {
+		return nil, fmt.Errorf("registering run identity: %w", err)
+	}
+	r := &Runner{
+		Project:  req.Project,
+		interval: req.HeartbeatInterval,
+		handle:   handle,
+		RunID:    handle.RunID(),
+		Repo:     handle.Record().Repo,
 	}
 
 	r.Orchestrator = orchestrator.New(orchestrator.Options{

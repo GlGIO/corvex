@@ -236,6 +236,60 @@ esta nos transcripts dos cinco agentes, nao aqui.
   `TestCollectAuthEnv_ConfiguredPrefix` (`internal/orchestrator/worker_test.go`).
   Nenhum golden de `cmd/` mudou — o filtro de env nunca era exercido por eles.
 
+## internal/activity/ledger.go
+
+### Soma de custo depende da ordem de iteracao de um map (ultimo bit nao-deterministico)
+- **Local:** `internal/activity/ledger.go` — `aggregate`, `s.TotalCostUSD += m.CostUSD`
+  iterando `perTask`, que e um **map**.
+- **Observado:** Go randomiza a ordem de `range` sobre map a cada execucao, e soma de
+  `float64` nao e associativa. Com tres ou mais tasks o total cai em mais de um
+  padrao de bits: `0.15 + 0.25 + 0.05` sai `0.45` ou `0.44999999999999996`
+  dependendo do sorteio. Medido: `TestRead_AllThreeOnDiskLineShapesStayReadable`
+  falhou 3 de 10 rodadas enquanto comparava o total com `!=`.
+- **Consequencia:** **qualquer comparacao exata de custo agregado e flaky por
+  construcao** — nao so nesse teste. Somas de dois termos escapam por acidente (a
+  soma IEEE de dois operandos e comutativa), o que e exatamente por que o defeito
+  ficou escondido: ele so aparece quando um fixture ganha a terceira task.
+- **Status:** **BACKLOG.** Nao consertada nesta leva, de proposito.
+  - Ja era nao-deterministica antes da F1: `aggregate` sempre somou sobre map.
+  - Nenhum golden a observa — custo sai formatado com duas decimais, e as duas
+    respostas possiveis formatam igual.
+  - Ordenar a reducao e **mudanca de comportamento** (o total passa a ser um numero
+    diferente do que e hoje em alguns casos), fora do escopo da F1.
+- **Conserto natural quando sair do backlog:** reduzir em ordem estavel de
+  `task_id` (ordenar as chaves de `perTask` e somar em ordem crescente), o que torna
+  o total funcao apenas dos dados. Enquanto isso, **teste nenhum compara custo
+  agregado com `==`/`!=`**: `internal/activity/identity_test.go` tem o helper
+  `sameCost` (tolerancia 1e-9) e `TestSummarize_AggregatedCostIsStableOnlyToATolerance`
+  falha deterministicamente se alguem trocar o helper por igualdade exata.
+
+## internal/run/retention.go
+
+### `resumeCarryForward` pode ressuscitar um snapshot nao-terminal ja superado
+- **Local:** `internal/run/retention.go` — `rotateIndex` le o live em `before` (linha ~265) e
+  so depois chama `resumeCarryForward(home, before, …)` (linha ~279), que usa `before` como
+  o conjunto `known` de "quem ja tem linha no live".
+- **Observado (por leitura, com a consequencia confirmada nos leitores):** se uma rotacao
+  anterior morreu entre o rename e o carry-forward, a linha **nao-terminal** de um run fica
+  so no archive. Se esse run terminar e appendar seu `done` no live **depois** de `before`
+  ter sido lido e **antes** do resume appendar, o snapshot antigo entra no arquivo *depois*
+  do novo, e `ConsolidateIndex` (ultima-linha-vence) volta a ler `running`.
+- **Consequencia, e por que ela e pequena:** o erro e **conservador em todos os caminhos**.
+  O id do run passa a ser retido por `retention * 8` em vez de `retention` — retido a mais,
+  **nunca solto cedo**, logo nao existe caminho daqui para colisao com run vivo. E
+  `Resolver.List`/`Get` corrigem a linha pelo overlay do record local, que e estritamente
+  mais fresco (`local.Freshness().After(rec.Freshness())`), entao a listagem mostra `done`.
+  A linha errada so aparece para quem le o indice cru, ou quando o repositorio do run foi
+  apagado. Status so anda em direcao ao terminal, entao a direcao inversa (terminal no
+  archive, nao-terminal mais novo no live) nao e producivel.
+- **Status:** **BACKLOG.** Precondicao composta (rotacao interrompida **mais** a janela entre
+  duas linhas de `rotateIndex`), efeito fail-safe, e esta e a segunda leva de conserto — a
+  politica de duas tentativas manda anotar em vez de tentar uma terceira.
+- **Conserto natural quando sair do backlog:** reler o live dentro de `resumeCarryForward`
+  em vez de receber `before`, ou comparar `Freshness()` antes de re-appendar (so devolve o
+  snapshot do archive se ele for mais novo que a linha que o live tem). A segunda e mais
+  barata e nao muda o caso normal, em que o resume nao appenda nada.
+
 ---
 
 # Lacunas declaradas

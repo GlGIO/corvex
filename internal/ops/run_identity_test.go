@@ -15,10 +15,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/run"
 )
@@ -76,9 +76,6 @@ func TestNewRunnerMintsOneIdentityAndHandsItDown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRunner: %v", err)
 	}
-	if r.IdentityErr != nil {
-		t.Fatalf("IdentityErr: %v", r.IdentityErr)
-	}
 	if r.RunID != "run_8f21" {
 		t.Errorf("RunID = %q, want run_8f21 (the injected generator)", r.RunID)
 	}
@@ -92,8 +89,14 @@ func TestNewRunnerMintsOneIdentityAndHandsItDown(t *testing.T) {
 	// The same id the record carries is the id the ledger will stamp: one mint,
 	// handed down by value, no second source.
 	id := r.Identity()
-	if id.RunID != r.RunID || id.Repo != r.Repo {
-		t.Errorf("Identity() = %+v, want run %s repo %s", id, r.RunID, r.Repo)
+	if id.RunID != r.RunID {
+		t.Errorf("Identity() = %+v, want run %s", id, r.RunID)
+	}
+	// The repo path is known here and deliberately withheld from the ledger,
+	// which is the one artifact that reaches the user's commits. The Runner keeps
+	// it (the record and the index need it); the ledger identity must not.
+	if strings.Contains(fmt.Sprintf("%+v", id), repo) {
+		t.Errorf("Identity() carries the absolute repo path %q: %+v", repo, id)
 	}
 
 	rec, err := run.ReadRecord(repo, "run_8f21")
@@ -344,9 +347,16 @@ func TestRejectedInvocationRegistersNothing(t *testing.T) {
 	}
 }
 
-// Identity is not allowed to abort a run: an unwritable home degrades to a run
-// with no id, reported through IdentityErr, and the work still happens.
-func TestUnregisterableIdentityDoesNotStopTheRun(t *testing.T) {
+// Identity is not optional, and this is the decision F1 got wrong.
+//
+// The old rule was "report it, never abort": an unwritable home degraded to a run
+// with no id and lines with no run_id, on the argument that a full disk must not
+// refuse work the user is about to pay for. The audit showed what that rule buys
+// under stress — 13 of 20 real runs silently reverting to the pre-F1 ledger shape
+// — and the trade is the wrong way round. A run nobody can attribute destroys the
+// premise of the phase precisely when someone is trying to work out what happened;
+// a refused run costs one clear error message.
+func TestUnregisterableIdentityRefusesToStartTheRun(t *testing.T) {
 	repo := t.TempDir()
 	req := identityRequest(t, repo, "alpha")
 	// A file where the home directory belongs: MkdirAll cannot win.
@@ -357,28 +367,86 @@ func TestUnregisterableIdentityDoesNotStopTheRun(t *testing.T) {
 	req.Registry.Home = blocked
 
 	r, err := NewRunner(req)
-	if err != nil {
-		t.Fatalf("NewRunner must not fail on an unregisterable identity: %v", err)
+	if err == nil {
+		t.Fatalf("NewRunner started a run whose identity could not be registered (run id %q): "+
+			"every ledger line it writes is unattributable", r.RunID)
 	}
-	if r.IdentityErr == nil {
-		t.Fatal("IdentityErr is nil though the home is unwritable")
+	if !strings.Contains(err.Error(), "identity") {
+		t.Errorf("error = %v, want it to name run identity so the user can act on it", err)
 	}
-	if r.RunID != "" {
-		t.Errorf("RunID = %q, want empty when registration failed", r.RunID)
+	if r != nil {
+		t.Errorf("NewRunner returned a runner alongside the error: %+v", r)
 	}
-	if r.Identity() != (activity.Identity{}) {
-		t.Errorf("Identity() = %+v, want the zero identity", r.Identity())
+	assertNoLedger(t, repo, "alpha")
+}
+
+// TestExhaustedIDSpaceRefusesTheRunAndWritesNoLedgerLine is the ops half of the
+// id-space defect: the failure the run package raises must reach the user, not be
+// folded into a field nobody has to read.
+func TestExhaustedIDSpaceRefusesTheRunAndWritesNoLedgerLine(t *testing.T) {
+	repo, home := t.TempDir(), t.TempDir()
+	gen := opsHexCycle(1) // a 16-id space, so exhaustion is affordable
+
+	const space = 16
+	for i := 0; i < space; i++ {
+		if _, err := (run.Registry{Repo: repo, Home: home, NewID: gen}).Start(
+			run.StartOptions{Project: "alpha"}); err != nil {
+			t.Fatalf("filling the id space, run %d: %v", i+1, err)
+		}
 	}
 
-	ran := false
-	if err := r.Execute(context.Background(), func(context.Context) error {
-		ran = true
-		return nil
-	}); err != nil {
-		t.Fatalf("Execute: %v", err)
+	req := identityRequest(t, repo, "alpha")
+	req.Registry.Home = home
+	req.Registry.NewID = gen
+
+	r, err := NewRunner(req)
+	if err == nil {
+		t.Fatalf("NewRunner started run %q with the id space full", r.RunID)
 	}
-	if !ran {
-		t.Error("the body did not run: a failed registration must not cancel the work")
+	if !strings.Contains(err.Error(), "exhausted") {
+		t.Errorf("error = %v, want it to say the id space is exhausted", err)
+	}
+	assertNoLedger(t, repo, "alpha")
+}
+
+// assertNoLedger checks that no ledger exists for a run that never started. A
+// ledger line with no run_id is the exact regression being guarded against, and
+// the only way to write one is through an orchestrator NewRunner never returned.
+func assertNoLedger(t *testing.T, repo, project string) {
+	t.Helper()
+	path := filepath.Join(repo, ".corvex", "tasks", project, "activity.jsonl")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(line), &fields); err != nil {
+			continue
+		}
+		if id, ok := fields["run_id"].(string); !ok || id == "" {
+			t.Errorf("ledger line with no run_id after a refused run: %s", line)
+		}
+	}
+}
+
+// opsHexCycle mirrors the run package's tiny-space generator: every id of a
+// `digits`-wide hex space, in order, wrapping.
+func opsHexCycle(digits int) run.IDFunc {
+	n, size := 0, 1
+	for i := 0; i < digits; i++ {
+		size *= 16
+	}
+	return func() (string, error) {
+		id := fmt.Sprintf("%s%0*x", run.IDPrefix, digits, n%size)
+		n++
+		return id, nil
 	}
 }
 

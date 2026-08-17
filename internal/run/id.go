@@ -3,6 +3,7 @@ package run
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -28,6 +29,16 @@ const (
 	// source) and deserves an error rather than an infinite loop.
 	idAttempts = 8
 )
+
+// ErrIDSpaceExhausted is returned when no free id could be drawn.
+//
+// It is a sentinel because callers act on it: this is the one identity failure a
+// user can do something about (see RetentionEnv), and it must be distinguishable
+// from a broken generator or an unreadable index. What no caller may do is
+// continue without an id — a ledger line nobody can attribute is worse than a run
+// that refused to start, and it appears exactly when someone is trying to work
+// out what went wrong.
+var ErrIDSpaceExhausted = errors.New("run id: no free id available")
 
 // IDFunc produces a candidate run id. It is a function, not a call to
 // crypto/rand inside the rule, so tests can pin the id: a raw clock or a raw
@@ -89,5 +100,6 @@ func uniqueID(gen IDFunc, taken func(string) bool) (string, error) {
 		}
 		last = id
 	}
-	return "", fmt.Errorf("run id: %d attempts exhausted, last candidate %q already taken", idAttempts, last)
+	return "", fmt.Errorf("%w: %d attempts exhausted, last candidate %q already taken",
+		ErrIDSpaceExhausted, idAttempts, last)
 }

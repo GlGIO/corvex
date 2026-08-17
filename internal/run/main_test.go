@@ -2,6 +2,7 @@ package run_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +33,8 @@ const (
 	helperRepo  = "CORVEX_RUN_TEST_HELPER_REPO"
 	helperCount = "CORVEX_RUN_TEST_HELPER_COUNT"
 	helperBase  = "CORVEX_RUN_TEST_HELPER_BASE"
+	helperUntil = "CORVEX_RUN_TEST_HELPER_UNTIL"
+	helperStop  = "CORVEX_RUN_TEST_HELPER_STOP"
 )
 
 func TestMain(m *testing.M) {
@@ -160,6 +163,16 @@ func helperMain(mode string) int {
 			fmt.Fprintln(os.Stderr, "helper append:", err)
 			return 2
 		}
+	case "rotationload": // append live and long-dead lines while the parent claims
+		if err := helperRotationLoad(); err != nil {
+			fmt.Fprintln(os.Stderr, "helper rotationload:", err)
+			return 2
+		}
+	case "rotator": // start runs with a tiny threshold, so rotation runs constantly
+		if err := helperRotator(); err != nil {
+			fmt.Fprintln(os.Stderr, "helper rotator:", err)
+			return 2
+		}
 	default:
 		fmt.Fprintln(os.Stderr, "unknown helper mode:", mode)
 		return 2
@@ -208,6 +221,118 @@ func helperAppend() error {
 		}
 	}
 	return nil
+}
+
+// helperRotationLoad is the concurrent write load for the rotation-window test.
+//
+// Two populations, because rotation needs both. The live ones (`running`, so
+// addressable at any age) must survive every rotation and their ids must never be
+// handed out. The dead ones finished a month ago, outside any retention window:
+// they are the bulk that pushes the index over the size threshold and the reason
+// rotation has anything to gain — an index of nothing but live runs is
+// deliberately left alone, so a load made only of live lines would never rotate
+// and would prove nothing. Each dead run is announced twice, start and end, which
+// is what a real run does and what consolidation collapses.
+//
+// It writes until helperUntil, so the load lasts as long as the experiment does
+// instead of finishing before the first claim.
+func helperRotationLoad() error {
+	home, err := run.Home()
+	if err != nil {
+		return err
+	}
+	base, live, deadline, err := helperLoadParams()
+	if err != nil {
+		return err
+	}
+	repo := os.Getenv(helperRepo)
+	for loadRunning(deadline) {
+		now := time.Now().UTC()
+		long := now.Add(-30 * 24 * time.Hour)
+		for i := 0; i < live && loadRunning(deadline); i++ {
+			rec := run.Record{RunID: fmt.Sprintf("%s%04x", run.IDPrefix, base+i), Repo: repo,
+				Status: run.StatusRunning, PID: os.Getpid(), StartedAt: now, UpdatedAt: now}
+			if err := run.AppendIndex(home, rec, now); err != nil {
+				return err
+			}
+			// Throttled on purpose. Unthrottled, two appenders outrun the rotator
+			// and the index grows without bound, which makes every claim slower than
+			// the last and turns the experiment into a timeout instead of a result.
+			time.Sleep(2 * time.Millisecond)
+			for d := 0; d < 4; d++ {
+				dead := run.Record{
+					RunID:  fmt.Sprintf("%s%04x", run.IDPrefix, 0x8000+((base+i)&0x0fff)*4+d),
+					Repo:   repo,
+					Status: run.StatusRunning, PID: os.Getpid(), StartedAt: long, UpdatedAt: long}
+				if err := run.AppendIndex(home, dead, long); err != nil {
+					return err
+				}
+				dead.Status = run.StatusDone
+				if err := run.AppendIndex(home, dead, long); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// helperRotator is the process that keeps the window open: it starts runs with a
+// small size threshold, so every one of them rotates the index. Separating it from
+// the claimant is what makes the experiment sharp — the claimant then does nothing
+// but read, at full speed, while somebody else renames the file underneath it.
+//
+// An exhausted id space is an expected answer here (the claimant's range is
+// deliberately full) and is not a failure of the load generator.
+func helperRotator() error {
+	_, _, deadline, err := helperLoadParams()
+	if err != nil {
+		return err
+	}
+	reg := run.Registry{Repo: os.Getenv(helperRepo), IndexMaxBytes: 32 << 10,
+		Retention: time.Hour}
+	for loadRunning(deadline) {
+		if _, err := reg.Start(run.StartOptions{Project: "rotator"}); err != nil &&
+			!errors.Is(err, run.ErrIDSpaceExhausted) {
+			return err
+		}
+	}
+	return nil
+}
+
+func helperLoadParams() (base, count int, deadline time.Time, err error) {
+	if v := os.Getenv(helperBase); v != "" {
+		if _, err = fmt.Sscanf(v, "%d", &base); err != nil {
+			return 0, 0, deadline, fmt.Errorf("base: %w", err)
+		}
+	}
+	if v := os.Getenv(helperCount); v != "" {
+		if _, err = fmt.Sscanf(v, "%d", &count); err != nil {
+			return 0, 0, deadline, fmt.Errorf("count: %w", err)
+		}
+	}
+	var unix int64
+	if _, err = fmt.Sscanf(os.Getenv(helperUntil), "%d", &unix); err != nil {
+		return 0, 0, deadline, fmt.Errorf("until: %w", err)
+	}
+	return base, count, time.Unix(0, unix), nil
+}
+
+// loadRunning is the load generators' stop condition: the parent creates the file
+// named by helperStop when it has collected enough evidence, and the deadline is
+// the backstop for a parent that died. Ending on a file rather than a signal keeps
+// the helper's exit code clean, so a real failure is still distinguishable from
+// "the experiment is over" — and it means no line is ever cut off mid-write.
+func loadRunning(deadline time.Time) bool {
+	if !time.Now().Before(deadline) {
+		return false
+	}
+	if stop := os.Getenv(helperStop); stop != "" {
+		if _, err := os.Stat(stop); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func writeJSON(path string, v any) error {

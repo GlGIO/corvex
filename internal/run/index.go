@@ -93,13 +93,99 @@ func AppendIndex(home string, rec Record, at time.Time) error {
 	return nil
 }
 
-// ReadIndex returns every parseable line of the index, in file order. A missing
-// index is not an error: it is a machine that has never started a run.
+// ReadIndex returns every parseable line of the live index, in file order. A
+// missing index is not an error: it is a machine that has never started a run.
+//
+// Rotated lines (`runs.jsonl.1`) are not included. This is the LISTING view: a row
+// that has left the live file is a row the cross-repository listing has stopped
+// showing, which is the whole point of rotation. The id oracle needs the opposite
+// answer and reads both files — see claimIndexEntries.
 func ReadIndex(home string) ([]IndexEntry, error) {
 	if home == "" {
 		return nil, fmt.Errorf("run index: empty home path")
 	}
-	path := IndexPath(home)
+	return readIndexFile(IndexPath(home))
+}
+
+// claimIndexEntries is what the id oracle reads: the live index AND the archive,
+// always, not only while a rotation is in flight.
+//
+// Why both. Rotation renames the live file and appends the still-addressable
+// snapshots back, so between those steps `runs.jsonl` is absent or partial. A
+// claim landing in that gap saw an empty oracle and minted the id of a run that
+// was alive in another repository — measured at 207 ms per rotation on a 6 MB
+// index, 39 of 40 claims inside the gap, two of them taking the id of a live run.
+// The record claim cannot cover it: O_EXCL is per repository, and the collapse
+// this prevents is cross-repository by definition.
+//
+// Reading both files closes the gap BY CONSTRUCTION rather than by narrowing it.
+// It does not widen what is addressable, because presence in a file was never the
+// predicate: `addressable` is, and it is applied to the union exactly as it was
+// applied to the live file. An id that rotation dropped is dropped because
+// retention released it, and it stays released whether or not the archive still
+// mentions it.
+//
+// The reads are ordered live-then-archive, and that order is load-bearing. If the
+// archive were read first, a rotation could slip between the two reads and the
+// second read would return the fresh, still-empty live file — losing exactly the
+// ids the archive read was too early to have seen. Live first inverts it: either
+// the live read got a complete file (in which case it already held everything
+// addressable) or a rotation was in flight, and then the archive read finds the
+// pre-rotation content the rename put there. Entries are returned archive-first so
+// last-line-wins consolidation still sees the newest snapshot of each run last.
+//
+// The cost is one extra file read per run start, once, at the point where a run is
+// already writing two files.
+func claimIndexEntries(home string) ([]IndexEntry, error) {
+	live, err := ReadIndex(home)
+	if err != nil {
+		return nil, err
+	}
+	archived, err := readArchivedIndex(home)
+	if err != nil {
+		return nil, err
+	}
+	return append(archived, live...), nil
+}
+
+// readArchivedIndex reads `runs.jsonl.1`, tolerating its absence and tolerating a
+// path that is not a regular file.
+//
+// That second tolerance is not laziness. Something other than a file sitting at
+// the archive path (a directory, a mount point) means no rotation ever succeeded
+// there — the rename would have failed and been reported through
+// Handle.MaintenanceErr — so nothing was ever moved out of the live index and the
+// live index is complete on its own. Refusing to start any run on the machine
+// because of it would be an outage invented to protect against a state that cannot
+// exist. A regular file that cannot be READ is a different matter and is
+// propagated: that one could be a real archive holding real ids.
+func readArchivedIndex(home string) ([]IndexEntry, error) {
+	if home == "" {
+		return nil, fmt.Errorf("run index: empty home path")
+	}
+	path := IndexArchivePath(home)
+	st, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("run index archive %s: %w", path, err)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, nil
+	}
+	entries, err := readIndexFile(path)
+	if err != nil {
+		// Named as the archive, not just by path: the operator has to know that the
+		// file blocking every run on this machine is rotation's own leftover and is
+		// safe to move aside, which "run index read …/runs.jsonl.1" does not say.
+		return nil, fmt.Errorf("run index archive unreadable: %w", err)
+	}
+	return entries, nil
+}
+
+// readIndexFile parses one index file, live or archived.
+func readIndexFile(path string) ([]IndexEntry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -6,7 +6,6 @@ $ corvex inspect alpha --task S01 --json
     "ts": "<TS>",
     "type": "task_start",
     "run_id": "<RUN_ID>",
-    "repo": "<TMP>",
     "task_id": "S01",
     "message": "First Task"
   },
@@ -14,14 +13,12 @@ $ corvex inspect alpha --task S01 --json
     "ts": "<TS>",
     "type": "review_start",
     "run_id": "<RUN_ID>",
-    "repo": "<TMP>",
     "task_id": "S01"
   },
   {
     "ts": "<TS>",
     "type": "review_result",
     "run_id": "<RUN_ID>",
-    "repo": "<TMP>",
     "task_id": "S01",
     "message": "PASS"
   },
@@ -29,14 +26,12 @@ $ corvex inspect alpha --task S01 --json
     "ts": "<TS>",
     "type": "checkpoint",
     "run_id": "<RUN_ID>",
-    "repo": "<TMP>",
     "task_id": "S01"
   },
   {
     "ts": "<TS>",
     "type": "task_complete",
     "run_id": "<RUN_ID>",
-    "repo": "<TMP>",
     "task_id": "S01",
     "duration_ms": 2000,
     "cost_usd": 0.04,
