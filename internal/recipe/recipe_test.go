@@ -113,7 +113,7 @@ func TestValidate_Errors(t *testing.T) {
 		{"cycle", "name: x\nstages:\n  - id: S01\n    depends_on: [S02]\n  - id: S02\n    depends_on: [S01]\n", "cycle"},
 		{"command without command", "name: x\nstages:\n  - id: S01\n    kind: command\n", "must set a non-empty"},
 		{"command on non-command", "name: x\nstages:\n  - id: S01\n    command: echo hi\n", "not a command stage"},
-		{"loop on non-command", "name: x\nstages:\n  - id: S01\n    loop:\n      max: 2\n", "only command stages support loops"},
+		{"loop on non-command", "name: x\nstages:\n  - id: S01\n    loop:\n      max: 2\n", "only computational stages support loops"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

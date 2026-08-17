@@ -1,0 +1,10 @@
+$ corvex gate list
+
+--- stdout ---
+No gates are waiting.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -76,6 +76,27 @@ func UpdateTaskStatus(path string, taskID string, status types.TaskStatus) error
 	return WriteTasksFile(path, tasks, dag)
 }
 
+// ReplaceTask rewrites one task in a tasks.md wholesale.
+//
+// UpdateTaskStatus re-reads the file and only touches the status, which is the
+// right thing for the status writes on the hot path. It is the wrong thing for a
+// task that discovered something while it ran: a `produces: items` step holds
+// its work list in memory, and re-reading the file would write back the version
+// that does not have it.
+func ReplaceTask(path string, updated types.Task) error {
+	tasks, dag, err := ParseTasksFile(path)
+	if err != nil {
+		return err
+	}
+	for i := range tasks {
+		if tasks[i].ID == updated.ID {
+			tasks[i] = updated
+			return WriteTasksFile(path, tasks, dag)
+		}
+	}
+	return fmt.Errorf("task %s not found in %s", updated.ID, path)
+}
+
 func writeFrontmatter(b *strings.Builder, dag types.DAGSpec) error {
 	if dag.GeneratedBy == "" && dag.GeneratedAt == "" && len(dag.Dependencies) == 0 {
 		return nil
@@ -102,7 +123,7 @@ func writeTask(b *strings.Builder, task types.Task) {
 	emoji := statusEmoji[task.Status]
 	fmt.Fprintf(b, "## %s — %s %s %s\n", task.ID, task.Title, emoji, task.Status)
 
-	if task.Type != "" || len(task.DependsOn) > 0 || task.Kind != "" || task.Command != "" {
+	if task.Type != "" || len(task.DependsOn) > 0 || task.Kind != "" || task.Command != "" || hasStepFields(task) {
 		b.WriteString("\n```yaml\n")
 		if task.Type != "" {
 			fmt.Fprintf(b, "type: %s\n", task.Type)
@@ -122,6 +143,7 @@ func writeTask(b *strings.Builder, task types.Task) {
 		if len(task.DependsOn) > 0 {
 			fmt.Fprintf(b, "depends_on: [%s]\n", strings.Join(task.DependsOn, ", "))
 		}
+		writeStepFields(b, task)
 		b.WriteString("```\n")
 	}
 

@@ -91,6 +91,38 @@ type Task struct {
 	// LoopMax caps loop iterations for a command stage. 0 or 1 → run once (no
 	// loop).
 	LoopMax int
+
+	// Gates are the decisions attached to this step (F2). Empty means the
+	// step's own outcome is the only decision.
+	Gates []Gate
+	// Evidence is what this step hands whoever stands at its gates. Declared
+	// items are listed here; producers add more at run time.
+	Evidence []Evidence
+	// Fanout, when set, expands this node into N instances of a template
+	// discovered at run time.
+	Fanout *Fanout
+	// Produces names what this step's output feeds ("items" for a fanout
+	// source). Empty for a step nothing reads from.
+	Produces string
+	// FixedBy is the step that is expected to make a `repro` command stop
+	// reproducing. Only meaningful for KindRepro.
+	FixedBy string
+	// ExpectFail inverts the exit-code verdict: the command must fail for the
+	// step to pass. Set by the compiler on the "before" half of a repro, which
+	// is the only node in the system whose success is a non-zero exit.
+	ExpectFail bool
+	// Item is the value this node was expanded from, when it came out of a
+	// fanout. Empty for a declared node.
+	Item string
+	// Items is what a `produces: items` step discovered. Persisted with the
+	// task so a resumed run expands the same set instead of rediscovering it —
+	// rediscovery would silently pick up whatever changed in between.
+	Items []string
+	// Expanded marks a fanout node whose template has already been instantiated.
+	// It is what makes expansion idempotent across a resume.
+	Expanded bool
+	// FanoutOf is the id of the fanout node this task was expanded from.
+	FanoutOf string
 }
 
 type TaskFiles struct {

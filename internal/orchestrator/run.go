@@ -66,7 +66,8 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 		return err
 	}
 
-	s := newSchedule(tasks, completed, d, tasksPath, anchorPath, &anchorState)
+	s := newSchedule(tasks, completed, d, tasksPath, anchorPath, &anchorState, o.runIdentity(project))
+	s.generatedBy = generatedBy(tasksPath)
 	if err := o.walkDAG(ctx, s); err != nil {
 		return err
 	}

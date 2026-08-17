@@ -1,0 +1,10 @@
+$ corvex gate approve <RUN_ID> --step S01
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+gate <RUN_ID>/S01: required reading not acknowledged: Migration (run `corvex gate show <RUN_ID> --step S01`, then repeat --ack for each)

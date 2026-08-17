@@ -384,8 +384,25 @@ func resetFlagSet(fs *pflag.FlagSet) {
 		}
 		// Slice-typed flags render their default as "[a,b]" and Set() appends
 		// rather than replaces, so re-setting the default would corrupt them.
-		// cmd/ has none today; skip defensively instead of silently appending.
+		// pflag exposes Replace for exactly this; use it when the value supports
+		// it, and only skip when it does not.
+		//
+		// This used to skip every slice flag with the note that cmd/ had none.
+		// F2's `gate approve --ack` is the first, and skipping leaked its value
+		// into the next in-process invocation — caught by -shuffle=on, which is
+		// the only reason the leak was visible at all. A reset that quietly
+		// misses a flag is a harness that makes tests pass by accident.
 		if strings.HasPrefix(f.DefValue, "[") {
+			sv, ok := f.Value.(pflag.SliceValue)
+			if !ok {
+				return
+			}
+			def := strings.Trim(f.DefValue, "[]")
+			if def == "" {
+				_ = sv.Replace(nil)
+				return
+			}
+			_ = sv.Replace(strings.Split(def, ","))
 			return
 		}
 		_ = f.Value.Set(f.DefValue)

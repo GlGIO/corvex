@@ -236,6 +236,19 @@ func writeFileAtomic(path string, data []byte) error {
 // local state into the user's history. `.corvex/.gitignore` is already the
 // project's convention for this (doctor checks it for mcp.json).
 func ensureRecordsIgnored(dir string) error {
+	return EnsureScratchIgnored(dir)
+}
+
+// EnsureScratchIgnored is ensureRecordsIgnored for anything else that writes
+// per-machine scratch under `.corvex/runs/`.
+//
+// Exported for internal/gate, which stores gate state in a subdirectory of it.
+// The `*` pattern covers subdirectories, so a gate file inherits the property
+// without a second .gitignore — but the gate store calls this anyway rather than
+// depending on a record having been written first, because "somebody else
+// already created the guard" is not something a writer of sensitive scratch
+// should assume.
+func EnsureScratchIgnored(dir string) error {
 	path := filepath.Join(dir, ".gitignore")
 	if _, err := os.Stat(path); err == nil {
 		return nil

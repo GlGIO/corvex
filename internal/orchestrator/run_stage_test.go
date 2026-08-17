@@ -87,7 +87,15 @@ func TestRun_CommandStage_FailsAndSkipsDependents(t *testing.T) {
 	}
 }
 
-func TestRun_HumanGate_StopsWithoutApproval(t *testing.T) {
+// TestRun_HumanGate_WithoutIdentityRefuses pins the honest degenerate case.
+//
+// Before F2 a human gate aborted the run and told you to re-run it with
+// --approve-gates; the gate now holds instead. Holding needs a gate file, and a
+// gate file needs the run's identity (repo + run id) to address it. A run
+// assembled without one — which is what this test builds, and what no real
+// invocation produces since ops.NewRunner mints identity as a precondition —
+// must refuse rather than block on a file nobody could ever answer.
+func TestRun_HumanGate_WithoutIdentityRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
 	project := "test-gate-stop"
@@ -107,18 +115,14 @@ func TestRun_HumanGate_StopsWithoutApproval(t *testing.T) {
 	orch := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events})
 	err := orch.Run(context.Background(), project)
 	close(events)
-	if err == nil || !strings.Contains(err.Error(), "human-gate") {
-		t.Fatalf("expected a human-gate stop error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no identity on disk") {
+		t.Fatalf("expected a refusal naming the missing identity, got %v", err)
 	}
 
 	tasks, _, _ := task.ParseTasksFile(filepath.Join(dir, ".corvex", "tasks", project, "tasks.md"))
 	st := map[string]types.TaskStatus{}
 	for _, tk := range tasks {
 		st[tk.ID] = tk.Status
-	}
-	// Gate stays PENDING (so a re-run with --approve-gates proceeds); S02 never ran.
-	if st["S01"] != types.StatusPending {
-		t.Errorf("gate S01 = %s, want PENDING (left for re-run)", st["S01"])
 	}
 	if st["S02"] != types.StatusPending {
 		t.Errorf("S02 = %s, want PENDING (gate not passed)", st["S02"])

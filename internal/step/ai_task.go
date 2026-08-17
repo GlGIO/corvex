@@ -7,6 +7,7 @@ import (
 	charmbraceletlog "github.com/charmbracelet/log"
 
 	"github.com/giovannialves/corvex/internal/event"
+	"github.com/giovannialves/corvex/internal/gate"
 	"github.com/giovannialves/corvex/internal/hooks"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -23,11 +24,37 @@ type aiTask struct {
 	maxRetries     int
 }
 
+// runAITaskGated drives the worker/review retry loop for a code task and, when
+// it passes, hands the result to the after-gates before the pass is recorded.
+//
+// The order matters: an after-gate that ran once the task was already PASSED and
+// checkpointed would have to flip a committed state back, which is a worse thing
+// to own than an extra branch here.
+func (e *Executor) runAITaskGated(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) error {
+	if err := e.runAITask(ctx, r, t, acc); err != nil {
+		return err
+	}
+	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
+		e.markGateFailure(r, t)
+		return err
+	}
+	return nil
+}
+
 // runAITask drives the worker/review retry loop for a normal (AI) task.
-func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task) error {
+func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) error {
 	maxRetries := e.cfg.Execution.MaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 2
+	}
+	// A policy gate's max_attempts is the recipe capping this step, and the
+	// recipe is more specific than the global config — this is how "fix loop,
+	// cap 2" stops being a number in a config file shared by every step.
+	if cap := policyFor(t).maxAttempts; cap > 0 {
+		maxRetries = cap - 1
+		if maxRetries < 0 {
+			maxRetries = 0
+		}
 	}
 
 	st := &aiTask{
@@ -45,7 +72,7 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		passed, err := e.attempt(ctx, r, t, st, attempt)
+		passed, err := e.attempt(ctx, r, t, st, attempt, acc)
 		if err != nil {
 			return err
 		}
@@ -64,7 +91,7 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task) error {
 // task reached PASSED, returns an error when the caller must stop (cost
 // ceiling, human escalation, cancellation, or retries exhausted), and
 // (false, nil) when the loop should retry with the updated diagnosis.
-func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTask, attempt int) (bool, error) {
+func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTask, attempt int, acc *evidenceSet) (bool, error) {
 	if attempt > 0 {
 		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Attempt: attempt, Message: st.diagnosis})
 		if _, err := e.recovery.Check(); err != nil {
@@ -131,8 +158,14 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		TaskID:  t.ID,
 		Message: string(reviewResult.Verdict),
 	})
+	// The reviewer's verdict is evidence whether it passed or not: a gate
+	// downstream of a code step is exactly where somebody needs to read why the
+	// judge said yes.
+	acc.add(gate.FromVerdict("Review de "+stageEvidenceLabel(t), string(reviewResult.Verdict),
+		reviewResult.Category, reviewResult.Summary, reviewResult.Verdict == VerdictPass))
 
 	if reviewResult.Verdict == VerdictPass {
+		e.addDiffEvidence(ctx, t, acc)
 		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, attemptCost)
 	}
 
@@ -179,7 +212,15 @@ func (e *Executor) rejectAttempt(
 // fatal error when either ceiling is breached.
 func (e *Executor) charge(r *Run, t *types.Task, st *aiTask, cost float64) error {
 	taskTotal, runTotal := e.book.AddCost(&st.costUSD, r.TotalCostUSD, cost)
-	if ceiling := e.cfg.Execution.MaxCostPerTaskUSD; ceiling > 0 && taskTotal > ceiling {
+	// A policy gate's max_cost_usd replaces the global per-task default rather
+	// than stacking with it: the recipe knows which step is expensive, the
+	// config file only knows an average, and two ceilings where the looser one
+	// is declared locally would make the local declaration a lie.
+	if ceiling := policyFor(t).maxCostUSD; ceiling > 0 {
+		if taskTotal > ceiling {
+			return Fatal(fmt.Errorf("task %s cost $%.2f exceeded its policy gate ceiling $%.2f", t.ID, taskTotal, ceiling))
+		}
+	} else if ceiling := e.cfg.Execution.MaxCostPerTaskUSD; ceiling > 0 && taskTotal > ceiling {
 		return Fatal(fmt.Errorf("task %s cost $%.2f exceeded per-task ceiling $%.2f (configure execution.max_cost_per_task_usd to raise)", t.ID, taskTotal, ceiling))
 	}
 	if ceiling := e.cfg.Execution.MaxCostUSD; ceiling > 0 && runTotal > ceiling {

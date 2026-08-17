@@ -1,0 +1,16 @@
+$ corvex gate list
+
+--- stdout ---
+1 gate(s) waiting:
+
+  <RUN_ID>  human: Aprovacao de STG
+      step S01  ·  project alpha  ·  recipe gate-demo  ·  waiting <DUR>
+      required reading: Migration
+      → corvex gate show <RUN_ID> --step S01
+
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

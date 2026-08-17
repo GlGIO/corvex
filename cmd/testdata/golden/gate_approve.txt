@@ -1,0 +1,10 @@
+$ corvex gate approve <RUN_ID> --step S01 --ack Migration
+
+--- stdout ---
+Approved <RUN_ID> --step S01 — human: Aprovacao de STG
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

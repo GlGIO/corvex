@@ -78,6 +78,10 @@ type RunRequest struct {
 	// HeartbeatInterval overrides the heartbeat period; 0 uses the package
 	// default (10s).
 	HeartbeatInterval time.Duration
+	// GatePoll overrides how often a run parked on a human gate re-reads its
+	// gate file; 0 uses step.DefaultGatePoll. Tests set it so a cross-process
+	// approval does not cost two seconds of wall clock.
+	GatePoll time.Duration
 }
 
 // NewRunner assembles one run: provider, sandbox, scheduler options — and the
@@ -120,6 +124,7 @@ func NewRunner(req RunRequest) (*Runner, error) {
 		handle:   handle,
 		RunID:    handle.RunID(),
 		Repo:     handle.Record().Repo,
+		Recipe:   handle.Record().Recipe,
 	}
 
 	r.Orchestrator = orchestrator.New(orchestrator.Options{
@@ -136,6 +141,12 @@ func NewRunner(req RunRequest) (*Runner, error) {
 		Force:        req.Force,
 		ApproveGates: req.ApproveGates,
 		Identity:     r.Identity(),
+		Repo:         r.Repo,
+		// The run reports `parked` while a human gate holds it. This is a
+		// method value on the handle rather than the handle itself: the step
+		// executor gets the one verb it needs and no access to identity.
+		SetRunStatus: handle.SetStatus,
+		GatePoll:     req.GatePoll,
 	})
 	return r, nil
 }

@@ -645,12 +645,30 @@ desliga assertion no caminho normal.
   corrige a linha pelo overlay do record local, que é mais fresco. Requer rotação
   interrompida **mais** a janela; anotado aqui em vez de consertado numa terceira leva.
 
-### F2 — Taxonomia, gates e evidência
+### F2 — Taxonomia, gates e evidência — ✅ CONCLUÍDA (aguardando gate humano)
 - `kind: code|tool|test|repro` na recipe; 4 naturezas de gate; contrato de evidência
   (`required_reading`); **fan-out dinâmico com ondas**.
-- `human-gate` implementado de verdade (hoje é `kind` reservado).
+- `human-gate` implementado de verdade (era `kind` reservado que **matava** o run).
 - **Aceite:** um recipe expressa a forma da autopilot; um gate humano bloqueia o processo
   e é liberado por `corvex gate approve`.
+
+**Desenho e registro de fecho em `f2-design.md`** (§§1–16 desenho aprovado, §17 como foi
+construído). Aceite provado com **dois processos reais** em `e2e/gate_test.go`: o run parka,
+um segundo processo o vê em `corvex gate list`, `gate approve` sem `--ack` é recusado, e com
+`--ack` o run destrava e sai exit 0.
+
+Duas decisões que precisaram de aprovação e foram dadas: implementar
+`gate list|show|approve|reject` na F2 em vez de antecipar a F3 (a decisão em aberto #3 já
+fixara `gate` como substantivo), e **abrir o `headingRe`** — contrariando a política de
+congelar bug, porque fan-out precisa mintar id e mintar sobre um parser que come em silêncio
+o que não entende é construir sobre a falha.
+
+Invariantes no fecho: rede verde com `-race` e `-shuffle=on`; **85,1%** no coverpkg (piso 60,
+F1 fechou 86,1%); 4a/4b/6/7/10 em zero; 8 em 150 e 9 em 370; 1 golden regravado
+(`harness_root_help`, +1 linha) e 8 novos; os 14 bugs congelados intactos.
+
+Dívidas registradas na §16 e no fim da §17 — nenhuma bloqueante. `StatusParked` e
+`Identity.Recipe`, as duas dívidas que a F1 deixou para esta fase, estão fechadas.
 
 ### F3 — Redesenho da superfície de CLI (só desenho — entrega documento)
 Passo próprio, sem código. Hoje os comandos não têm gramática: verbo e substantivo

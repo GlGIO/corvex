@@ -1,0 +1,10 @@
+$ corvex gate reject <RUN_ID> --step S01 --reason migration is wrong
+
+--- stdout ---
+Rejected <RUN_ID> --step S01 — human: Aprovacao de STG
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

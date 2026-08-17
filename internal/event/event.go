@@ -30,6 +30,15 @@ const (
 	TaskTimeout    Type = "task_timeout"
 	HumanGate      Type = "human_gate"
 	TaskComplete   Type = "task_complete"
+
+	// Gate lifecycle (F2). These reach activity.jsonl, which is committed, so
+	// their Message carries only the gate's nature and the label the user wrote
+	// in their own recipe — never evidence content, which lives in the
+	// gitignored gate file under `.corvex/runs/gates/`.
+	GatePending Type = "gate_pending"
+	GateDecided Type = "gate_decided"
+	GateFailed  Type = "gate_failed"
+
 	ReviewStart    Type = "review_start"
 	ReviewResult   Type = "review_result"
 	Checkpoint     Type = "checkpoint"

@@ -1,0 +1,10 @@
+$ corvex gate show <RUN_ID>
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+run <RUN_ID>: no such run in the index

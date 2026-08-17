@@ -9,6 +9,7 @@ Usage:
 Available Commands:
   completion  Generate the autocompletion script for the specified shell
   doctor      Check the config and local environment for common misconfigurations
+  gate        Inspect and decide the gates waiting on you
   grill       Interview to resolve ambiguities in a project spec before planning
   help        Help about any command
   init        Initialize a Corvex project

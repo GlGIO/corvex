@@ -32,6 +32,9 @@ const (
 	EventTaskWarn       = event.TaskWarn
 	EventTaskTimeout    = event.TaskTimeout
 	EventHumanGate      = event.HumanGate
+	EventGatePending    = event.GatePending
+	EventGateDecided    = event.GateDecided
+	EventGateFailed     = event.GateFailed
 	EventTaskComplete   = event.TaskComplete
 	EventReviewStart    = event.ReviewStart
 	EventReviewResult   = event.ReviewResult

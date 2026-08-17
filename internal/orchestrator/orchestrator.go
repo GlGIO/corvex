@@ -16,6 +16,7 @@ import (
 	"github.com/giovannialves/corvex/internal/planning"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/recovery"
+	"github.com/giovannialves/corvex/internal/run"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/step"
 	"github.com/giovannialves/corvex/internal/types"
@@ -48,10 +49,19 @@ type Options struct {
 	// at run start aborts the run with an actionable hint instead of wiping
 	// the user's work.
 	Force bool
-	// ApproveGates auto-approves recipe "human-gate" stages. When false
-	// (default), reaching a gate stops the run with an actionable message
-	// instead of blocking; re-run with this set to proceed past the gate.
+	// ApproveGates auto-approves human gates. When false (default), reaching a
+	// gate parks the run until another process decides it.
 	ApproveGates bool
+	// Repo is the absolute git root the run is recorded against. It is what
+	// addresses a gate file on disk, so a human gate cannot be opened without
+	// it. Empty is legal and means "this run has no identity" — the gate then
+	// refuses rather than blocking on something nobody could answer.
+	Repo string
+	// SetRunStatus reports the run's own state to the record and the global
+	// index (parked while a gate holds). Injected by ops, which owns identity.
+	SetRunStatus func(run.Status) error
+	// GatePoll overrides how often a parked run re-reads its gate file.
+	GatePoll time.Duration
 	// Identity is the run these events belong to. It is stamped onto every
 	// ledger line, which is what keeps a project's ledger attributable once it
 	// holds more than one run. The orchestrator never mints it: ops.NewRunner
@@ -124,8 +134,24 @@ func New(opts Options) *Orchestrator {
 		ApproveGates:       opts.ApproveGates,
 		Emit:               o.emit,
 		Book:               &o.book,
+		SetRunStatus:       opts.SetRunStatus,
+		GatePoll:           opts.GatePoll,
 	})
 	return o
+}
+
+// runIdentity is the run's on-disk address, assembled for the step executor.
+//
+// The project only becomes known at Run time, which is why this is built here
+// rather than in New: a gate file has to name the project it belongs to so a
+// cross-repository listing reads like a pipeline instead of a list of ids.
+func (o *Orchestrator) runIdentity(project string) step.RunIdentity {
+	return step.RunIdentity{
+		RunID:   o.opts.Identity.RunID,
+		Recipe:  o.opts.Identity.Recipe,
+		Repo:    o.opts.Repo,
+		Project: project,
+	}
 }
 
 func (o *Orchestrator) projectPaths(project string) (specPath, tasksPath, anchorPath string) {

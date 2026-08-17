@@ -18,12 +18,14 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/run"
+	"github.com/giovannialves/corvex/internal/task"
 )
 
 // Runner is one assembled run: the scheduler, plus the identity that outlives
@@ -46,6 +48,9 @@ type Runner struct {
 
 	// Repo is the absolute git root the run was recorded against.
 	Repo string
+
+	// Recipe is the workflow this run executes, or "" when there is none.
+	Recipe string
 
 	// StatusErr is why the terminal status could not be written, or nil, plus any
 	// non-fatal problem recording state along the way (a failing heartbeat, index
@@ -73,17 +78,23 @@ type Runner struct {
 // committed, and the run id on the line is what joins a ledger line back to them.
 // See activity.Identity for the full argument.
 //
-// Recipe is deliberately empty on the legacy `corvex run <project>` path: there
-// is no recipe, and inventing a name for one (the project's name, or a sentinel
-// like "implicit") would put a value in the field that no `recipe show` could
-// ever resolve. Absence already means "no recipe", omitempty makes it free, and
-// `recipe == ""` is precisely the discriminator F2 will need once recipes are
-// real. The project is not lost: it is its own field on the record.
+// Recipe stays empty on the legacy `corvex run <project>` path: there is no
+// recipe, and inventing a name for one (the project's name, or a sentinel like
+// "implicit") would put a value in the field that no `recipe show` could ever
+// resolve. Absence already means "no recipe", omitempty makes it free, and
+// `recipe == ""` is precisely the discriminator this field exists to give. The
+// project is not lost: it is its own field on the record.
+//
+// When a recipe *did* produce the run, F2 fills it in — and does so without
+// inventing storage. `recipe.Compile` already stamps the tasks.md frontmatter
+// with `generated_by: corvex-recipe:<name>`, so the name is on disk already and
+// recipeFromTasks reads it back. A field that is derived from an existing fact
+// cannot drift away from it.
 func (r *Runner) Identity() activity.Identity {
 	if r == nil {
 		return activity.Identity{}
 	}
-	return activity.Identity{RunID: r.RunID}
+	return activity.Identity{RunID: r.RunID, Recipe: r.Recipe}
 }
 
 // Execute runs body under this run's identity.
@@ -241,9 +252,34 @@ func startIdentity(req RunRequest) (*run.Handle, error) {
 	if reg.Repo == "" {
 		reg.Repo = repo
 	}
-	// Project, not Recipe — see Runner.Identity for why the legacy path records
-	// no recipe at all.
-	return reg.Start(run.StartOptions{Project: req.Project})
+	// Project always; Recipe only when the tasks on disk say a recipe produced
+	// them — see Runner.Identity.
+	return reg.Start(run.StartOptions{
+		Project: req.Project,
+		Recipe:  recipeFromTasks(req.WorkDir, req.Project),
+	})
+}
+
+// recipeName is the frontmatter prefix recipe.Compile stamps on generated_by.
+const recipeName = "corvex-recipe:"
+
+// recipeFromTasks reports which recipe produced a project's tasks.md, or "".
+//
+// Best-effort by design: this runs before the planner on a path where tasks.md
+// may not exist yet, and a run must never be refused because its recipe name
+// could not be read. The failure mode is the pre-F2 one (an empty field), which
+// the format already tolerates.
+func recipeFromTasks(workDir, project string) string {
+	_, dag, err := task.ParseTasksFile(filepath.Join(ProjectDir(workDir, project), "tasks.md"))
+	if err != nil {
+		return ""
+	}
+	// HasPrefix, not a bare TrimPrefix: the planner stamps its own value here,
+	// and TrimPrefix would hand back "corvex-planner" as if it were a recipe.
+	if !strings.HasPrefix(dag.GeneratedBy, recipeName) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(dag.GeneratedBy, recipeName))
 }
 
 // runRepo resolves the repository a run is recorded against: the git root, not

@@ -31,13 +31,28 @@ type Recipe struct {
 type Stage struct {
 	ID          string   `yaml:"id"`
 	Title       string   `yaml:"title"`
-	Kind        string   `yaml:"kind"`    // "task" (default), "command"; reserved: "human-gate"
-	Type        string   `yaml:"type"`    // task type for routing (backend, frontend, ...)
+	Kind        string   `yaml:"kind"` // code | tool | test | repro; legacy: task, command, human-gate
+	Type        string   `yaml:"type"` // task type for routing (backend, frontend, ...)
 	DependsOn   []string `yaml:"depends_on"`
 	Description string   `yaml:"description"`
 	Criteria    []string `yaml:"criteria"`
-	Command     string   `yaml:"command"` // shell command run when Kind == "command"
+	Command     string   `yaml:"command"` // shell command run when the stage is computational
 	Loop        *Loop    `yaml:"loop"`    // optional loop-with-policy (command stages)
+
+	// Gates are the decisions attached to this stage: computational,
+	// inferential, human or policy. See types.Gate.
+	Gates []types.Gate `yaml:"gates"`
+	// Evidence is what the stage hands whoever stands at its gates.
+	Evidence []types.Evidence `yaml:"evidence"`
+	// Fanout expands this stage into N instances of a template, over items
+	// discovered at run time.
+	Fanout *types.Fanout `yaml:"fanout"`
+	// Produces names what this stage's output feeds — "items" makes it a
+	// fan-out source.
+	Produces string `yaml:"produces"`
+	// FixedBy is the stage expected to make a `repro` command stop
+	// reproducing.
+	FixedBy string `yaml:"fixed_by"`
 }
 
 // Loop is a command stage's loop-with-policy: re-run the command until Until
@@ -47,15 +62,25 @@ type Loop struct {
 	Max   int    `yaml:"max"`   // max iterations (default 3)
 }
 
-// knownKinds enumerates the stage kinds the compiler accepts today. Only "task"
-// is executable so far; the others are reserved so recipes can declare them
-// without the compiler silently mis-running them as tasks.
+// knownKinds enumerates the stage kinds the compiler accepts. The four on top
+// are the F2 taxonomy; the three below them are the pre-F2 spelling, accepted
+// forever and normalised at dispatch (types.NormalizeKind) rather than at
+// compile time — tasks.md keeps the word the user wrote.
 var knownKinds = map[string]bool{
-	"":           true, // defaults to task
-	"task":       true,
-	"command":    true,
-	"human-gate": true,
+	"": true, // defaults to code
+
+	string(types.KindCode):  true,
+	string(types.KindTool):  true,
+	string(types.KindTest):  true,
+	string(types.KindRepro): true,
+
+	types.LegacyKindTask:      true,
+	types.LegacyKindCommand:   true,
+	types.LegacyKindHumanGate: true,
 }
+
+// knownKindList is the human-readable enumeration used in error messages.
+const knownKindList = "code, tool, test, repro (legacy: task, command, human-gate)"
 
 // Parse decodes a recipe from YAML bytes.
 func Parse(data []byte) (*Recipe, error) {
@@ -85,22 +110,8 @@ func (r *Recipe) Validate() error {
 		if ids[s.ID] {
 			return fmt.Errorf("recipe %q: duplicate stage id %q", r.Name, s.ID)
 		}
-		if !knownKinds[s.Kind] {
-			return fmt.Errorf("recipe %q: stage %q has unknown kind %q (known: task, command, human-gate)", r.Name, s.ID, s.Kind)
-		}
-		if s.Kind == "command" && strings.TrimSpace(s.Command) == "" {
-			return fmt.Errorf("recipe %q: command stage %q must set a non-empty `command`", r.Name, s.ID)
-		}
-		if s.Kind != "command" && strings.TrimSpace(s.Command) != "" {
-			return fmt.Errorf("recipe %q: stage %q sets `command` but is not a command stage (kind: %q)", r.Name, s.ID, s.Kind)
-		}
-		if s.Loop != nil {
-			if s.Kind != "command" {
-				return fmt.Errorf("recipe %q: stage %q has a `loop` but only command stages support loops (kind: %q)", r.Name, s.ID, s.Kind)
-			}
-			if s.Loop.Max < 0 {
-				return fmt.Errorf("recipe %q: stage %q loop.max must be >= 0", r.Name, s.ID)
-			}
+		if err := r.validateStage(s); err != nil {
+			return err
 		}
 		ids[s.ID] = true
 	}
@@ -113,6 +124,9 @@ func (r *Recipe) Validate() error {
 			if dep == s.ID {
 				return fmt.Errorf("recipe %q: stage %q depends on itself", r.Name, s.ID)
 			}
+		}
+		if err := r.validateStageLinks(s, ids); err != nil {
+			return err
 		}
 	}
 
@@ -191,6 +205,11 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 			Criteria:    s.Criteria,
 			Kind:        s.Kind,
 			Command:     s.Command,
+			Gates:       s.Gates,
+			Evidence:    s.Evidence,
+			Fanout:      s.Fanout,
+			Produces:    s.Produces,
+			FixedBy:     s.FixedBy,
 		}
 		if s.Loop != nil {
 			t.LoopUntil = s.Loop.Until
@@ -203,5 +222,6 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 		dag.Dependencies[s.ID] = deps
 	}
 
+	tasks, dag = expandRepro(tasks, dag)
 	return tasks, dag, nil
 }

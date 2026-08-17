@@ -29,9 +29,12 @@ type schedule struct {
 	failures []string
 	// totalCostUSD backs run.TotalCostUSD.
 	totalCostUSD float64
+	// generatedBy is the tasks.md frontmatter marker, preserved so a fan-out
+	// rewrite does not erase which recipe produced the file.
+	generatedBy string
 }
 
-func newSchedule(tasks []types.Task, completed map[string]bool, d *dag.DAG, tasksPath, anchorPath string, anchorState *types.AnchorState) *schedule {
+func newSchedule(tasks []types.Task, completed map[string]bool, d *dag.DAG, tasksPath, anchorPath string, anchorState *types.AnchorState, ident step.RunIdentity) *schedule {
 	s := &schedule{
 		tasks:    tasks,
 		terminal: make(map[string]bool, len(completed)),
@@ -46,6 +49,7 @@ func newSchedule(tasks []types.Task, completed map[string]bool, d *dag.DAG, task
 		Completed:    completed,
 		DAG:          d,
 		TotalCostUSD: &s.totalCostUSD,
+		Identity:     ident,
 	}
 	return s
 }
@@ -54,6 +58,12 @@ func newSchedule(tasks []types.Task, completed map[string]bool, d *dag.DAG, task
 // left, or a fatal error / targeted run ends the walk early.
 func (o *Orchestrator) walkDAG(ctx context.Context, s *schedule) error {
 	for {
+		// Between waves, and only between waves: this is the one point in the
+		// loop where no worker goroutine is alive, so the task list and the DAG
+		// can be swapped without racing every step that reads them.
+		if err := o.expandFanouts(s); err != nil {
+			return err
+		}
 		ready, err := o.nextWave(s)
 		if err != nil {
 			return err
@@ -156,6 +166,9 @@ func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready [
 	maxParallel := o.cfg.Execution.MaxParallel
 	if maxParallel <= 0 {
 		maxParallel = 4
+	}
+	if fp := fanoutParallelism(s, ready); fp > 0 && fp < maxParallel {
+		maxParallel = fp
 	}
 	sem := make(chan struct{}, maxParallel)
 	for _, taskID := range ready {

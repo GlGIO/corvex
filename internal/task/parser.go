@@ -11,55 +11,29 @@ import (
 )
 
 var (
-	headingRe    = regexp.MustCompile(`^##\s+(S\d+)\s*[-—–]\s*(.+?)\s+(⬜|🔄|✅|❌|⏭` + "\uFE0F" + `|⏭)\s*([A-Za-z-]+)\s*$`)
+	// headingRe reads a task heading. The id alternation is load-bearing and
+	// ordered: `S\d+` first, the general form second.
+	//
+	// Go's regexp resolves alternation the way a backtracking search would, so
+	// putting the historical form first keeps every pre-F2 heading matching
+	// exactly as it did — `## S01-Title ⬜ PENDING` still parses as id `S01`
+	// with an ASCII-dash separator, which a greedy general id would have
+	// swallowed whole.
+	//
+	// The general form exists because F2 mints ids: a fan-out expands into
+	// `S06/003/apply`, and a recipe may legitimately use `build-backend`. Before
+	// F2 the closed `S\d+` was not protecting anything — a recipe with an id
+	// outside it compiled fine, was written to tasks.md, and then vanished on
+	// the way back in with no error at all. The tripwire that now refuses such
+	// an id at compile time is ValidTaskID, called from recipe.Validate.
+	headingRe    = regexp.MustCompile(`^##\s+(S\d+|` + taskIDPattern + `)\s*[-—–]\s*(.+?)\s+(⬜|🔄|✅|❌|⏭` + "\uFE0F" + `|⏭)\s*([A-Za-z-]+)\s*$`)
 	sectionRe    = regexp.MustCompile(`^###\s+(.+)$`)
 	criterionRe  = regexp.MustCompile(`^\s*-\s*\[\s*\]\s*(.+)$`)
 	fileCreateRe = regexp.MustCompile("^\\s*-\\s*\\*\\*Criar:\\*\\*\\s*`([^`]+)`")
 	fileModifyRe = regexp.MustCompile("^\\s*-\\s*\\*\\*Modificar:\\*\\*\\s*`([^`]+)`")
 	separatorRe  = regexp.MustCompile(`^---\s*$`)
-
-	// looseHeadingRe matches any "## S<digits>" line — used to detect task
-	// headings that almost match `headingRe` but have malformed status, missing
-	// emoji, or other formatting errors. Lines that match this but NOT
-	// `headingRe` are reported as parse errors instead of silently dropped.
-	looseHeadingRe = regexp.MustCompile(`^##\s+S\d+\b`)
 )
 
-var statusEmoji = map[types.TaskStatus]string{
-	types.StatusPending: "⬜",
-	types.StatusRunning: "🔄",
-	types.StatusPassed:  "✅",
-	types.StatusFailed:  "❌",
-	types.StatusSkipped: "⏭" + "\uFE0F",
-}
-
-// statusWord maps the textual status token in a task heading to a canonical
-// status. Beyond the canonical words it accepts the synonyms LLMs tend to emit
-// when regenerating tasks.md (e.g. a replan writing "✅ COMPLETED" or "✅ DONE"
-// instead of "✅ PASSED"). Being lenient here keeps a benign wording drift from
-// failing the whole run; truly unknown words still fall through to the
-// "unrecognized task heading" error. Lookups are upper-cased by the caller.
-var statusWord = map[string]types.TaskStatus{
-	"PENDING":     types.StatusPending,
-	"TODO":        types.StatusPending,
-	"PLANNED":     types.StatusPending,
-	"RUNNING":     types.StatusRunning,
-	"INPROGRESS":  types.StatusRunning,
-	"IN-PROGRESS": types.StatusRunning,
-	"WIP":         types.StatusRunning,
-	"PASSED":      types.StatusPassed,
-	"PASS":        types.StatusPassed,
-	"COMPLETE":    types.StatusPassed,
-	"COMPLETED":   types.StatusPassed,
-	"DONE":        types.StatusPassed,
-	"FAILED":      types.StatusFailed,
-	"FAIL":        types.StatusFailed,
-	"SKIPPED":     types.StatusSkipped,
-	"SKIP":        types.StatusSkipped,
-}
-
-// normalizeStatusWord resolves a heading's status token (any case) to a
-// canonical status, returning false when the word is not recognized.
 func normalizeStatusWord(word string) (types.TaskStatus, bool) {
 	s, ok := statusWord[strings.ToUpper(strings.TrimSpace(word))]
 	return s, ok
@@ -87,6 +61,19 @@ type inlineYAML struct {
 	Command   string   `yaml:"command"`
 	LoopUntil string   `yaml:"loop_until"`
 	LoopMax   int      `yaml:"loop_max"`
+
+	// F2 fields. All omitempty on the way out, so a task that declares none of
+	// them serialises byte-identically to its pre-F2 form.
+	Gates      []types.Gate     `yaml:"gates,omitempty"`
+	Evidence   []types.Evidence `yaml:"evidence,omitempty"`
+	Fanout     *types.Fanout    `yaml:"fanout,omitempty"`
+	Produces   string           `yaml:"produces,omitempty"`
+	FixedBy    string           `yaml:"fixed_by,omitempty"`
+	ExpectFail bool             `yaml:"expect_fail,omitempty"`
+	Item       string           `yaml:"item,omitempty"`
+	Items      []string         `yaml:"items,omitempty"`
+	Expanded   bool             `yaml:"expanded,omitempty"`
+	FanoutOf   string           `yaml:"fanout_of,omitempty"`
 }
 
 // ParseTasksFile reads a tasks.md file and returns the parsed tasks and DAG specification.
@@ -301,6 +288,16 @@ func extractInlineYAML(lines []string, task *types.Task) {
 	task.Command = iy.Command
 	task.LoopUntil = iy.LoopUntil
 	task.LoopMax = iy.LoopMax
+	task.Gates = iy.Gates
+	task.Evidence = iy.Evidence
+	task.Fanout = iy.Fanout
+	task.Produces = iy.Produces
+	task.FixedBy = iy.FixedBy
+	task.ExpectFail = iy.ExpectFail
+	task.Item = iy.Item
+	task.Items = iy.Items
+	task.Expanded = iy.Expanded
+	task.FanoutOf = iy.FanoutOf
 }
 
 func splitSections(lines []string) map[string]string {

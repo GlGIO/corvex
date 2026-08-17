@@ -1,0 +1,28 @@
+$ corvex gate --help
+
+--- stdout ---
+A human gate parks its run until somebody decides. These commands are that somebody: list what is waiting across every repository, read the evidence, and approve or reject.
+
+Usage:
+  corvex gate [command]
+
+Available Commands:
+  approve     Approve a gate and let its run continue
+  list        List every gate waiting for a decision, across repositories
+  reject      Reject a gate, failing its step
+  show        Show one gate and the evidence behind it
+
+Flags:
+  -h, --help   help for gate
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+Use "corvex gate [command] --help" for more information about a command.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
