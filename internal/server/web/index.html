@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>corvex</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header>
+  <span class="brand">corvex</span>
+  <nav>
+    <button data-view="inbox" class="tab">Waiting on you<span class="badge" id="badge-inbox"></span></button>
+    <button data-view="runs" class="tab">Runs</button>
+    <button data-view="recipes" class="tab">Recipes</button>
+  </nav>
+  <span class="spacer"></span>
+  <span class="repo" id="repo"></span>
+  <button id="palette-open" class="ghost" title="Command log (⌘K)">⌘K</button>
+</header>
+
+<main id="view"></main>
+
+<div id="palette" class="palette hidden">
+  <div class="palette-box">
+    <div class="palette-head">
+      <strong>Everything this UI did, as commands</strong>
+      <span class="dim">every button has a CLI equivalent — these lines are it</span>
+    </div>
+    <ul id="palette-list"></ul>
+    <button class="ghost" id="palette-close">close</button>
+  </div>
+</div>
+
+<footer id="status"></footer>
+<script src="/assets/app.js"></script>
+</body>
+</html>

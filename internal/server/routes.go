@@ -30,6 +30,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/gates/{id}/reject", s.handleReject)
 	s.mux.HandleFunc("GET /api/actions", s.handleActions)
 	s.mux.HandleFunc("GET /api/recipes", s.handleRecipes)
+	s.mux.HandleFunc("GET /assets/", s.handleAsset)
 	s.mux.HandleFunc("GET /", s.handleIndex)
 }
 

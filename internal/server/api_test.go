@@ -180,3 +180,55 @@ func TestStartRun_RefusesAnEmptyTarget(t *testing.T) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
+
+// The UI is served from the binary and sits behind the same auth as the API: a
+// page that loads without a token and then fails every request is worse than a
+// page that does not load, because the failure looks like the tool being broken.
+func TestUI_IsEmbeddedAndGuarded(t *testing.T) {
+	srv, h := newTestServer(t)
+
+	anon := httptest.NewRequest(http.MethodGet, "http://localhost/assets/app.js", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, anon)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("asset without a token: status = %d, want 401", rec.Code)
+	}
+
+	for path, want := range map[string]string{
+		"/":               "<title>corvex</title>",
+		"/assets/app.js":  "api/gates",
+		"/assets/app.css": "--acc",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+srv.Token())
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want 200", path, rec.Code)
+			continue
+		}
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s does not look like the shipped asset (missing %q)", path, want)
+		}
+	}
+}
+
+// Invariant 4 reaches the UI too: no domain vocabulary may be embedded in the
+// binary, and the SPA is embedded in the binary.
+func TestUI_CarriesNoDomain(t *testing.T) {
+	_, h := newTestServer(t)
+	srv, _ := server.New(server.Options{WorkDir: t.TempDir()})
+	for _, path := range []string{"/", "/assets/app.js", "/assets/app.css"} {
+		req := httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+srv.Token())
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, req)
+		body := strings.ToLower(rec.Body.String())
+		for _, word := range []string{"azure", "smartcare", "yandeh"} {
+			if strings.Contains(body, word) {
+				t.Errorf("%s carries domain vocabulary (%q)", path, word)
+			}
+		}
+	}
+	_ = h
+}

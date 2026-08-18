@@ -1,0 +1,62 @@
+/* One place for the visual language, fixed before any screen was written: the
+   roadmap's rule for F7 is contract first, because screens built in parallel
+   against no tokens produce as many styles as there are screens.
+
+   Dark by default and not as decoration — this is a tool used beside a terminal
+   for hours. */
+:root{
+  color-scheme: dark;
+  --bg:#0e1014; --panel:#161a22; --panel-2:#1c212b; --line:#262c38;
+  --fg:#e8eaed; --dim:#8b93a1; --acc:#7aa2f7;
+  --ok:#7ddc9b; --warn:#e0b25f; --bad:#f07178; --human:#c39bf5;
+  --radius:8px; --gap:12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:13.5px;line-height:1.55}
+header{display:flex;align-items:center;gap:var(--gap);padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.brand{letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+nav{display:flex;gap:6px}
+.spacer{flex:1}
+.repo{color:var(--dim);font-size:12px;max-width:42ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl}
+button{font:inherit;color:var(--fg);background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button[disabled]{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent}
+button.primary{background:#22304d;border-color:#33507f}
+button.danger{background:#3a1f24;border-color:#5d2b33}
+.tab.active{border-color:var(--acc);color:var(--acc)}
+.badge{margin-left:6px;background:var(--bad);color:#12141a;border-radius:10px;padding:0 6px;font-size:11px}
+.badge:empty{display:none}
+main{padding:18px 16px 64px;max-width:1100px;margin:0 auto}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:22px 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.card.waiting{border-left:3px solid var(--human)}
+.row{display:flex;align-items:center;gap:var(--gap);flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.dim{color:var(--dim)}
+.mono-id{color:var(--acc)}
+.pill{border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11.5px;color:var(--dim)}
+.pill.ai{border-color:#3d3357;color:var(--human)}         /* inferential work: expensive, non-deterministic */
+.pill.det{border-color:#22402f;color:var(--ok)}           /* deterministic: exit code decides */
+.pill.bad{border-color:#4d2a2f;color:var(--bad)}
+.pill.warn{border-color:#4a3c22;color:var(--warn)}
+.steps{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.step{display:flex;gap:10px;align-items:baseline;padding:3px 0;border-bottom:1px dashed #1e2430}
+.step:last-child{border-bottom:0}
+.step .id{width:9ch;color:var(--dim)}
+.evidence{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);margin:8px 0;overflow:hidden}
+.evidence header{position:static;border:0;border-bottom:1px solid var(--line);padding:8px 10px;background:transparent}
+.evidence pre{margin:0;padding:10px;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.required{color:var(--warn)}
+label.read{display:flex;gap:8px;align-items:center;color:var(--dim);cursor:pointer}
+footer{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--line);background:var(--bg);padding:6px 16px;color:var(--dim);font-size:12px;min-height:28px}
+.palette{position:fixed;inset:0;background:#0007;display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+.palette.hidden{display:none}
+.palette-box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:min(760px,92vw);padding:14px}
+.palette-head{display:flex;flex-direction:column;margin-bottom:8px}
+#palette-list{list-style:none;margin:0 0 10px;padding:0;max-height:50vh;overflow:auto}
+#palette-list li{padding:6px 8px;border-bottom:1px solid #1e2430;display:flex;gap:10px}
+#palette-list li:last-child{border-bottom:0}
+input,select{font:inherit;background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px}
+.empty{color:var(--dim);padding:24px 0}
