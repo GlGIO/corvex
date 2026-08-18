@@ -43,7 +43,7 @@ func (e *Executor) runWorker(ctx context.Context, r *Run, t *types.Task, st *aiT
 	// sandbox produces no per-chunk events, so its idle clock would tick
 	// falsely. Buffered runs rely on the wall-clock ceiling.
 	streaming := isLocalOrNilSandbox(e.sandbox)
-	go e.watchTask(taskCtx, cancelTask, watchDone, taskID, live, timedOut, streaming)
+	go e.watchTask(taskCtx, cancelTask, watchDone, taskID, live, timedOut, streaming, t.Timeout)
 
 	result, err := st.worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, st.diagnosis)
 	close(watchDone)

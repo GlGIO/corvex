@@ -50,11 +50,13 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 	// than an absent one.
 	e.emit(event.Event{Type: event.TaskStart, TaskID: t.ID, Phase: event.PhaseValidate})
 
-	// Reuse the per-task wall-clock ceiling so a hung command can't stall the run.
+	// Reuse the per-task wall-clock ceiling so a hung command can't stall the
+	// run — the step's own when it declared one, which is how a suite that takes
+	// longer than the run's default says so.
 	cmdCtx := ctx
-	if mins := e.cfg.Execution.TaskTimeoutMinutes; mins > 0 {
+	if ceiling := e.hardCeiling(t.Timeout); ceiling > 0 {
 		var cancel context.CancelFunc
-		cmdCtx, cancel = context.WithTimeout(ctx, time.Duration(mins)*time.Minute)
+		cmdCtx, cancel = context.WithTimeout(ctx, ceiling)
 		defer cancel()
 	}
 

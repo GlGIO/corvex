@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -60,7 +61,10 @@ type Stage struct {
 	Description string   `yaml:"description"`
 	Criteria    []string `yaml:"criteria"`
 	Command     string   `yaml:"command"` // shell command run when the stage is computational
-	Loop        *Loop    `yaml:"loop"`    // optional loop-with-policy (command stages)
+	// Timeout overrides the run-wide per-task wall clock for this stage
+	// ("45m", "2h"). Empty inherits execution.task_timeout_minutes.
+	Timeout string `yaml:"timeout"`
+	Loop    *Loop  `yaml:"loop"` // optional loop-with-policy (command stages)
 
 	// Gates are the decisions attached to this stage: computational,
 	// inferential, human or policy. See types.Gate.
@@ -123,6 +127,19 @@ func (r *Recipe) Validate() error {
 	}
 	if len(r.Stages) == 0 {
 		return fmt.Errorf("recipe %q: has no stages", r.Name)
+	}
+
+	for _, s := range r.Stages {
+		if s.Timeout == "" {
+			continue
+		}
+		d, err := time.ParseDuration(s.Timeout)
+		if err != nil {
+			return fmt.Errorf("recipe %q: stage %q has an unreadable timeout %q: use a duration like 45m or 2h", r.Name, s.ID, s.Timeout)
+		}
+		if d <= 0 {
+			return fmt.Errorf("recipe %q: stage %q has timeout %q — a non-positive timeout would kill the step before it started; omit it to inherit the run's", r.Name, s.ID, s.Timeout)
+		}
 	}
 
 	for i, req := range r.Requires {
@@ -243,6 +260,7 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 			Fanout:      s.Fanout,
 			Produces:    s.Produces,
 			FixedBy:     s.FixedBy,
+			Timeout:     s.Timeout,
 		}
 		if s.Loop != nil {
 			t.LoopUntil = s.Loop.Until

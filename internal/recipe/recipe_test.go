@@ -131,3 +131,19 @@ func TestValidate_Errors(t *testing.T) {
 		})
 	}
 }
+
+// A timeout that cannot be parsed is refused at validation, where the author is
+// still looking — not at run time, where the fallback would silently give the
+// step a ceiling it did not ask for.
+func TestValidate_RefusesAnUnreadableStepTimeout(t *testing.T) {
+	for _, bad := range []string{"soon", "45", "-5m", "0"} {
+		r := &Recipe{Name: "t", Stages: []Stage{{ID: "S01", Title: "x", Timeout: bad}}}
+		if err := r.Validate(); err == nil {
+			t.Errorf("timeout %q was accepted", bad)
+		}
+	}
+	ok := &Recipe{Name: "t", Stages: []Stage{{ID: "S01", Title: "x", Timeout: "45m"}}}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("a readable timeout was refused: %v", err)
+	}
+}

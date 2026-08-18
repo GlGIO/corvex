@@ -88,6 +88,17 @@ type Task struct {
 	// each iteration; the stage loops until it exits 0 (or LoopMax is reached).
 	// When empty, the command's own exit code is the loop condition.
 	LoopUntil string
+	// Timeout overrides the run-wide wall clock for THIS step
+	// (`execution.task_timeout_minutes`). Empty means the run-wide value.
+	//
+	// It exists because the run-wide value cannot be right for every step: a
+	// `code` step where an agent edits a package and a `test` step that runs a
+	// suite have completely different time profiles, and the first dogfood run
+	// of this repository was killed at 20 minutes while the worker was still
+	// working. Per step, because that is the granularity at which the answer
+	// differs.
+	Timeout string
+
 	// LoopMax caps loop iterations for a command stage. 0 or 1 → run once (no
 	// loop).
 	LoopMax int

@@ -61,6 +61,7 @@ type inlineYAML struct {
 	Command   string   `yaml:"command"`
 	LoopUntil string   `yaml:"loop_until"`
 	LoopMax   int      `yaml:"loop_max"`
+	Timeout   string   `yaml:"timeout,omitempty"`
 
 	// F2 fields. All omitempty on the way out, so a task that declares none of
 	// them serialises byte-identically to its pre-F2 form.
@@ -288,6 +289,7 @@ func extractInlineYAML(lines []string, task *types.Task) {
 	task.Command = iy.Command
 	task.LoopUntil = iy.LoopUntil
 	task.LoopMax = iy.LoopMax
+	task.Timeout = iy.Timeout
 	task.Gates = iy.Gates
 	task.Evidence = iy.Evidence
 	task.Fanout = iy.Fanout

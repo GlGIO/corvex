@@ -137,6 +137,9 @@ func writeTask(b *strings.Builder, task types.Task) {
 		if task.LoopUntil != "" {
 			fmt.Fprintf(b, "loop_until: %q\n", task.LoopUntil)
 		}
+		if task.Timeout != "" {
+			fmt.Fprintf(b, "timeout: %q\n", task.Timeout)
+		}
 		if task.LoopMax > 0 {
 			fmt.Fprintf(b, "loop_max: %d\n", task.LoopMax)
 		}

@@ -3,6 +3,7 @@ package step
 import (
 	"context"
 	"fmt"
+	charmbraceletlog "github.com/charmbracelet/log"
 	"sync"
 	"time"
 
@@ -95,9 +96,10 @@ func (e *Executor) watchTask(
 	live *liveness,
 	timedOut *timeoutFlag,
 	streaming bool,
+	stepTimeout string,
 ) {
 	warnAt := time.Duration(e.cfg.Execution.TaskWarnMinutes) * time.Minute
-	hardAt := time.Duration(e.cfg.Execution.TaskTimeoutMinutes) * time.Minute
+	hardAt := e.hardCeiling(stepTimeout)
 	idleAt := time.Duration(e.cfg.Execution.StreamIdleTimeoutSeconds) * time.Second
 	if !streaming {
 		idleAt = 0 // no per-chunk events to measure idleness against
@@ -148,6 +150,28 @@ func (e *Executor) watchTask(
 			}
 		}
 	}
+}
+
+// hardCeiling is the wall clock for one attempt: the step's own when it
+// declared one, the run's otherwise.
+//
+// The run-wide value cannot be right for every step, and the first dogfood run
+// of this repository proved it by killing a worker at 20 minutes while it was
+// still working. A step that edits a package and a step that runs a suite have
+// different time profiles, so the declaration belongs where the difference is.
+//
+// A malformed duration falls back to the run's ceiling rather than to "no
+// ceiling": recipe validation already refuses it, so reaching here means
+// something wrote tasks.md by hand — and the safe reading of a broken ceiling is
+// the default one, never infinity.
+func (e *Executor) hardCeiling(stepTimeout string) time.Duration {
+	if stepTimeout != "" {
+		if d, err := time.ParseDuration(stepTimeout); err == nil && d > 0 {
+			return d
+		}
+		charmbraceletlog.Warn("unreadable step timeout; using the run's ceiling", "timeout", stepTimeout)
+	}
+	return time.Duration(e.cfg.Execution.TaskTimeoutMinutes) * time.Minute
 }
 
 func describeLast(live *liveness) string {
