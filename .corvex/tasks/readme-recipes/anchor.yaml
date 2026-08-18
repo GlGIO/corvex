@@ -1,0 +1,20 @@
+project: ""
+updated_at: "2026-08-18T18:20:54Z"
+spec_hash: ""
+intent: ""
+completed:
+    - id: S01
+      title: Atualizar a seção "Recipes" do README
+      summary: 'Rewrote the README''s "Recipes — deterministic pipelines" section to match current behavior: fixed the wrong human-gate description (it parks the run for `corvex gate approve`, not a re-run hint), replaced the three-kind list with today''s four (`code`/`tool`/`test`/`repro`, legacy `task`/`command`/`human-gate` noted as still-accepted), and added short YAML examples for `gates:` (four natures + `when`), `evidence:` with `required_reading`, `fanout:`/`produces`, `requires:`, and `timeout:`.'
+      files_created: []
+      files_modified:
+        - README.md
+      decisions:
+        - Kept `--approve-gates` documented as the CI bypass path (still real, per `internal/step/human_gate.go` and `cmd/run_flags.go`), alongside the new `corvex gate list/show/approve` flow, since the task said both should appear.
+        - 'Verified every new claim against source before writing it (e.g. fanout''s `over` target must declare `produces: items` — `internal/recipe/validate_stage.go:228`; legacy `human-gate` auto-implies a `human`/`before` gate — `internal/step/gates.go:25-37`) rather than paraphrasing the task description.'
+        - Left every other README section untouched, per the task's scope.
+current_state:
+    total_tasks: 3
+    completed_tasks: 1
+next_task: S02
+next_task_context: none — this is a README-only doc fix with no code or interface changes.

@@ -192,19 +192,24 @@ corvex run ship-endpoint      # executes the fixed DAG (no Planner)
 
 Each stage has a `kind`:
 
-- `task` (default) — an AI worker task (planned/implemented/reviewed as usual).
-- `command` — runs `command:` as a shell step (exit 0 = pass, non-zero = fail);
-  no LLM, no cost. Great for `go test`/`go build`/lint gates inside a pipeline.
-- `human-gate` — pauses the pipeline for approval. Reaching a gate stops the run
-  with an actionable message; re-run with `corvex run <name> --approve-gates` to
-  proceed past it.
+- `code` (default) — an AI worker task (planned/implemented/reviewed as usual).
+- `tool` — a fixed-contract operation that changes the world (open a PR, push a
+  tag, run a migration): runs `command:` as a shell step, no LLM, no cost.
+- `test` — like `tool`, but only *observes* the world (e.g. `go test`/lint),
+  never changes it.
+- `repro` — deterministic with a temporal verdict: `command:` must fail before
+  the fix and pass after it (see `fixed_by:` below).
 
-A `command` stage can also **loop with a policy** — repeat until a condition
+The pre-F2 spellings `task`, `command` and `human-gate` still work (mapped
+respectively onto `code`, `tool` and a `tool` stage with a human gate) — new
+recipes should use the four above.
+
+A `tool`/`test` stage can also **loop with a policy** — repeat until a condition
 holds, up to a cap:
 
 ```yaml
   - id: S02
-    kind: command
+    kind: tool
     command: ./flaky-step.sh        # the work, re-run each iteration
     loop:
       until: go test ./...          # optional; success when this exits 0
@@ -213,6 +218,87 @@ holds, up to a cap:
 
 With `until` omitted, the command's own exit code is the loop condition (i.e.
 retry the command until it succeeds, up to `max`).
+
+Human approval is a **gate**, not a stage kind — attach it to any stage:
+
+```yaml
+  - id: S03
+    kind: tool
+    command: ./deploy.sh
+    gates:
+      - nature: human
+        when: before                # before: guards the work; after: judges the result
+        prompt: "Deploy to prod?"
+```
+
+A `human` gate parks the run — it does not print a re-run hint, because there
+is nothing to re-run. Someone else, from another process, resolves it:
+
+```bash
+corvex gate list                                       # runs waiting on a decision
+corvex gate show <run-id> --step S03                   # the gate's prompt and evidence
+corvex gate approve <run-id> --step S03 --ack "Deploy"  # unblocks the run
+```
+
+`corvex run <name> --approve-gates` auto-approves every human gate instead —
+the CI path, for pipelines that must not stop for a person.
+
+Gates come in four natures — `computational` (a shell command's exit code),
+`inferential` (an independent agent call, never the stage's own worker),
+`human` (above), and `policy` (a runner rule: attempt cap, cost ceiling,
+protected branch):
+
+```yaml
+    gates:
+      - nature: computational
+        command: go vet ./...
+      - nature: inferential
+        reviewer: security-review   # repo skill guiding the judgment
+      - nature: policy
+        max_attempts: 2
+        branch_not: [main]
+```
+
+A stage can hand its gate **evidence** — what a reviewer or approver sees.
+`required_reading: true` arms the approval lock: `gate approve` refuses until
+every such item has been acknowledged by label (`gate ack ... --ack "<label>"`):
+
+```yaml
+    evidence:
+      - kind: diff
+        label: "schema migration"
+        from: git diff HEAD~1 -- db/migrations   # or `content:` inline
+        required_reading: true
+```
+
+A stage can also **fan out** over items discovered at run time — one template
+expanded into N instances, up to a cap:
+
+```yaml
+  - id: S04
+    produces: items              # this stage's output feeds a fanout
+  - id: S05
+    fanout:
+      over: S04
+      max_items: 20              # default 50; each item can be an LLM call
+      template:
+        - id: fix
+          kind: code
+          description: "fix {{item}}"
+```
+
+`requires:` declares what the run needs on the machine *before* spending a
+token — a missing `bin:` (a CLI on PATH) or `env:` (a variable set on the
+runner) fails the run up front instead of mid-pipeline:
+
+```yaml
+requires:
+  - bin: az
+    why: "az is how the ship stage opens the PR"
+```
+
+`timeout:` on a stage overrides `execution.task_timeout_minutes` for that one
+step (`"45m"`, `"2h"`) — use it for a stage that's known to run long or short.
 
 ### Skills (repo-local)
 

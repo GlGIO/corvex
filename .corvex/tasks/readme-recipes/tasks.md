@@ -1,0 +1,88 @@
+---
+generated_by: corvex-recipe:readme-recipes
+dag:
+    S01: []
+    S02:
+        - S01
+    S03:
+        - S02
+---
+
+## S01 — Atualizar a seção "Recipes" do README ✅ PASSED
+
+```yaml
+type: general
+kind: code
+timeout: "45m"
+gates:
+    - nature: policy
+      max_attempts: 2
+    - nature: inferential
+      label: Review do texto contra o código
+```
+
+### O que fazer
+A seção `### Recipes — deterministic pipelines` do README.md está desatualizada e, num
+ponto, ERRADA. Corrija-a para descrever o que o binário faz hoje. Não invente recurso:
+cada coisa que você escrever tem de existir em `internal/recipe/recipe.go` (struct
+`Recipe`/`Stage`) ou em `internal/types/step.go`.
+
+O que está errado hoje: diz que `human-gate` "stops the run with an actionable message;
+re-run with --approve-gates". Desde a F2 o gate humano PARKA o run e espera decisão de
+outro processo (`corvex gate list`, `corvex gate show`, `corvex gate approve <run-id>
+--step <id> --ack "<rótulo>"`). `--approve-gates` continua existindo como caminho de CI.
+
+O que falta: os quatro `kind` de hoje (`code`, `tool`, `test`, `repro` — com `task`,
+`command` e `human-gate` como grafias legadas ainda aceitas); o bloco `gates:` com as
+quatro naturezas (`computational`, `inferential`, `human`, `policy`) e o `when:`
+(`before`/`after`); o bloco `evidence:` com `required_reading` armando a trava de
+aprovação; `fanout:` sobre itens descobertos em runtime; `requires:` (preflight de
+`bin:`/`env:` antes do primeiro token); e `timeout:` por stage, que sobrepõe
+`execution.task_timeout_minutes` para aquele step.
+
+Mantenha o tom e o tamanho do resto do README: exemplos curtos em YAML, uma linha de
+explicação por conceito. Não reescreva outras seções.
+
+### Critérios de sucesso
+- [ ] a descrição do human-gate diz que o run parka e é liberado por `corvex gate approve`
+- [ ] os quatro kinds atuais aparecem, e as grafias legadas são mencionadas como legado
+- [ ] gates com as quatro naturezas e o when aparecem com exemplo
+- [ ] evidence com required_reading aparece com exemplo
+- [ ] requires e timeout aparecem, ambos com uma linha dizendo para que servem
+- [ ] nenhum recurso inventado: tudo que o texto promete existe no código
+
+---
+
+## S02 — O repositório continua de pé ⬜ PENDING
+
+```yaml
+type: general
+kind: test
+command: "go build ./... && go test ./internal/recipe/ ./internal/task/ -count=1"
+timeout: "10m"
+depends_on: [S01]
+```
+
+---
+
+## S03 — Marcar o commit do dogfood ⬜ PENDING
+
+```yaml
+type: general
+kind: tool
+command: "git tag -f dogfood-gate-drill"
+depends_on: [S02]
+gates:
+    - nature: human
+      when: before
+      label: Aprovar a marca do dogfood
+      prompt: O README foi reescrito por um agente e revisado por outro. Leia o diff antes de marcar este commit. Aprova?
+evidence:
+    - kind: diff
+      label: Diff do README
+      required_reading: true
+      from: git show --stat HEAD
+    - kind: test_output
+      label: Build e parser
+      from: go build ./... && go test ./internal/recipe/ -count=1
+```
