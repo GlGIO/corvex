@@ -22,6 +22,29 @@ type Recipe struct {
 	Name        string  `yaml:"name"`
 	Description string  `yaml:"description"`
 	Stages      []Stage `yaml:"stages"`
+
+	// Requires is what this recipe needs on the machine before it is worth
+	// spending a token (F9, "preflight de dependência declarada").
+	//
+	// The scar it answers: a run that discovers halfway through that a CLI is
+	// missing has already paid for everything up to that point, and the failure
+	// arrives dressed as a task failure — the agent retries, fails again, and
+	// the retry budget is spent on a problem no model can solve.
+	Requires []Requirement `yaml:"requires"`
+}
+
+// Requirement is one declared dependency. Exactly one field is set.
+type Requirement struct {
+	// Bin is an executable that must be on PATH ("az", "docker", "psql").
+	Bin string `yaml:"bin"`
+	// Env is a variable that must be set and non-empty in the RUNNER's
+	// environment. Only the name is ever read, never the value — and the value
+	// does not have to reach the worker at all (see security.runner_only_env).
+	Env string `yaml:"env"`
+	// Why is the one-line reason, printed when the check fails. Optional, and
+	// worth writing: "az is how ship opens the PR" turns a missing binary from
+	// a puzzle into an instruction.
+	Why string `yaml:"why"`
 }
 
 // Stage is one node of the recipe pipeline. Kind defaults to "task" (an AI
@@ -100,6 +123,16 @@ func (r *Recipe) Validate() error {
 	}
 	if len(r.Stages) == 0 {
 		return fmt.Errorf("recipe %q: has no stages", r.Name)
+	}
+
+	for i, req := range r.Requires {
+		bin, env := strings.TrimSpace(req.Bin), strings.TrimSpace(req.Env)
+		switch {
+		case bin == "" && env == "":
+			return fmt.Errorf("recipe %q: requires[%d] declares neither `bin` nor `env`", r.Name, i)
+		case bin != "" && env != "":
+			return fmt.Errorf("recipe %q: requires[%d] declares both `bin` and `env` — split it in two, so the failure names one thing", r.Name, i)
+		}
 	}
 
 	ids := make(map[string]bool, len(r.Stages))

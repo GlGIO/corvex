@@ -24,8 +24,44 @@ type Config struct {
 	// making skill use intentional rather than opportunistic.
 	SkillRouting map[string]string `yaml:"skill_routing"`
 	Validate     ValidateConfig    `yaml:"validate"`
+	Security     SecurityConfig    `yaml:"security,omitempty"`
 	Plan         PlanConfig        `yaml:"plan"`
 	Worktree     WorktreeConfig    `yaml:"worktree"`
+}
+
+// SecurityConfig is credential custody (F9): what the runner keeps to itself,
+// and what the worker is never allowed to call.
+//
+// `omitempty` throughout, and that is not cosmetics: `corvex validate` writes
+// config.yaml back after its wizard, and a block of empty security keys
+// appearing in every user's config would be a phase announcing itself in a file
+// it did not change the meaning of.
+//
+// Both default to empty, which is exactly today's behaviour. That is deliberate:
+// the mechanism ships now, and flipping the DEFAULT — refusing to forward
+// credentials unless a step declares it needs them — is a change that breaks
+// working recipes and is the roadmap's human gate for this phase.
+type SecurityConfig struct {
+	// RunnerOnlyEnv are variable names the worker must never receive, even when
+	// a prefix in sandbox.env_allowlist matches them.
+	//
+	// The custody argument: a credential in the worker's environment is a
+	// credential the model can exfiltrate with one Bash call, and no gate
+	// downstream can undo that. Naming it here keeps it with the runner, which
+	// is the process a human actually authorised.
+	//
+	// Exact names, not prefixes: a prefix that denies more than the author
+	// meant fails CLOSED in the confusing direction — the run breaks somewhere
+	// unrelated and the cause is invisible.
+	RunnerOnlyEnv []string `yaml:"runner_only_env,omitempty"`
+
+	// DisallowedTools are tool patterns the worker may never call, unioned with
+	// the built-in block on corvex's own state files.
+	//
+	// This is what makes a tool catalogue a boundary instead of a suggestion: if
+	// the raw path stays open, an agent that finds the typed tool inconvenient
+	// simply shells out, and the catalogue becomes documentation.
+	DisallowedTools []string `yaml:"disallowed_tools,omitempty"`
 }
 
 // WorktreeConfig configures worktree setup done by `corvex start`.

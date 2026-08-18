@@ -810,7 +810,18 @@ ser testável sem docker; controle positivo: teardown vira no-op → 2 vermelhos
 - MCPs existentes; possivelmente AWS CLI.
 - Validar **na autopilot** antes de o corvex consumir.
 
-### F9 — Custódia de credencial
+### F9 — Custódia de credencial — ⚠️ MECANISMO ENTREGUE, DEFAULT AGUARDA VOCÊ
+**`f9-custodia.md`.** Entregues com default idêntico ao de hoje (nada quebra):
+`security.runner_only_env` (nomes exatos que o runner guarda, vencendo qualquer prefixo da
+allowlist), `security.disallowed_tools` (config **acrescenta e nunca encurta** o bloqueio
+embutido — é o que separa catálogo de sugestão) e `requires:` na recipe com preflight
+**antes da prévia de custo**, que é a cicatriz #1 do roadmap.
+
+**A decisão que sobra é a sua:** virar o default para "worker não recebe credencial".
+Recomendação escrita no documento — **esperar a F8**, porque sem catálogo de tools o step não
+tem como pedir a operação em vez da credencial, e trocar "segredo exposto" por "fluxo
+bloqueado" faz o usuário sob pressão desligar a proteção.
+
 - Credencial no runner, nunca no ambiente do worker. `DisallowedTools` fechando o caminho
   cru (senão o catálogo é sugestão, não fronteira).
 - Preflight de dependência declarada antes do primeiro token (cicatriz #1).

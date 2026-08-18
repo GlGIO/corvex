@@ -22,7 +22,7 @@ func TestCollectAuthEnv(t *testing.T) {
 	t.Setenv("VENDOR_CLI_TOKEN", "should-not-appear")
 	t.Setenv("UNRELATED_VAR", "should-not-appear")
 
-	env := collectAuthEnv(config.DefaultEnvAllowlist())
+	env := collectAuthEnv(config.DefaultEnvAllowlist(), nil)
 
 	expected := map[string]string{
 		"ANTHROPIC_API_KEY":       "test-key",
@@ -59,14 +59,14 @@ func TestCollectAuthEnv_ConfiguredPrefix(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 
 	undeclared := &config.Config{}
-	if got := collectAuthEnv(undeclared.EnvAllowlist()); got["AZURE_DEVOPS_EXT_PAT"] != "" {
+	if got := collectAuthEnv(undeclared.EnvAllowlist(), nil); got["AZURE_DEVOPS_EXT_PAT"] != "" {
 		t.Fatalf("AZURE_DEVOPS_EXT_PAT leaked without config: %q", got["AZURE_DEVOPS_EXT_PAT"])
 	}
 
 	declared := &config.Config{}
 	declared.Sandbox.EnvAllowlist = []string{"AZURE_"}
 
-	env := collectAuthEnv(declared.EnvAllowlist())
+	env := collectAuthEnv(declared.EnvAllowlist(), nil)
 	if env["AZURE_DEVOPS_EXT_PAT"] != "pat-test" {
 		t.Errorf("AZURE_DEVOPS_EXT_PAT = %q, want %q", env["AZURE_DEVOPS_EXT_PAT"], "pat-test")
 	}
@@ -79,7 +79,7 @@ func TestCollectAuthEnv_NoMatch(t *testing.T) {
 	t.Setenv("TOTALLY_UNRELATED", "value1")
 	t.Setenv("ANOTHER_RANDOM", "value2")
 
-	env := collectAuthEnv(config.DefaultEnvAllowlist())
+	env := collectAuthEnv(config.DefaultEnvAllowlist(), nil)
 
 	if _, ok := env["TOTALLY_UNRELATED"]; ok {
 		t.Error("TOTALLY_UNRELATED should not be in auth env")
@@ -101,7 +101,7 @@ func TestWorkerForwardsItsOwnAllowlistToSandbox(t *testing.T) {
 
 	envFor := func(allowlist []string) map[string]string {
 		sb := &mockSandbox{}
-		w := NewWorker(&mockCommandProvider{}, "sonnet", "/tmp", sb, nil, allowlist)
+		w := NewWorker(&mockCommandProvider{}, "sonnet", "/tmp", sb, nil, allowlist, config.SecurityConfig{})
 		task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 		if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
 			t.Fatalf("Execute() error = %v", err)

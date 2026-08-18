@@ -30,3 +30,23 @@ func resolveRecipeTarget(workDir, project string) error {
 	fmt.Fprintln(os.Stderr)
 	return nil
 }
+
+// preflightRequirements refuses a run whose recipe declares dependencies that
+// are not on this machine (F9).
+//
+// It runs before the cost preview, which is the whole point: the scar it
+// answers is a run that discovered a missing CLI halfway through, having
+// already paid for everything up to that point — and whose failure then looked
+// like a task failure, so the retry budget went on a problem no model can fix.
+func preflightRequirements(workDir, project string) error {
+	checks, err := ops.PreflightRequirements(workDir, project)
+	if err != nil {
+		return err
+	}
+	if err := ops.MissingRequirements(checks); err != nil {
+		return err
+	}
+	// Silence on success is deliberate: a green preflight that prints a block of
+	// ticks trains the eye to skip the place the failure will appear.
+	return nil
+}

@@ -138,7 +138,7 @@ func (e *Executor) runABSide(
 		return abRunResult{Model: model, Err: fmt.Errorf("create worktree: %w", err)}
 	}
 
-	worker := NewWorker(e.provider, model, wt.Path, nil, e.cfg.SkillRouting, e.cfg.EnvAllowlist())
+	worker := NewWorker(e.provider, model, wt.Path, nil, e.cfg.SkillRouting, e.cfg.EnvAllowlist(), e.cfg.Security)
 	workerResult, err := worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, "")
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Err: fmt.Errorf("worker: %w", err)}

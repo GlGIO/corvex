@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/provider"
 	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
@@ -22,10 +23,17 @@ type Worker struct {
 	onStream     func(types.StreamEvent)
 	skillRouting map[string]string // task type → repo skill name
 	envAllowlist []string          // host env prefixes forwarded into the sandbox
+	envDenylist  []string          // names the runner keeps to itself (F9 custody)
+	extraBlocked []string          // tool patterns the config refuses on top of the built-in block
 }
 
 // NewWorker creates a Worker bound to the given provider and model.
 // skillRouting (task type → skill name) may be nil.
+//
+// security carries credential custody (F9): the names this Worker must not
+// forward even when the allowlist matches them, and the tools it must refuse on
+// top of the built-in block. Like the allowlist it is a parameter rather than
+// process state, and for the same reason.
 //
 // envAllowlist is the resolved list of host environment prefixes this Worker
 // may forward into its sandbox — normally cfg.EnvAllowlist(). It is a
@@ -38,6 +46,7 @@ func NewWorker(
 	sb sandbox.Sandbox,
 	skillRouting map[string]string,
 	envAllowlist []string,
+	security config.SecurityConfig,
 ) *Worker {
 	return &Worker{
 		provider:     p,
@@ -46,6 +55,8 @@ func NewWorker(
 		sandbox:      sb,
 		skillRouting: skillRouting,
 		envAllowlist: envAllowlist,
+		envDenylist:  security.RunnerOnlyEnv,
+		extraBlocked: security.DisallowedTools,
 	}
 }
 
@@ -60,6 +71,8 @@ func (w *Worker) clone() *Worker {
 		sandbox:      w.sandbox,
 		skillRouting: w.skillRouting,
 		envAllowlist: w.envAllowlist,
+		envDenylist:  w.envDenylist,
+		extraBlocked: w.extraBlocked,
 	}
 }
 
@@ -71,6 +84,39 @@ func (w *Worker) SetOnStream(cb func(types.StreamEvent)) {
 	w.onStream = cb
 }
 
+// buildRequest assembles what the provider is asked to do, including the tool
+// policy. It is a method rather than inline code so the policy is assertable:
+// "the raw path is closed" is a security claim, and a security claim that only
+// exists inside a 40-line function is a claim nobody tests.
+func (w *Worker) buildRequest(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis string) types.ExecuteRequest {
+	routedSkill := ""
+	if w.skillRouting != nil {
+		routedSkill = w.skillRouting[string(t.Type)]
+	}
+	return types.ExecuteRequest{
+		Prompt:  buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill),
+		Model:   w.model,
+		WorkDir: w.workDir,
+		// Hard block: the worker LLM cannot touch corvex state files
+		// (tasks.md, anchor.yaml, decisions.md, spec.md). Status transitions
+		// happen through the orchestrator, not through Edit/Write tool calls.
+		// Without this guard, the worker has been observed to write
+		// "✅ DONE" instead of canonical "✅ PASSED" (silently corrupting
+		// the parser) and to delete the .corvex symlink in worktrees.
+		//
+		// Config adds to this list and can never shorten it (F9): a user closing
+		// `Bash` is closing a door, and no config value opens one corvex decided
+		// to keep shut.
+		DisallowedTools: append([]string{
+			"Edit(.corvex/**)",
+			"Write(.corvex/**)",
+			"Bash(rm:.corvex/**)",
+			"Bash(rm:-rf .corvex*)",
+			"Bash(mv:.corvex/**)",
+		}, w.extraBlocked...),
+	}
+}
+
 // Execute runs the AI provider for the given task and returns the execution result.
 func (w *Worker) Execute(
 	ctx context.Context,
@@ -80,30 +126,7 @@ func (w *Worker) Execute(
 	agentPrompt string,
 	diagnosis string,
 ) (*types.ExecuteResult, error) {
-	routedSkill := ""
-	if w.skillRouting != nil {
-		routedSkill = w.skillRouting[string(t.Type)]
-	}
-	prompt := buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill)
-
-	req := types.ExecuteRequest{
-		Prompt:  prompt,
-		Model:   w.model,
-		WorkDir: w.workDir,
-		// Hard block: the worker LLM cannot touch corvex state files
-		// (tasks.md, anchor.yaml, decisions.md, spec.md). Status transitions
-		// happen through the orchestrator, not through Edit/Write tool calls.
-		// Without this guard, the worker has been observed to write
-		// "✅ DONE" instead of canonical "✅ PASSED" (silently corrupting
-		// the parser) and to delete the .corvex symlink in worktrees.
-		DisallowedTools: []string{
-			"Edit(.corvex/**)",
-			"Write(.corvex/**)",
-			"Bash(rm:.corvex/**)",
-			"Bash(rm:-rf .corvex*)",
-			"Bash(mv:.corvex/**)",
-		},
-	}
+	req := w.buildRequest(t, anchorCtx, contextDocs, agentPrompt, diagnosis)
 
 	// When a streaming callback is set AND we're running on a LocalSandbox,
 	// bypass the sandbox abstraction (which buffers stdout) and stream
@@ -151,7 +174,7 @@ func (w *Worker) executeViaSandbox(
 ) (*types.ExecuteResult, error) {
 	bin, args, env := cb.BuildCommand(req)
 
-	authEnv := collectAuthEnv(w.envAllowlist)
+	authEnv := collectAuthEnv(w.envAllowlist, w.envDenylist)
 	for k, v := range env {
 		authEnv[k] = v
 	}
@@ -192,7 +215,14 @@ func (w *Worker) executeViaSandbox(
 // cfg.EnvAllowlist(), which is the built-in credentials plus whatever
 // `sandbox.env_allowlist` declares, so a user can grant a new credential (a
 // cloud CLI, an issue tracker token) without a new binary.
-func collectAuthEnv(prefixes []string) map[string]string {
+func collectAuthEnv(prefixes, denied []string) map[string]string {
+	deny := make(map[string]struct{}, len(denied))
+	for _, name := range denied {
+		if name = strings.TrimSpace(name); name != "" {
+			deny[name] = struct{}{}
+		}
+	}
+
 	env := make(map[string]string)
 	for _, e := range os.Environ() {
 		parts := strings.SplitN(e, "=", 2)
@@ -200,6 +230,12 @@ func collectAuthEnv(prefixes []string) map[string]string {
 			continue
 		}
 		key := parts[0]
+		// Custody (F9): the denylist wins over any prefix that would have let
+		// this through. Order matters — a credential the runner is supposed to
+		// keep must not depend on which prefix happened to be checked first.
+		if _, held := deny[key]; held {
+			continue
+		}
 		for _, prefix := range prefixes {
 			if strings.HasPrefix(key, prefix) {
 				env[key] = parts[1]

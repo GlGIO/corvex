@@ -128,7 +128,7 @@ func aiExecutor(t *testing.T, p *mockProvider, rec *recorder) (*Executor, *Run) 
 	e := NewExecutor(Options{
 		Config:   cfg,
 		Provider: p,
-		Worker:   NewWorker(p, "test-model", dir, nil, nil, nil),
+		Worker:   NewWorker(p, "test-model", dir, nil, nil, nil, config.SecurityConfig{}),
 		Reviewer: NewReviewer(p, "test-model", dir, ""),
 		Hooks:    hooks.NewRunner(dir, 0),
 		WorkDir:  dir,
