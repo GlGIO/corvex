@@ -1,0 +1,218 @@
+package server
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/giovannialves/corvex/internal/gate"
+	"github.com/giovannialves/corvex/internal/ops"
+)
+
+// startRequest is what the "dispatch a run" screen (2c) sends.
+type startRequest struct {
+	Target      string `json:"target"` // recipe or project name
+	Environment string `json:"environment,omitempty"`
+	Task        string `json:"task,omitempty"`
+	Recompile   bool   `json:"recompile,omitempty"`
+}
+
+// handleStartRun spawns a DETACHED run and returns immediately.
+//
+// Detached, not a child this server waits on, and the difference is the trap F1
+// wrote down: a child nobody reaps becomes a zombie, a zombie still answers
+// signal 0, and liveness would then report a dead run as alive. Setsid also
+// means the run survives the UI being closed, which is the property that makes
+// "no daemon" work — the server supervises runs, it never owns them.
+//
+// The run's own identity (F1) is what connects the two processes afterwards:
+// this handler does not track the child, it reads it back from the index like
+// any other reader.
+func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
+	var req startRequest
+	if err := decodeBody(r, &req); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(req.Target) == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("target is required: the recipe or project to run"))
+		return
+	}
+
+	args := startArgs(req)
+	command := "corvex " + strings.Join(args, " ")
+
+	bin, err := s.binary()
+	if err != nil {
+		action := s.actions.Record(command, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+
+	logPath, logFile, err := s.runLog(req.Target)
+	if err != nil {
+		action := s.actions.Record(command, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = s.opts.WorkDir
+	cmd.Stdout, cmd.Stderr = logFile, logFile
+	// The run must not inherit this server's controlling terminal or process
+	// group: with Setsid, Ctrl-C in the shell that started `corvex ui` cannot
+	// take a run down with it, and closing the UI leaves the run untouched.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	err = cmd.Start()
+	action := s.actions.Record(command, err)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+	// Release rather than Wait: this process must not be the child's parent for
+	// the rest of its life. init reaps it, and nothing here turns into a zombie
+	// that a liveness probe would misread.
+	_ = cmd.Process.Release()
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"pid":     cmd.Process.Pid,
+		"log":     logPath,
+		"action":  action,
+		"command": command,
+	})
+}
+
+// startArgs builds the CLI invocation. The UI has no private vocabulary: what it
+// spawns is the command a user could have typed, which is what makes the action
+// log auditable rather than decorative.
+func startArgs(req startRequest) []string {
+	args := []string{"run", "start", req.Target, "--plain", "--yes"}
+	if req.Environment != "" {
+		args = append(args, "--env", req.Environment)
+	}
+	if req.Task != "" {
+		args = append(args, "--task", req.Task)
+	}
+	if req.Recompile {
+		args = append(args, "--recompile")
+	}
+	return args
+}
+
+// handleKillRun stops a live run. It goes through the same ops call `corvex run
+// kill` uses, including the heartbeat proof that the pid still belongs to the
+// run — a UI button is exactly the place where signalling a recycled pid would
+// be least noticed.
+func (s *Server) handleKillRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	command := "corvex run kill " + id
+	res, err := s.lister().KillRun(id, ops.KillOptions{Prove: true})
+	action := s.actions.Record(command, err)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"killed": res, "action": action})
+}
+
+// binary is the corvex executable to spawn. Explicit override first so a test
+// can point at a stub; os.Executable() otherwise, which is the only answer that
+// keeps a spawned run on the same version as the server that spawned it.
+func (s *Server) binary() (string, error) {
+	if s.opts.Binary != "" {
+		return s.opts.Binary, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("locating the corvex binary to spawn: %w", err)
+	}
+	return exe, nil
+}
+
+// runLog is where a detached run's output goes. It has to go somewhere: a
+// detached process with no stdout writes into a closed descriptor, and the first
+// thing anyone asks about a run started from a button is what it printed.
+func (s *Server) runLog(target string) (string, *os.File, error) {
+	dir := filepath.Join(s.opts.WorkDir, ".corvex", "runs", "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", nil, fmt.Errorf("creating the run log directory: %w", err)
+	}
+	path := filepath.Join(dir, sanitize(target)+".log")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	return path, f, nil
+}
+
+// sanitize keeps a target name from escaping the log directory.
+func sanitize(name string) string {
+	clean := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, name)
+	if clean == "" {
+		return "run"
+	}
+	return clean
+}
+
+// decodeBody reads a JSON body with a ceiling. A UI on localhost is not a
+// hostile client, but a bounded read is the difference between a bug and an
+// out-of-memory.
+func decodeBody(r *http.Request, v any) error {
+	defer r.Body.Close()
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil && err != io.EOF {
+		return fmt.Errorf("reading the request body: %w", err)
+	}
+	return nil
+}
+
+// gateCommand renders the CLI equivalent of a gate decision, quoting each
+// acknowledgement the way a shell would need it.
+//
+// The verdict is translated to the VERB rather than printed: the on-disk verdict
+// is `approved`, the command is `approve`, and a log line that says
+// `corvex gate approved run_8f21` is not a command anybody could run. The whole
+// value of this log is that every line in it is executable — parity that cannot
+// be pasted into a terminal is decoration.
+func gateCommand(verdict gate.Verdict, id string, req decideRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "corvex gate %s %s", gateVerb(verdict), id)
+	if req.Step != "" {
+		fmt.Fprintf(&b, " --step %s", req.Step)
+	}
+	for _, ack := range req.Ack {
+		fmt.Fprintf(&b, " --ack %q", ack)
+	}
+	if req.Reason != "" {
+		fmt.Fprintf(&b, " --reason %q", req.Reason)
+	}
+	return b.String()
+}
+
+// gateVerb maps a verdict to the CLI verb that produces it.
+func gateVerb(v gate.Verdict) string {
+	switch v {
+	case gate.Approved:
+		return "approve"
+	case gate.Rejected:
+		return "reject"
+	default:
+		return string(v)
+	}
+}

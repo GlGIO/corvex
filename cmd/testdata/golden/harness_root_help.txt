@@ -18,6 +18,7 @@ Available Commands:
   recipe      Compile a declarative workflow recipe into a runnable task DAG
   run         Execute pending tasks for a project
   start       Single entry point for a new feature (brainstorm → grill → plan)
+  ui          Serve the corvex UI on localhost
   validate    Run integration validation against the live stack
   version     Print the corvex version
 
