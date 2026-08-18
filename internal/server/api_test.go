@@ -143,9 +143,13 @@ func TestStartRun_SpawnsDetachedAndReturnsAtOnce(t *testing.T) {
 		t.Errorf("the recorded command is not what was spawned: %v", body["command"])
 	}
 
+	// Wait for CONTENT, not for the file: `echo > marker` creates it empty and
+	// fills it a moment later, so reading on existence alone races the shell and
+	// fails under load — the same test-side race the F-1 network already had to
+	// remove once, in the stack fixtures.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if data, err := os.ReadFile(marker); err == nil {
+		if data, err := os.ReadFile(marker); err == nil && len(strings.TrimSpace(string(data))) > 0 {
 			if !strings.Contains(string(data), "run start demo") {
 				t.Errorf("the spawned process got %q", data)
 			}
