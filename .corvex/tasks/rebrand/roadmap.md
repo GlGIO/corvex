@@ -856,6 +856,18 @@ publicando segredo por `Entry.Message`, custódia da F9 inerte na configuração
 sumindo da caixa quando dois abrem na mesma onda, e zumbi do spawn da UI. Todos consertados
 (`4017dcf`, `0223c28`), com o registro da F5 corrigido no ponto em que ele mentia.
 
+## Dogfood (primeiro run de verdade)
+
+Recipe `cost-split`, 36 minutos, **falhou por timeout** — e valeu mais que um verde. Registro em
+`dogfood.md`. Três defeitos que auditoria de leitura não pega: `tool_result` nunca disparava em
+produção (o parser espera uma forma que o CLI não emite, então a F5 entregou "início, fim,
+duração" com só o início vivo em campo); um run que falha reportava `$0.00`; e `SKIPPED` contava
+como feito. Consertados em `0bbf619`.
+
+Aberto, e é o próximo: **o teto de 20 min por task é curto para trabalho real neste repo, e é de
+config, não de step** — um step `code` e um step `test` têm perfis de tempo diferentes e a recipe
+não tem como dizer isso.
+
 ## Riscos
 
 1. **Gate que vira carimbo.** É a cicatriz #4 na versão humana. A 2b/1d já força leitura,
