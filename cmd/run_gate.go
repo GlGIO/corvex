@@ -35,6 +35,13 @@ func confirmRun() bool {
 		return true
 	}
 	fmt.Fprint(os.Stderr, "Proceed? [y/N] ")
+	return confirmYes()
+}
+
+// confirmYes reads one line from stdin and answers "did they say yes", with No
+// as the default on anything else — including EOF. The prompt itself belongs to
+// the caller, because the question differs (spending money, stopping a run).
+func confirmYes() bool {
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {

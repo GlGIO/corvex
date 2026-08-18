@@ -1,0 +1,11 @@
+$ corvex run list --projects
+
+--- stdout ---
+  alpha                    ready           1/2  ·  never run
+  beta                     needs planning   ·  never run
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

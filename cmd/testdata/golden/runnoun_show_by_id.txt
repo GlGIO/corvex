@@ -1,0 +1,19 @@
+$ corvex run show <RUN_ID>
+
+--- stdout ---
+<RUN_ID>  ·  project alpha  ·  done (finished)
+started <DUR> ago  ·  <TMP>
+intent: characterize
+
+1/1 steps  ·  <COST>
+
+  ✅ S01   First Task
+        <DUR>  ·  <COST>
+
+  → corvex run show <RUN_ID> --step S01
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

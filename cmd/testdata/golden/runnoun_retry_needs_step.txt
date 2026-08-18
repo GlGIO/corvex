@@ -1,0 +1,10 @@
+$ corvex run retry alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+--step is required: name the step to re-execute (e.g. --step S03)

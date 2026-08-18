@@ -1,0 +1,17 @@
+$ corvex run show alpha
+
+--- stdout ---
+project alpha  ·  never run  ·  <TMP>
+
+1/2 steps  ·  <COST>
+
+  ✅ S01   First Task
+        <DUR>  ·  <COST>
+  ⬜ S02   Second Task
+        1 retry  ·  after S01
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

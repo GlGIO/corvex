@@ -1,0 +1,15 @@
+$ corvex run list
+
+--- stdout ---
+1 run(s):
+
+  <RUN_ID>  done       finished  alpha
+      started <DUR> ago  ·  <TMP>
+
+  → corvex run show <RUN_ID>
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

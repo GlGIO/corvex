@@ -13,16 +13,10 @@ Available Commands:
   grill       Interview to resolve ambiguities in a project spec before planning
   help        Help about any command
   init        Initialize a Corvex project
-  inspect     Show per-task timeline, duration, retries, cost from the activity ledger
-  list        List available projects
-  logs        Show task details and completion info
   plan        Generate or update tasks.md from a project spec
   recipe      Compile a declarative workflow recipe into a runnable task DAG
-  reset       Reset a task to PENDING status
-  review      List pending escalations awaiting human review
   run         Execute pending tasks for a project
   start       Single entry point for a new feature (brainstorm → grill → plan)
-  status      Show DAG status and progress
   validate    Run integration validation against the live stack
   version     Print the corvex version
 

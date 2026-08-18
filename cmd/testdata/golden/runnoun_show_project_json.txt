@@ -1,0 +1,44 @@
+$ corvex run show alpha --json
+
+--- stdout ---
+{
+  "scope": "project",
+  "repo": "<TMP>",
+  "project": "alpha",
+  "started_at": "<TS>",
+  "updated_at": "<TS>",
+  "total": 2,
+  "completed": 1,
+  "cost_usd": 0.25,
+  "tasks": [
+    {
+      "id": "S01",
+      "title": "First Task",
+      "status": "PASSED",
+      "duration_ms": 1500,
+      "retries": 0,
+      "cost_usd": 0.25,
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    {
+      "id": "S02",
+      "title": "Second Task",
+      "status": "PENDING",
+      "depends_on": [
+        "S01"
+      ],
+      "duration_ms": 0,
+      "retries": 0,
+      "cost_usd": 0,
+      "tokens_in": 0,
+      "tokens_out": 0
+    }
+  ]
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

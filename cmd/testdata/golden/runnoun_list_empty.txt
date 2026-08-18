@@ -1,0 +1,10 @@
+$ corvex run list
+
+--- stdout ---
+No runs on this machine in the last 7d (--since 0 for all).
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

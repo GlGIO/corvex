@@ -1,0 +1,11 @@
+$ corvex run retry alpha --step S01 --no-run
+
+--- stdout ---
+S01 reset to PENDING in alpha
+  → corvex run start alpha --task S01
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

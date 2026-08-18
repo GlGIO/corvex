@@ -5,6 +5,15 @@ Run the orchestration loop: DAG resolve → Worker → Reviewer → checkpoint �
 
 Usage:
   corvex run <project> [flags]
+  corvex run [command]
+
+Available Commands:
+  kill        Signal a live run to stop
+  list        List runs across every repository
+  retry       Re-execute one step without redoing the rest
+  show        Show one run: steps, gates, retries and cost
+  start       Execute pending steps of a recipe or project
+  watch       Redraw a run's screen until it finishes
 
 Flags:
       --ab string       A/B run two models against one task (e.g. --ab sonnet,opus); requires --task
@@ -24,6 +33,8 @@ Flags:
 Global Flags:
       --no-color   Disable color output
   -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+Use "corvex run [command] --help" for more information about a command.
 
 --- stderr ---
 (empty)
