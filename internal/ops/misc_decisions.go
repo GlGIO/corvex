@@ -1,9 +1,11 @@
 package ops
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -28,4 +30,34 @@ func AppendDecision(path, question, answer string) error {
 		return fmt.Errorf("writing decision: %w", err)
 	}
 	return nil
+}
+
+// CountDecisions reports how many questions a project has already answered.
+//
+// It exists for the stopping rule (roadmap backlog: "grill sem regra de parada =
+// bug ativo"). The count has to be read from DISK rather than kept in the loop,
+// because the failure it bounds happens ACROSS invocations: the measured case
+// was 28 questions over two weeks, none of which was ever planned, and each
+// individual session stayed under its own per-session cap.
+//
+// A missing file is zero, not an error: a project that never grilled has
+// answered nothing.
+func CountDecisions(path string) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	n := 0
+	scanner := bufio.NewScanner(f)
+	// A decision is written as `## <question>` by AppendDecision, so counting the
+	// headings counts the questions. Long questions are normal, so the default
+	// 64 KiB line budget stays.
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "## ") {
+			n++
+		}
+	}
+	return n
 }

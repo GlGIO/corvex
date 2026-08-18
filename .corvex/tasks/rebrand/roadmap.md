@@ -797,7 +797,12 @@ ser testável sem docker; controle positivo: teardown vira no-op → 2 vermelhos
   cru (senão o catálogo é sugestão, não fronteira).
 - Preflight de dependência declarada antes do primeiro token (cicatriz #1).
 
-**Backlog paralelo:** teto no `griller.go`; contrato de contexto cross-repo.
+**Backlog paralelo:** ~~teto no `griller.go`~~ ✅ **feito** — a regra de parada agora é
+**cumulativa e lida do disco** (`--max-questions`, default 12), porque a falha medida foi
+cross-sessão: 28 perguntas em duas semanas, nenhuma planejada, e **cada sessão respeitou o
+teto de 50 iterações** que já existia — o teto contava o laço, e o que escapou foi o
+projeto. `0` restaura o comportamento antigo, que é o bug. O número 12 é julgamento, não
+medição, e é por isso que o knob existe. · contrato de contexto cross-repo (aberto).
 
 ---
 

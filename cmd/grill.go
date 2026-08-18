@@ -23,7 +23,13 @@ the codebase, and waits for your call. Resolved Q&A are appended to
 	RunE: runGrill,
 }
 
+// grillBudget bounds how many questions one project may accumulate. It is a
+// package var because `start` runs the same loop.
+var grillBudget = DefaultGrillBudget
+
 func init() {
+	grillCmd.Flags().IntVar(&grillBudget, "max-questions", DefaultGrillBudget,
+		"stop after this many recorded decisions for the project, counting previous sessions (0 = no limit)")
 	rootCmd.AddCommand(grillCmd)
 }
 

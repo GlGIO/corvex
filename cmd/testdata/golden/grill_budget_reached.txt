@@ -1,0 +1,13 @@
+$ corvex grill alpha
+
+--- stdout ---
+alpha already has 12 recorded decision(s), at or over the budget of 12.
+An interview that keeps going stops discovering and starts restating.
+  → corvex plan alpha            (use what is there)
+  → corvex grill alpha --max-questions 17   (deliberately keep going)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
