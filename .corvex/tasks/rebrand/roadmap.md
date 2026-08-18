@@ -670,7 +670,24 @@ F1 fechou 86,1%); 4a/4b/6/7/10 em zero; 8 em 150 e 9 em 370; 1 golden regravado
 Dívidas registradas na §16 e no fim da §17 — nenhuma bloqueante. `StatusParked` e
 `Identity.Recipe`, as duas dívidas que a F1 deixou para esta fase, estão fechadas.
 
-### F3 — Redesenho da superfície de CLI (só desenho — entrega documento)
+### F3 — Redesenho da superfície de CLI — ✅ CONCLUÍDA (só desenho — entrega documento)
+**Entregue em `.corvex/tasks/rebrand/f3-cli.md`**: gramática de 3 substantivos
+(`run`/`gate`/`recipe`), tabela completa antiga→nova cobrindo **todo** comando de hoje
+(inclusive `reset`, `review` e o `recipe <name>` que compila — os três que a tabela deste
+roadmap não mencionava), 13 decisões numeradas com custo aceito, mapeamento das 8 telas do
+canvas, e a ordem de execução da F4 com aceite mecânico. Zero linha de Go.
+
+Três decisões que mudam comportamento e estão declaradas lá: `reset` vira `run retry --step`
+(passa a gastar dinheiro, herda a confirmação de custo), `review` é absorvido por `gate list`
+(a única que muda **fluxo**, por isso é o último item da F4), e run falho sob TUI passa a sair
+≠ 0 (fecha dívida da F1). `gate show` **não** é renomeado. `run pause` fica fora da F4 com o
+motivo escrito: falta o arquivo de controle e o ponto de leitura na barreira de onda.
+
+A decisão que protege a rede: comando legado continua **byte-idêntico sob pipe**, escondido do
+help, com aviso de depreciação só em TTY — porque os goldens da F-1 capturam stdout **e**
+stderr no mesmo transcript (`characterize_test.go:591`). Golden novo para comando novo é
+entrega; golden legado que mude é vazamento → PARE.
+
 Passo próprio, sem código. Hoje os comandos não têm gramática: verbo e substantivo
 misturados (`init`, `plan`, `run`, `grill`, `start`, `status`, `list`, `logs`, `inspect`)
 e **cinco** formas de olhar a mesma coisa (`status`, `logs`, `inspect`, + `show`, `watch`).
