@@ -20,7 +20,7 @@ import (
 // happens in a different order on every execution — Go randomises map iteration
 // deliberately. Float addition is not associative, so three or more terms land
 // on 0.45 or 0.44999999999999996 depending on the draw, and an exact comparison
-// is a coin flip: TestRead_AllThreeOnDiskLineShapesStayReadable failed 3 times
+// is a coin flip: TestRead_AllFourOnDiskLineShapesStayReadable failed 3 times
 // in 10 before this helper existed. Two-term sums happen to be safe (IEEE
 // addition is commutative), which is exactly why the flake hid — it only bites
 // once a fixture grows a third task.
@@ -420,14 +420,22 @@ const (
 		`"repo":"/Users/someone/projects/corvex","task_id":"S02","duration_ms":4000,` +
 		`"cost_usd":0.25,"status":"PASSED"}`
 
-	// postFixLine: what is written from now on — the run id, no machine.
+	// postFixLine: the run id, no machine. Written from F1's fix until F5.
 	postFixLine = `{"ts":"2026-01-02T03:04:07Z","type":"task_complete","run_id":"run_9c3f",` +
 		`"task_id":"S03","duration_ms":1000,"cost_usd":0.05,"status":"PASSED"}`
+
+	// f5PhaseToolLine: the fourth shape, written from F5 on. Two columns finally
+	// carry a value — `phase`, which existed since before F1 and nothing ever
+	// filled, and `tool`, which is new. Both are the worker's own vocabulary and
+	// neither describes the machine: `tool` is the NAME only, never the input.
+	// A ledger that a run upgraded mid-project holds all four shapes at once.
+	f5PhaseToolLine = `{"ts":"2026-01-02T03:04:08Z","type":"tool_result","run_id":"run_9c3f",` +
+		`"task_id":"S03","phase":"worker","duration_ms":250,"tool":"Bash"}`
 )
 
-func TestRead_AllThreeOnDiskLineShapesStayReadable(t *testing.T) {
+func TestRead_AllFourOnDiskLineShapesStayReadable(t *testing.T) {
 	workDir, project := setupProjectDir(t)
-	body := preF1Line + "\n" + f1WithRepoLine + "\n" + postFixLine + "\n"
+	body := preF1Line + "\n" + f1WithRepoLine + "\n" + postFixLine + "\n" + f5PhaseToolLine + "\n"
 	if err := os.WriteFile(ledgerPath(workDir, project), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -436,8 +444,8 @@ func TestRead_AllThreeOnDiskLineShapesStayReadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("Read dropped a line: got %d entries, want 3 (%+v)", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("Read dropped a line: got %d entries, want 4 (%+v)", len(got), got)
 	}
 
 	// The F1 line keeps everything except the field that was removed: the run id
@@ -462,12 +470,36 @@ func TestRead_AllThreeOnDiskLineShapesStayReadable(t *testing.T) {
 	if n := len(activity.FilterByRun(got, "run_eed5")); n != 1 {
 		t.Errorf("F1 line not addressable by its run id: got %d, want 1", n)
 	}
+	// The F5 line's two new columns survive the round trip. Nothing older is
+	// disturbed by them: the three neighbours simply have no value there.
+	f5 := got[3]
+	if f5.Phase != "worker" || f5.Tool != "Bash" || f5.DurationMs != 250 {
+		t.Errorf("F5 line lost phase/tool: %+v", f5)
+	}
+
 	sum, err := activity.Summarize(workDir, project)
 	if err != nil {
 		t.Fatalf("Summarize: %v", err)
 	}
 	if want := 0.15 + 0.25 + 0.05; !sameCost(sum.TotalCostUSD, want) || len(sum.PerTask) != 3 {
-		t.Errorf("summary over the three shapes = %+v, want 3 tasks and $%v", sum, want)
+		t.Errorf("summary over the four shapes = %+v, want 3 tasks and $%v (the fourth shape is a tool line and completes no task)", sum, want)
+	}
+
+	// The four coexist in the breakdown too. Two of these lines carry no phase
+	// (the F1 and post-fix shapes), and they stay countable in a bucket that says
+	// so instead of being folded into the labelled one. The other two do carry
+	// one — the pre-F1 fixture happens to, and the F5 line does by design — and
+	// they share the worker bucket across a five-month gap in the format.
+	un := sum.PerPhase[activity.PhaseUnattributed]
+	if un.Entries != 2 || !sameCost(un.CostUSD, 0.25+0.05) {
+		t.Errorf("unattributed bucket = %+v, want the two phase-less lines and their money", un)
+	}
+	if w := sum.PerPhase["worker"]; w.Entries != 2 || w.DurationMs != 8000 || !sameCost(w.CostUSD, 0.15) {
+		t.Errorf("worker bucket = %+v, want both labelled lines, with the F5 tool line's 250ms "+
+			"belonging to the tool row and not to the phase clock", w)
+	}
+	if sum.PerTool["Bash"].DurationMs != 250 {
+		t.Errorf("PerTool[Bash] = %+v, want the 250ms the on-disk line carries", sum.PerTool["Bash"])
 	}
 }
 
