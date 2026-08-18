@@ -53,7 +53,7 @@ explicação por conceito. Não reescreva outras seções.
 
 ---
 
-## S02 — O repositório continua de pé ⬜ PENDING
+## S02 — O repositório continua de pé ✅ PASSED
 
 ```yaml
 type: general

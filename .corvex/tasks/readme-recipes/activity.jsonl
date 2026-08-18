@@ -41,3 +41,10 @@
 {"ts":"2026-08-18T15:18:50.378955-03:00","type":"tool_result","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"worker","duration_ms":79,"tool":"Bash"}
 {"ts":"2026-08-18T15:19:00.177312-03:00","type":"review_start","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"review"}
 {"ts":"2026-08-18T15:20:53.952742-03:00","type":"review_result","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"review","cost_usd":0.7939941,"message":"PASS"}
+{"ts":"2026-08-18T15:20:54.124135-03:00","type":"checkpoint","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"worker"}
+{"ts":"2026-08-18T15:20:54.124248-03:00","type":"task_complete","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"worker","duration_ms":262834,"cost_usd":0.8994543,"status":"PASSED"}
+{"ts":"2026-08-18T15:20:54.12431-03:00","type":"review_start","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"review","message":"inferential: Review do texto contra o código"}
+{"ts":"2026-08-18T15:22:22.625816-03:00","type":"review_result","run_id":"run_d458","recipe":"readme-recipes","task_id":"S01","phase":"review","cost_usd":0.6369672000000001,"message":"PASS"}
+{"ts":"2026-08-18T15:22:22.627146-03:00","type":"task_start","run_id":"run_d458","recipe":"readme-recipes","task_id":"S02","phase":"validate"}
+{"ts":"2026-08-18T15:22:22.627324-03:00","type":"tool_use","run_id":"run_d458","recipe":"readme-recipes","task_id":"S02","phase":"validate","tool":"command"}
+{"ts":"2026-08-18T15:22:24.790026-03:00","type":"tool_result","run_id":"run_d458","recipe":"readme-recipes","task_id":"S02","phase":"validate","duration_ms":2162,"tool":"command"}
