@@ -314,3 +314,99 @@ func onlyRunID(t *testing.T, repo string) string {
 	}
 	return views[0].Record.RunID
 }
+
+// retry without --no-run is the half that spends money: it resets the step AND
+// executes it. Stubbed, so what is asserted is the handoff — reset, then the
+// run path with the step pinned — not the model.
+func TestCharacterizeRunRetryResetsAndRunsTheStep(t *testing.T) {
+	privateIndex(t)
+	stubClaude(t, runStubPass)
+	f := newFixture(t).AddProject("alpha", fixtureSpecMD, runTasksOnePendingMD).GitInit()
+	runSeedAnchor(f, "alpha", fixtureSpecMD)
+	if _, _, err := runCLIIn(t, f.Dir, "run", "alpha", "--plain", "--yes"); err != nil {
+		t.Fatalf("seeding run: %v", err)
+	}
+	tasksRel := filepath.Join(".corvex", "tasks", "alpha", "tasks.md")
+	if !strings.Contains(f.Read(tasksRel), "PASSED") {
+		t.Fatalf("fixture did not finish the step:\n%s", f.Read(tasksRel))
+	}
+
+	stdout, _, err := runCLIIn(t, f.Dir, "run", "retry", "alpha", "--step", "S01", "--plain", "--yes")
+	if err != nil {
+		t.Fatalf("run retry: %v", err)
+	}
+	if !strings.Contains(stdout, "S01 reset to PENDING") {
+		t.Errorf("retry did not report the reset:\n%s", stdout)
+	}
+	if !strings.Contains(f.Read(tasksRel), "PASSED") {
+		t.Errorf("retry reset the step but never ran it:\n%s", f.Read(tasksRel))
+	}
+	// Two runs now exist for one project — which is the thing run identity was
+	// built for, and the reason `run show <id>` had to exist.
+	views, lerr := run.Resolver{}.ListRepo(f.Dir)
+	if lerr != nil {
+		t.Fatalf("ListRepo: %v", lerr)
+	}
+	if len(views) != 2 {
+		t.Errorf("repo holds %d run record(s) after a retry, want 2", len(views))
+	}
+}
+
+// A run id in another repository is refused with the directory to cd into,
+// instead of quietly running the wrong tree.
+func TestCharacterizeRunRetryRefusesAForeignRun(t *testing.T) {
+	privateIndex(t)
+	stubClaude(t, runStubPass)
+	other := newFixture(t).AddProject("alpha", fixtureSpecMD, runTasksOnePendingMD).GitInit()
+	runSeedAnchor(other, "alpha", fixtureSpecMD)
+	if _, _, err := runCLIIn(t, other.Dir, "run", "alpha", "--plain", "--yes"); err != nil {
+		t.Fatalf("seeding run: %v", err)
+	}
+	foreign := onlyRunID(t, other.Dir)
+
+	here := newFixture(t).AddProject("beta", fixtureSpecMD, fixtureTasksMD).GitInit()
+	_, _, err := runCLIIn(t, here.Dir, "run", "retry", foreign, "--step", "S01", "--no-run")
+	if err == nil {
+		t.Fatal("retrying a run of another repository must be refused")
+	}
+	if !strings.Contains(err.Error(), "cd ") {
+		t.Errorf("the refusal does not say where to go: %v", err)
+	}
+}
+
+// --since 0 keeps everything, and --repo . narrows to this repository. Both are
+// filters a listing gets wrong silently, so both are asserted against a run in
+// a second repository.
+func TestCharacterizeRunListFilters(t *testing.T) {
+	privateIndex(t)
+	stubClaude(t, runStubPass)
+	mine := newFixture(t).AddProject("alpha", fixtureSpecMD, runTasksOnePendingMD).GitInit()
+	runSeedAnchor(mine, "alpha", fixtureSpecMD)
+	if _, _, err := runCLIIn(t, mine.Dir, "run", "alpha", "--plain", "--yes"); err != nil {
+		t.Fatalf("seeding run: %v", err)
+	}
+	theirs := newFixture(t).AddProject("beta", fixtureSpecMD, runTasksOnePendingMD).GitInit()
+	runSeedAnchor(theirs, "beta", fixtureSpecMD)
+	if _, _, err := runCLIIn(t, theirs.Dir, "run", "beta", "--plain", "--yes"); err != nil {
+		t.Fatalf("seeding run: %v", err)
+	}
+
+	all, _, err := runCLIIn(t, mine.Dir, "run", "list", "--since", "0")
+	if err != nil {
+		t.Fatalf("run list --since 0: %v", err)
+	}
+	if !strings.Contains(all, "alpha") || !strings.Contains(all, "beta") {
+		t.Errorf("--since 0 lost a repository:\n%s", all)
+	}
+
+	local, _, err := runCLIIn(t, mine.Dir, "run", "list", "--repo", ".")
+	if err != nil {
+		t.Fatalf("run list --repo .: %v", err)
+	}
+	if strings.Contains(local, "beta") {
+		t.Errorf("--repo . listed another repository:\n%s", local)
+	}
+	if !strings.Contains(local, "alpha") {
+		t.Errorf("--repo . dropped this repository:\n%s", local)
+	}
+}

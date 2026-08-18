@@ -709,7 +709,31 @@ quase idênticas, uma destrutiva.
 - **Aceite:** documento com a tabela completa antiga→nova, aliases, e o mapeamento de cada
   tela do canvas para o comando equivalente. Nenhuma linha de Go.
 
-### F4 — Implementar comandos + inteligência
+### F4 — Implementar comandos + inteligência — ✅ CONCLUÍDA
+**Entregue em 4 ondas** (`79d00a3`, `8025cb8`, `f876906`, `7a96e1e`); registro de
+fecho em `f4-registro.md`. Toda a tabela da F3 existe e responde no terminal:
+`run start|list|show|watch|retry|kill`, `recipe list|show|validate|compile`,
+`gate list|show|approve|reject` cobrindo gate humano **e** escalation, completion
+dinâmica, sugestão do próximo comando, e `corvex` sem argumento mostrando estado.
+
+Aceite provado com **binário real e processos separados** (`e2e/run_surface_test.go`):
+a invocação legada `corvex run demo` (caminho `spec.md`) roda ponta a ponta e o run
+que ela deixou é endereçável por `run show <id>` **de fora do repositório**.
+
+Três divergências do desenho, todas registradas: `run kill` espera o heartbeat do
+próprio run antes de sinalizar (fecha a janela de reuso de pid que a F1 mandou
+revisitar quando algo destrutivo dependesse dela); `--no-recompile` foi acrescentado
+porque a D4 só tinha a saída destrutiva; e a sugestão de comando desconhecido foi
+reimplementada para enxergar comando escondido.
+
+Goldens: **4 regravados** (todos help/vazio, por mudança declarada de superfície) e
+**32 novos**. Nenhum golden de comportamento mudou — o legado imprime os mesmos bytes
+sob pipe. A D7 (aviso só em TTY) deixou de ser retórica: torná-lo incondicional deixa
+**69 testes vermelhos**.
+
+Invariantes: 1 verde (incl. `-race` e `-shuffle=on`); 2 em **83,2%** (piso 60);
+4a/4b/6/7/10 em zero; 8 em 150 e 9 em 370.
+
 - Implementar o desenho da F3. `run <project>` continua funcionando.
 - **Completion dinâmica** (determinística, cobra): `run show <TAB>` completa com run ids
   reais do índice da F1; `gate approve <TAB>` completa **só com gates pendentes**.
