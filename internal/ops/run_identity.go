@@ -66,8 +66,15 @@ type Runner struct {
 	// error message; an unattributable ledger costs the premise of the phase.
 	StatusErr error
 
+	// Environment is what this run needed standing before its first step
+	// (F6). `simple` is the default and costs nothing; `stack` brings up the
+	// `validate:` stack and takes it down again.
+	Environment Environment
+
 	handle   *run.Handle
 	interval time.Duration
+	env      *runEnvironment
+	stackUp  StackUpFn
 }
 
 // Identity is what the ledger stamps on every line it writes for this run.
@@ -137,6 +144,10 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 	stopWatching := r.recordCancellation(ctx)
 	recorded := false
 	defer func() {
+		// The environment comes down on every path, panic included: a container
+		// left running outlives the process that started it and is the one piece
+		// of a failed run that keeps costing something.
+		r.env.teardown()
 		hb.Stop()
 		_ = stopWatching()
 		if !recorded {
@@ -144,8 +155,21 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 		}
 	}()
 
+	// The environment is brought up here rather than in NewRunner because
+	// assembling a run must not start containers: `--dry-run`, a rejected flag
+	// or a missing project all pass through NewRunner, and none of them should
+	// leave a database behind. Failure to bring it up ends the run before a
+	// single token is spent, and the record says `failed` with the reason —
+	// running a suite that needs Postgres without Postgres blames the tests.
+	if envErr := r.env.up(ctx, r.stackUp); envErr != nil {
+		return envErr
+	}
+
 	err := body(ctx)
 
+	// Down before the terminal status is written, so a reader that sees `done`
+	// is not still holding a container.
+	r.env.teardown()
 	hb.Stop()
 	// Before the terminal write, and it waits for the watcher: that ordering is
 	// what guarantees a `canceling` write can never land on top of `canceled`.
@@ -254,9 +278,14 @@ func startIdentity(req RunRequest) (*run.Handle, error) {
 	}
 	// Project always; Recipe only when the tasks on disk say a recipe produced
 	// them — see Runner.Identity.
+	env, err := ParseEnvironment(req.Environment)
+	if err != nil {
+		return nil, err
+	}
 	return reg.Start(run.StartOptions{
-		Project: req.Project,
-		Recipe:  recipeFromTasks(req.WorkDir, req.Project),
+		Project:     req.Project,
+		Recipe:      recipeFromTasks(req.WorkDir, req.Project),
+		Environment: string(env),
 	})
 }
 

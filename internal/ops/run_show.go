@@ -54,21 +54,22 @@ type RunStepDetail struct {
 
 // RunReport is the single screen F3's D3 replaces three commands with.
 type RunReport struct {
-	Scope     RunScope       `json:"scope"`
-	RunID     string         `json:"run_id,omitempty"`
-	Repo      string         `json:"repo"`
-	Project   string         `json:"project"`
-	Recipe    string         `json:"recipe,omitempty"`
-	Status    run.Status     `json:"status,omitempty"`
-	Liveness  run.Liveness   `json:"liveness,omitempty"`
-	StartedAt time.Time      `json:"started_at,omitempty"`
-	UpdatedAt time.Time      `json:"updated_at,omitempty"`
-	Intent    string         `json:"intent,omitempty"`
-	Total     int            `json:"total"`
-	Completed int            `json:"completed"`
-	CostUSD   float64        `json:"cost_usd"`
-	Tasks     []RunTaskRow   `json:"tasks"`
-	Step      *RunStepDetail `json:"step,omitempty"`
+	Scope       RunScope       `json:"scope"`
+	RunID       string         `json:"run_id,omitempty"`
+	Repo        string         `json:"repo"`
+	Project     string         `json:"project"`
+	Recipe      string         `json:"recipe,omitempty"`
+	Status      run.Status     `json:"status,omitempty"`
+	Liveness    run.Liveness   `json:"liveness,omitempty"`
+	Environment string         `json:"environment,omitempty"`
+	StartedAt   time.Time      `json:"started_at,omitempty"`
+	UpdatedAt   time.Time      `json:"updated_at,omitempty"`
+	Intent      string         `json:"intent,omitempty"`
+	Total       int            `json:"total"`
+	Completed   int            `json:"completed"`
+	CostUSD     float64        `json:"cost_usd"`
+	Tasks       []RunTaskRow   `json:"tasks"`
+	Step        *RunStepDetail `json:"step,omitempty"`
 }
 
 // Settled reports whether there is nothing left to watch: the run ended, or it
@@ -106,6 +107,7 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 		rep.Scope, runID = ScopeRun, row.RunID
 		rep.RunID, rep.Repo, rep.Recipe = row.RunID, row.Repo, row.Recipe
 		rep.Status, rep.Liveness = row.Status, row.Liveness
+		rep.Environment = row.Environment
 		rep.StartedAt, rep.UpdatedAt = row.StartedAt, row.UpdatedAt
 		rep.Project = row.Project
 		if rep.Project == "" {
@@ -117,7 +119,7 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 		// A project screen still deserves an identity header when the project has
 		// run at least once: it is how the user learns the id to address later.
 		rep.RunID, rep.Recipe = row.RunID, row.Recipe
-		rep.Status, rep.Liveness = row.Status, row.Liveness
+		rep.Status, rep.Liveness, rep.Environment = row.Status, row.Liveness, row.Environment
 		rep.StartedAt, rep.UpdatedAt = row.StartedAt, row.UpdatedAt
 	}
 

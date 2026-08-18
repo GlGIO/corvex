@@ -27,6 +27,7 @@ var (
 	runApproveGates bool
 	runRecompile    bool
 	runNoRecompile  bool
+	runEnvironment  string
 )
 
 func addRunFlags(cmd *cobra.Command) {
@@ -44,6 +45,7 @@ func addRunFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&runApproveGates, "approve-gates", false, "auto-approve recipe human-gate stages (otherwise a gate stops the run)")
 	cmd.Flags().BoolVar(&runRecompile, "recompile", false, "recompile the recipe over the compiled DAG, DISCARDING the status of every step")
 	cmd.Flags().BoolVar(&runNoRecompile, "no-recompile", false, "run the compiled DAG as it is, even when the recipe changed")
+	cmd.Flags().StringVar(&runEnvironment, "env", "", "environment to stand up around the run: simple (default) or stack (the validate: stack, database included)")
 }
 
 func init() {

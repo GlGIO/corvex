@@ -16,15 +16,18 @@ import (
 // listing needs in order to be cross-repository at all; the index that feeds it
 // is 0600 in a 0700 directory and never enters a user's history (F1).
 type RunRow struct {
-	RunID     string        `json:"run_id"`
-	Repo      string        `json:"repo"`
-	Project   string        `json:"project,omitempty"`
-	Recipe    string        `json:"recipe,omitempty"`
-	Status    run.Status    `json:"status"`
-	Liveness  run.Liveness  `json:"liveness"`
-	StartedAt time.Time     `json:"started_at"`
-	UpdatedAt time.Time     `json:"updated_at,omitempty"`
-	Age       time.Duration `json:"age_ns"`
+	RunID    string       `json:"run_id"`
+	Repo     string       `json:"repo"`
+	Project  string       `json:"project,omitempty"`
+	Recipe   string       `json:"recipe,omitempty"`
+	Status   run.Status   `json:"status"`
+	Liveness run.Liveness `json:"liveness"`
+	// Environment is what stood around the run (F6): `simple` or `stack`.
+	// Empty on records written before F6.
+	Environment string        `json:"environment,omitempty"`
+	StartedAt   time.Time     `json:"started_at"`
+	UpdatedAt   time.Time     `json:"updated_at,omitempty"`
+	Age         time.Duration `json:"age_ns"`
 }
 
 // Live reports whether this run still has a process behind it — including one
@@ -91,15 +94,16 @@ func (l RunLister) ListRuns(opts RunListOptions) ([]RunRow, error) {
 			continue
 		}
 		rows = append(rows, RunRow{
-			RunID:     v.Record.RunID,
-			Repo:      v.Record.Repo,
-			Project:   v.Record.Project,
-			Recipe:    v.Record.Recipe,
-			Status:    v.Record.Status,
-			Liveness:  v.Liveness,
-			StartedAt: v.Record.StartedAt,
-			UpdatedAt: v.Record.UpdatedAt,
-			Age:       age,
+			RunID:       v.Record.RunID,
+			Repo:        v.Record.Repo,
+			Project:     v.Record.Project,
+			Recipe:      v.Record.Recipe,
+			Status:      v.Record.Status,
+			Liveness:    v.Liveness,
+			Environment: v.Record.Environment,
+			StartedAt:   v.Record.StartedAt,
+			UpdatedAt:   v.Record.UpdatedAt,
+			Age:         age,
 		})
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -122,15 +126,16 @@ func (l RunLister) FindRun(runID string) (RunRow, error) {
 		return RunRow{}, &UnknownRunError{RunID: runID}
 	}
 	return RunRow{
-		RunID:     view.Record.RunID,
-		Repo:      view.Record.Repo,
-		Project:   view.Record.Project,
-		Recipe:    view.Record.Recipe,
-		Status:    view.Record.Status,
-		Liveness:  view.Liveness,
-		StartedAt: view.Record.StartedAt,
-		UpdatedAt: view.Record.UpdatedAt,
-		Age:       l.now().Sub(view.Record.StartedAt),
+		RunID:       view.Record.RunID,
+		Repo:        view.Record.Repo,
+		Project:     view.Record.Project,
+		Recipe:      view.Record.Recipe,
+		Status:      view.Record.Status,
+		Liveness:    view.Liveness,
+		Environment: view.Record.Environment,
+		StartedAt:   view.Record.StartedAt,
+		UpdatedAt:   view.Record.UpdatedAt,
+		Age:         l.now().Sub(view.Record.StartedAt),
 	}, nil
 }
 

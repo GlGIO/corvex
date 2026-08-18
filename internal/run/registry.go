@@ -47,6 +47,8 @@ type StartOptions struct {
 	Project string
 	// Status defaults to StatusRunning.
 	Status Status
+	// Environment is the run environment name (F6); empty means `simple`.
+	Environment string
 }
 
 // Handle is a started run's writable side. It owns exactly one record file and
@@ -101,16 +103,17 @@ func (r Registry) Start(opts StartOptions) (*Handle, error) {
 		status = StatusRunning
 	}
 	rec := Record{
-		RunID:     id,
-		Repo:      r.Repo,
-		Recipe:    opts.Recipe,
-		Project:   opts.Project,
-		PID:       r.pid(),
-		Host:      r.hostName(),
-		Machine:   r.machineID(home),
-		Status:    status,
-		StartedAt: at,
-		UpdatedAt: at,
+		RunID:       id,
+		Repo:        r.Repo,
+		Recipe:      opts.Recipe,
+		Project:     opts.Project,
+		PID:         r.pid(),
+		Host:        r.hostName(),
+		Machine:     r.machineID(home),
+		Status:      status,
+		Environment: opts.Environment,
+		StartedAt:   at,
+		UpdatedAt:   at,
 	}
 	if err := WriteRecord(rec); err != nil {
 		r.releaseID(id)

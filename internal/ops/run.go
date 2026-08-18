@@ -82,6 +82,14 @@ type RunRequest struct {
 	// gate file; 0 uses step.DefaultGatePoll. Tests set it so a cross-process
 	// approval does not cost two seconds of wall clock.
 	GatePoll time.Duration
+
+	// Environment is the run environment by name ("", "simple" or "stack").
+	// Empty is `simple`; anything unknown is refused (see ParseEnvironment).
+	Environment string
+	// StackUp overrides how `stack` is brought up. Nil wires the production
+	// implementation; tests substitute so the lifecycle is assertable without a
+	// docker daemon.
+	StackUp StackUpFn
 }
 
 // NewRunner assembles one run: provider, sandbox, scheduler options — and the
@@ -102,6 +110,14 @@ func NewRunner(req RunRequest) (*Runner, error) {
 	// come out before any flag complaint.
 	sb := sandboxpkg.NewSandbox(req.Config.Sandbox)
 
+	// Parsed before identity is registered, with every other flag check: a run
+	// refused for a misspelled environment must not leave a `running` record
+	// that nothing will ever close.
+	env, err := ParseEnvironment(req.Environment)
+	if err != nil {
+		return nil, err
+	}
+
 	abModels, err := ParseABModels(req.ABSpec)
 	if err != nil {
 		return nil, err
@@ -119,12 +135,18 @@ func NewRunner(req RunRequest) (*Runner, error) {
 		return nil, fmt.Errorf("registering run identity: %w", err)
 	}
 	r := &Runner{
-		Project:  req.Project,
-		interval: req.HeartbeatInterval,
-		handle:   handle,
-		RunID:    handle.RunID(),
-		Repo:     handle.Record().Repo,
-		Recipe:   handle.Record().Recipe,
+		Project:     req.Project,
+		interval:    req.HeartbeatInterval,
+		handle:      handle,
+		RunID:       handle.RunID(),
+		Repo:        handle.Record().Repo,
+		Recipe:      handle.Record().Recipe,
+		Environment: env,
+		env:         &runEnvironment{kind: env},
+		stackUp:     req.StackUp,
+	}
+	if r.stackUp == nil {
+		r.stackUp = DefaultStackUp(req.WorkDir, req.Project, req.Config, os.Stdout, os.Stderr)
 	}
 
 	r.Orchestrator = orchestrator.New(orchestrator.Options{

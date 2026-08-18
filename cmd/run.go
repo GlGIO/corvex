@@ -97,6 +97,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		Force:        runForce,
 		ApproveGates: runApproveGates,
 		ABSpec:       runAB,
+		Environment:  runEnvironment,
 		Events:       events,
 		Commands:     commands,
 	})

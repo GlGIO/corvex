@@ -19,6 +19,7 @@ Flags:
       --ab string       A/B run two models against one task (e.g. --ab sonnet,opus); requires --task
       --approve-gates   auto-approve recipe human-gate stages (otherwise a gate stops the run)
       --dry-run         show execution plan without running
+      --env string      environment to stand up around the run: simple (default) or stack (the validate: stack, database included)
       --force           run even if the working tree is dirty, discarding uncommitted changes first (DESTRUCTIVE)
   -h, --help            help for run
       --here            run from the current directory even when a worktree exists for this project (rarely correct — usually you want to cd into the worktree)

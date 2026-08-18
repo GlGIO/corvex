@@ -43,6 +43,11 @@ func renderRunHeader(r ops.RunReport) {
 		if !r.StartedAt.IsZero() {
 			fmt.Printf("started %s ago  ·  %s\n", humanWait(time.Since(r.StartedAt)), r.Repo)
 		}
+		// Only when it is not the default: printing "environment: simple" on
+		// every screen would train the eye to skip the line that matters.
+		if r.Environment != "" && r.Environment != string(ops.EnvSimple) {
+			fmt.Printf("environment: %s\n", r.Environment)
+		}
 	} else {
 		fmt.Printf("%s  ·  never run  ·  %s\n", label(r), r.Repo)
 	}

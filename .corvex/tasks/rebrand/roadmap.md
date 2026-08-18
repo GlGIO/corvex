@@ -754,7 +754,28 @@ Invariantes: 1 verde (incl. `-race` e `-shuffle=on`); 2 em **83,2%** (piso 60);
 - Custo por natureza (worker / reviewer / determinístico — a barra da 2f).
 - **Aceite:** todo dado das telas 2a–2h existe em disco.
 
-### F6 — Ambiente de execução por run
+### F6 — Ambiente de execução por run — ✅ CONCLUÍDA
+`corvex run start <x> --env simple|stack`. `stack` sobe **o mesmo ambiente que o
+`corvex validate` já subia** (container de banco, migrations, app, health) pela mesma
+função `internal/stack.Setup` e pelo mesmo bloco `validate:` do config — a F6 não
+construiu um segundo mecanismo, ela deixou um **run** pedir o que a validação já pedia.
+
+Três decisões, com o custo escrito:
+- **Nome desconhecido é erro, não fallback.** Cair para `simple` em silêncio rodaria a
+  suíte que precisa de Postgres sem Postgres e a culpa cairia nos testes.
+- **O ambiente sobe dentro do `Execute`, não no `NewRunner`.** Montar um run não pode
+  subir container: `--dry-run`, flag recusada e projeto inexistente passam por lá.
+  Falha ao subir encerra o run **antes do primeiro token**, e o record diz `failed`
+  com o motivo.
+- **Teardown roda uma vez, em todo caminho, inclusive pânico**, e **antes** da escrita
+  do status terminal — quem lê `done` não está mais segurando container. Duas vezes
+  seria `docker rm` num container que outro run pode ter acabado de criar.
+
+O ambiente vai para o **record** (scratch da máquina, gitignored), não para o ledger:
+"que containers esta máquina subiu" é fato da máquina. `run show` mostra a linha só
+quando não é o default. Costura injetável (`RunRequest.StackUp`) para o ciclo de vida
+ser testável sem docker; controle positivo: teardown vira no-op → 2 vermelhos.
+
 - "simples" × "com Postgres" — reusa `internal/stack` (F0) + o docker do sandbox.
 
 ### F7 — Servidor + UI

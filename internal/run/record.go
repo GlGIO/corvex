@@ -70,6 +70,16 @@ type Record struct {
 	Machine string `json:"machine,omitempty"`
 	Status  Status `json:"status"`
 
+	// Environment is what the run needed standing around it (F6): `simple`
+	// (nothing) or `stack` (the validate: stack, database included). Empty on
+	// every record written before F6, which reads as `simple` — the only value
+	// those runs could have had.
+	//
+	// It lives here rather than in the ledger for the reason the whole file
+	// exists: this is machine-local scratch, gitignored with `*`, and "which
+	// containers this machine stood up" is a fact about the machine.
+	Environment string `json:"environment,omitempty"`
+
 	StartedAt time.Time `json:"started_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
