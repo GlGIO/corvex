@@ -102,6 +102,16 @@ type Entry struct {
 	TokensOut  int       `json:"tokens_out,omitempty"`
 	Status     string    `json:"status,omitempty"`
 	Message    string    `json:"message,omitempty"`
+
+	// Tool is the NAME of a tool the worker invoked, and nothing else about it.
+	//
+	// F5 needs tool telemetry (which tools a run reaches for, how long they
+	// take) and this file is committed, so the input is deliberately not here:
+	// a Bash input carries a command line, a Read input carries an absolute
+	// path, and either can carry a secret the user exported. The name alone is
+	// what a screen can act on; the arguments belong to the terminal, where
+	// they already are.
+	Tool string `json:"tool,omitempty"`
 }
 
 // Ledger is a serialised JSONL writer scoped to one project and one run.

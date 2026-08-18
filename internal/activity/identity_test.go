@@ -366,7 +366,7 @@ func TestEntry_JSONKeysAreAnAllowlist(t *testing.T) {
 		"run_id":      "`run_` + 4 hex from crypto/rand — identifies the run, describes nothing about the machine",
 		"recipe":      "the user's own recipe name",
 		"task_id":     "a task id from the user's tasks.md",
-		"phase":       "worker | review | plan | recovery",
+		"phase":       "worker | review | plan | recovery | gate | validate",
 		"attempt":     "a retry counter",
 		"duration_ms": "a duration",
 		"cost_usd":    "money",
@@ -374,6 +374,7 @@ func TestEntry_JSONKeysAreAnAllowlist(t *testing.T) {
 		"tokens_out":  "a token count",
 		"status":      "PASSED | FAILED | …",
 		"message":     "a human-readable note; the emitters must keep paths out of it",
+		"tool":        "the NAME of a tool the worker used (Read, Bash, …) — never its input, which carries paths, command lines and whatever the user exported",
 	}
 
 	typ := reflect.TypeOf(activity.Entry{})

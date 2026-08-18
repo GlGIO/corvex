@@ -66,7 +66,28 @@ type Event struct {
 	DurationMs int64
 	Timestamp  time.Time
 	Insight    *types.InsightData
+
+	// Phase says which part of the machine produced this event: worker,
+	// review, plan, recovery, gate, validate. It is what makes "where did the
+	// money go" answerable — the ledger has carried a `phase` column since
+	// before F1 and nothing ever filled it, so every cost in every ledger on
+	// disk is unattributed. F5 fills it.
+	Phase string
+	// Tool is the name of the tool a worker invoked, for the tool_use and
+	// tool_result lines. Never its input: see activity.Entry.Tool.
+	Tool string
 }
+
+// Phase names. Values are on-disk (the ledger's `phase` column), so they are a
+// format, not labels: renaming one silently re-buckets every past run.
+const (
+	PhaseWorker   = "worker"
+	PhaseReview   = "review"
+	PhasePlan     = "plan"
+	PhaseRecovery = "recovery"
+	PhaseGate     = "gate"
+	PhaseValidate = "validate"
+)
 
 // Emitter is the narrow sink a producer needs: hand it an event and it reaches
 // the ledger and the UI. The orchestrator supplies the real implementation.
