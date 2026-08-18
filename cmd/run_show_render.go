@@ -59,7 +59,34 @@ func renderRunHeader(r ops.RunReport) {
 	if r.Intent != "" {
 		fmt.Printf("intent: %s\n", r.Intent)
 	}
-	fmt.Printf("\n%d/%d steps  ·  $%.2f\n\n", r.Completed, r.Total, r.CostUSD)
+	fmt.Printf("\n%d/%d steps  ·  $%.2f", r.Completed, r.Total, r.CostUSD)
+	// The human clock, apart from the run's clock. A run that took four hours of
+	// which three were a person asleep is not a slow run, and before F5 the two
+	// numbers were the same number.
+	if r.HumanWaitMs > 0 {
+		fmt.Printf("  ·  %s waiting on a person", humanWait(time.Duration(r.HumanWaitMs)*time.Millisecond))
+	}
+	fmt.Println()
+	renderPhaseBar(r.PerPhase, r.CostUSD)
+	fmt.Println()
+}
+
+// renderPhaseBar is the 2f bar in a terminal: where the money went, by the
+// nature of the work that spent it. Printed only when the ledger actually
+// attributed something — every line written before F5 has no phase, and a
+// breakdown of a run that predates the column would be a bar of one bucket
+// called "unattributed" pretending to be information.
+func renderPhaseBar(phases []ops.PhaseCost, total float64) {
+	if len(phases) == 0 || total <= 0 {
+		return
+	}
+	for _, p := range phases {
+		if p.CostUSD <= 0 {
+			continue
+		}
+		share := int((p.CostUSD / total) * 20)
+		fmt.Printf("  %-13s $%-7.2f %s\n", p.Phase, p.CostUSD, strings.Repeat("█", max(share, 1)))
+	}
 }
 
 func label(r ops.RunReport) string {
@@ -93,57 +120,4 @@ func plural(n int, one, many string) string {
 		return one
 	}
 	return many
-}
-
-func renderRunStep(s ops.RunStepDetail) {
-	fmt.Printf("%s %s — %s [%s]\n", statusEmoji(s.Status), s.ID, s.Title, s.Status)
-	if meta := stepMeta(s.RunTaskRow); meta != "" {
-		fmt.Printf("%s\n", meta)
-	}
-	if s.Description != "" {
-		fmt.Printf("\nDescription:\n%s\n", s.Description)
-	}
-	if len(s.Criteria) > 0 {
-		fmt.Println("\nCriteria:")
-		for _, c := range s.Criteria {
-			fmt.Printf("  - %s\n", c)
-		}
-	}
-	if len(s.Create) > 0 || len(s.Modify) > 0 {
-		fmt.Println("\nFiles:")
-		for _, f := range s.Create {
-			fmt.Printf("  + %s\n", f)
-		}
-		for _, f := range s.Modify {
-			fmt.Printf("  ~ %s\n", f)
-		}
-	}
-	if s.Summary != "" {
-		fmt.Printf("\nSummary: %s\n", s.Summary)
-	}
-	for _, d := range s.Decisions {
-		fmt.Printf("  • %s\n", d)
-	}
-	if len(s.Events) == 0 {
-		fmt.Println("\nNo events recorded for this step.")
-		return
-	}
-	fmt.Println("\nEvents:")
-	for _, e := range s.Events {
-		fmt.Printf("  %s  %-14s %s\n", e.Timestamp.Format(time.RFC3339), e.Type, e.Message)
-	}
-}
-
-// firstInterestingStep points the reader at the step worth opening: the one that
-// is not finished, or the last one when everything is.
-func firstInterestingStep(r ops.RunReport) string {
-	for _, t := range r.Tasks {
-		if !t.Status.IsTerminal() {
-			return t.ID
-		}
-	}
-	if len(r.Tasks) > 0 {
-		return r.Tasks[len(r.Tasks)-1].ID
-	}
-	return "S01"
 }

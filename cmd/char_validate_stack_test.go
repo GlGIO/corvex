@@ -46,6 +46,21 @@ func validateStubDocker(t *testing.T, script string) string {
 
 // validateReadLog returns a log file's contents, or "(no calls)" when the stub
 // was never invoked.
+// waitForDump blocks until a stub's dump file has content, or gives up after a
+// second and lets the assertion report what it actually found. It never fails on
+// its own: a test that fails inside a helper points at the helper instead of at
+// the behaviour.
+func waitForDump(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func validateReadLog(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -214,6 +229,14 @@ func TestCharacterizeStackEnvFileSourced(t *testing.T) {
 	stdout, stderr := validateCapture(t, "", func(*bufio.Reader) {
 		var cleanup stack.CleanupFn
 		cleanup, err = stack.Setup(context.Background(), f.Dir, "alpha", cfg, validateStreams())
+		// The app writes its environment and only THEN execs the sleep that
+		// keeps it alive, so `Setup` can return (health passed) while that write
+		// is still in flight. Tearing down first kills the process before it
+		// lands and the golden compares against an empty dump — a flake that
+		// only shows under load, which is exactly when nobody trusts a red
+		// suite. Waiting removes the race from the TEST side; no production file
+		// is touched.
+		waitForDump(t, appDump)
 		if cleanup != nil {
 			cleanup()
 		}

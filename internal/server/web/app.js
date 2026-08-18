@@ -179,6 +179,28 @@ async function renderRunDetail(root, id) {
     el('span', { class: 'grow dim', text: r.repo }),
     el('span', { class: 'dim', text: `${r.completed}/${r.total} steps · ${money(r.cost_usd)}` }),
   ));
+  // Where the money went, by the nature of the work that spent it (2f), and the
+  // human clock kept apart from the run's clock (2g). Both only exist because
+  // F5 started writing `phase` — a run from before that shows one bucket called
+  // `unattributed`, which is the honest answer rather than a guess.
+  if ((r.per_phase || []).length) {
+    const bars = el('div', { class: 'card' },
+      el('div', { class: 'row' },
+        el('strong', { class: 'grow', text: 'cost by nature' }),
+        r.human_wait_ms ? el('span', { class: 'pill warn', text: `${human(r.human_wait_ms * 1e6)} waiting on a person` }) : null,
+      ),
+    );
+    for (const p of r.per_phase) {
+      const share = r.cost_usd > 0 ? Math.max(2, Math.round((p.cost_usd / r.cost_usd) * 100)) : 0;
+      bars.append(el('div', { class: 'row' },
+        el('span', { class: 'id', text: p.phase, style: 'width:12ch' }),
+        el('span', { class: 'dim', text: money(p.cost_usd), style: 'width:8ch' }),
+        el('span', { class: 'bar', style: `width:${share}%` }),
+      ));
+    }
+    root.append(bars);
+  }
+
   const steps = el('div', { class: 'steps' });
   for (const t of r.tasks || []) {
     steps.append(el('div', { class: 'step' },

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/lipgloss"
 	charmlog "github.com/charmbracelet/log"
 	"github.com/giovannialves/corvex/internal/ops"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/giovannialves/corvex/internal/types"
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"

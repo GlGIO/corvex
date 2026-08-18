@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"sort"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
@@ -54,22 +55,42 @@ type RunStepDetail struct {
 
 // RunReport is the single screen F3's D3 replaces three commands with.
 type RunReport struct {
-	Scope       RunScope       `json:"scope"`
-	RunID       string         `json:"run_id,omitempty"`
-	Repo        string         `json:"repo"`
-	Project     string         `json:"project"`
-	Recipe      string         `json:"recipe,omitempty"`
-	Status      run.Status     `json:"status,omitempty"`
-	Liveness    run.Liveness   `json:"liveness,omitempty"`
-	Environment string         `json:"environment,omitempty"`
-	StartedAt   time.Time      `json:"started_at,omitempty"`
-	UpdatedAt   time.Time      `json:"updated_at,omitempty"`
-	Intent      string         `json:"intent,omitempty"`
-	Total       int            `json:"total"`
-	Completed   int            `json:"completed"`
-	CostUSD     float64        `json:"cost_usd"`
-	Tasks       []RunTaskRow   `json:"tasks"`
-	Step        *RunStepDetail `json:"step,omitempty"`
+	Scope       RunScope     `json:"scope"`
+	RunID       string       `json:"run_id,omitempty"`
+	Repo        string       `json:"repo"`
+	Project     string       `json:"project"`
+	Recipe      string       `json:"recipe,omitempty"`
+	Status      run.Status   `json:"status,omitempty"`
+	Liveness    run.Liveness `json:"liveness,omitempty"`
+	Environment string       `json:"environment,omitempty"`
+	StartedAt   time.Time    `json:"started_at,omitempty"`
+	UpdatedAt   time.Time    `json:"updated_at,omitempty"`
+	Intent      string       `json:"intent,omitempty"`
+	Total       int          `json:"total"`
+	Completed   int          `json:"completed"`
+	CostUSD     float64      `json:"cost_usd"`
+	Tasks       []RunTaskRow `json:"tasks"`
+
+	// PerPhase is where the money went, by the nature of the work that spent it
+	// (F5). It is the 2f bar, and it only became answerable when `phase` stopped
+	// being a column nobody wrote.
+	PerPhase []PhaseCost `json:"per_phase,omitempty"`
+	// HumanWaitMs is time a person, not a machine, was the bottleneck — gates
+	// waiting to be decided. Reported apart from the run's own clock because a
+	// run that took four hours of which three were somebody asleep is not a slow
+	// run, and until F5 both numbers were the same number.
+	HumanWaitMs int64 `json:"human_wait_ms,omitempty"`
+
+	Step *RunStepDetail `json:"step,omitempty"`
+}
+
+// PhaseCost is one bar of the cost-by-nature breakdown, sorted so the screen is
+// stable between reads.
+type PhaseCost struct {
+	Phase      string  `json:"phase"`
+	CostUSD    float64 `json:"cost_usd"`
+	DurationMs int64   `json:"duration_ms"`
+	Entries    int     `json:"entries"`
 }
 
 // Settled reports whether there is nothing left to watch: the run ended, or it
@@ -134,6 +155,7 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 		entries = activity.FilterByRun(entries, runID)
 	}
 
+	rep.PerPhase, rep.HumanWaitMs = summarise(entries)
 	rep.Tasks = buildRunTaskRows(view, entries)
 	for _, t := range rep.Tasks {
 		rep.CostUSD += t.CostUSD
@@ -151,6 +173,24 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 		rep.Step = detail
 	}
 	return rep, nil
+}
+
+// summarise reduces the same slice of entries the screen already holds, rather
+// than re-reading the ledger: `run show <id>` filters to one execution, and a
+// second read would summarise the project instead of the run.
+func summarise(entries []activity.Entry) ([]PhaseCost, int64) {
+	sum := activity.AggregateEntries(entries)
+	phases := make([]PhaseCost, 0, len(sum.PerPhase))
+	for _, m := range sum.PerPhase {
+		phases = append(phases, PhaseCost{Phase: m.Phase, CostUSD: m.CostUSD, DurationMs: m.DurationMs, Entries: m.Entries})
+	}
+	sort.Slice(phases, func(i, j int) bool {
+		if phases[i].CostUSD == phases[j].CostUSD {
+			return phases[i].Phase < phases[j].Phase
+		}
+		return phases[i].CostUSD > phases[j].CostUSD
+	})
+	return phases, sum.HumanWaitMs
 }
 
 // buildRunTaskRows walks the DAG order rather than tasks.md order, so the screen

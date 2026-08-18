@@ -199,6 +199,13 @@ func SummarizeRun(workDir, project, runID string) (Summary, error) {
 // f-1-anomalias.md (the aggregated total lands on a different float64 depending
 // on Go's randomised map iteration) is therefore not extended to the new
 // columns, and TotalCostUSD is left exactly as it was rather than "fixed" here.
+// AggregateEntries summarises entries a caller already has in hand.
+//
+// It exists because `run show <id>` filters the ledger to ONE execution before
+// it renders; making it call Summarize would summarise the whole project and
+// quietly answer a different question than the screen is asking.
+func AggregateEntries(entries []Entry) Summary { return aggregate(entries) }
+
 func aggregate(entries []Entry) Summary {
 	perTask := make(map[string]TaskMetric, len(entries))
 	perPhase := make(map[string]PhaseMetric)

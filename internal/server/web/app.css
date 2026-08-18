@@ -60,3 +60,7 @@ footer{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--line);b
 #palette-list li:last-child{border-bottom:0}
 input,select{font:inherit;background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px}
 .empty{color:var(--dim);padding:24px 0}
+/* The cost bar is deliberately one colour: the question it answers is
+   proportion, and colouring each phase differently would invite reading the
+   hue as a judgement about which kind of work is "good". */
+.bar{display:inline-block;height:10px;background:var(--acc);border-radius:2px;min-width:2px}

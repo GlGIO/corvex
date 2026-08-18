@@ -7,32 +7,37 @@ $ corvex inspect alpha --task S01 --json
     "type": "task_start",
     "run_id": "<RUN_ID>",
     "task_id": "S01",
+    "phase": "worker",
     "message": "First Task"
   },
   {
     "ts": "<TS>",
     "type": "review_start",
     "run_id": "<RUN_ID>",
-    "task_id": "S01"
+    "task_id": "S01",
+    "phase": "review"
   },
   {
     "ts": "<TS>",
     "type": "review_result",
     "run_id": "<RUN_ID>",
     "task_id": "S01",
+    "phase": "review",
     "message": "PASS"
   },
   {
     "ts": "<TS>",
     "type": "checkpoint",
     "run_id": "<RUN_ID>",
-    "task_id": "S01"
+    "task_id": "S01",
+    "phase": "worker"
   },
   {
     "ts": "<TS>",
     "type": "task_complete",
     "run_id": "<RUN_ID>",
     "task_id": "S01",
+    "phase": "worker",
     "duration_ms": 2000,
     "cost_usd": 0.04,
     "tokens_in": 200,

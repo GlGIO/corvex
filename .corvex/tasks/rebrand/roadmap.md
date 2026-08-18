@@ -747,7 +747,25 @@ Invariantes: 1 verde (incl. `-race` e `-shuffle=on`); 2 em **83,2%** (piso 60);
   formas acima cobrem ~90% do problema de graça. Reavaliar depois da F7.
 - **Aceite:** todo comando do canvas existe e funciona no terminal, antes de haver UI.
 
-### F5 — Telemetria da UI
+### F5 — Telemetria da UI — ✅ CONCLUÍDA
+**Registro em `f5-registro.md`.** Executada como fan-out de 4 agentes em worktrees próprios,
+integrada por cherry-pick na ordem de dependência.
+
+**O achado que define a fase:** `Entry.Phase` existia desde antes da F1 e **nunca ninguém
+escreveu nele** — todo custo em todo ledger em disco está sem atribuição. A barra da 2f não
+era agregação faltando, era dado que nunca foi gravado. Idem `tool_use`, que o `emit`
+descartava junto com os chunks de texto.
+
+Agora existem em disco: fase por evento, início/fim/duração de ferramenta (só o **nome**,
+nunca o input — o arquivo é commitado), espera humana por gate, marca de leitura de evidência
+persistente (`corvex gate ack`), e agregação por fase/ferramenta. `run show` e a UI mostram a
+barra por natureza e o relógio humano separado do relógio do run.
+
+**Defeito achado por duas frentes independentes, registrado e não consertado:**
+`task_complete` carrega worker+reviewer num número só, então a barra sub-reporta `review`.
+Desenrolar na leitura é impossível (o `review_result` não carrega `attempt`); o conserto é do
+emissor e muda o formato do ledger.
+
 - Persistir eventos `tool_use` (início/fim, não chunks — `ledger.go:6` os descarta hoje).
 - Relógio de espera humana separado do relógio do run (2g: *"relógio parado há 6m"*).
 - Estado de leitura de evidência (persistente — fechar a aba não zera).

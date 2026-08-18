@@ -4,6 +4,7 @@ $ corvex run show alpha
 project alpha  ·  never run  ·  <TMP>
 
 1/2 steps  ·  <COST>
+  unattributed  <COST>    ████████████████████
 
   ✅ S01   First Task
         <DUR>  ·  <COST>
