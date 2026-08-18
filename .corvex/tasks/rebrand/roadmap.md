@@ -796,7 +796,19 @@ ser testável sem docker; controle positivo: teardown vira no-op → 2 vermelhos
 
 - "simples" × "com Postgres" — reusa `internal/stack` (F0) + o docker do sandbox.
 
-### F7 — Servidor + UI
+### F7 — Servidor + UI — ✅ CONCLUÍDA
+**Registro em `f7-registro.md`.** Duas levas na ordem que o roadmap exige: contrato primeiro
+(`9861029`), telas depois (`7cf19eb`). Handler tem três linhas — decodifica, chama `ops`,
+codifica — e as formas na rede são os tipos de `ops` **verbatim**, os mesmos do `--json`:
+sem DTO, porque DTO é onde as duas superfícies começariam a discordar sobre o que é um run.
+
+Auth desde a linha 1, com três checagens (token, `Host` de loopback contra DNS rebinding,
+`SameSite=Strict`). Run disparado é **desacoplado** (`Setsid`+`Release`), que é o que faz
+"fechar a UI e o run continua" ser verdade.
+
+Defeito achado pelo próprio teste: o log de paridade gravava `gate approved` (veredito) onde
+vai o verbo do CLI (`approve`) — linha que parecia paridade e não era executável.
+
 - `corvex ui`: HTTP sobre `internal/ops`, token de auth, SPA embutida.
 - Telas 2a–2h. ⌘K registrando ação de UI como comando.
 - **Aceite:** disparar run, aprovar gate e responder pergunta pela UI, com o log da 2h
