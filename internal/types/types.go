@@ -189,4 +189,9 @@ type StreamEvent struct {
 	Content string
 	Tool    string
 	File    string
+	// ID pairs a tool call with its result: the provider's own id on a
+	// tool_use, and the id it refers to on a tool_result. Without it the only
+	// available pairing is arrival order, which is wrong the moment one
+	// assistant turn issues several calls.
+	ID string
 }

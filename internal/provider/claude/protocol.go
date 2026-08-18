@@ -97,7 +97,23 @@ func parseNDJSONLine(line []byte) ([]types.StreamEvent, error) {
 	switch raw.Type {
 	case "assistant":
 		return parseAssistant(line)
+	case "user":
+		// Where the CLI actually reports a tool's result. Captured from the
+		// wire (testdata/wire_tool_cycle.jsonl): the result arrives as a `user`
+		// message whose content is a `tool_result` block carrying the
+		// `tool_use_id` of the call it answers.
+		//
+		// This branch was missing, and nothing noticed for a whole phase: the
+		// parser handled a TOP-LEVEL "tool_result" line, the tests fed it that
+		// shape, and the two agreed with each other while the CLI emitted
+		// something else. The first real run produced 11 tool_use lines and
+		// zero tool_result — F5 shipped "start, end, duration" with only the
+		// start alive in the field.
+		return parseUser(line)
 	case "tool_result":
+		// The top-level shape. This CLI does not emit it; kept because it costs
+		// one branch and removing it would be a guess about every other version
+		// and provider.
 		return parseToolResult(line)
 	case "result":
 		return parseResult(line)
@@ -126,6 +142,7 @@ func parseAssistant(line []byte) ([]types.StreamEvent, error) {
 			ev := types.StreamEvent{
 				Type: types.EventToolUse,
 				Tool: c.Name,
+				ID:   c.ID,
 			}
 			var ti toolInput
 			if json.Unmarshal(c.Input, &ti) == nil {
@@ -138,6 +155,39 @@ func parseAssistant(line []byte) ([]types.StreamEvent, error) {
 		}
 	}
 
+	return events, nil
+}
+
+// userLine is the CLI's tool-result envelope.
+type userLine struct {
+	Message struct {
+		Content []struct {
+			Type      string          `json:"type"`
+			ToolUseID string          `json:"tool_use_id"`
+			Content   json.RawMessage `json:"content"`
+			IsError   bool            `json:"is_error"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
+// parseUser turns the CLI's `user` envelope into tool-result events.
+//
+// The result's own CONTENT is deliberately dropped. It is the tool's output —
+// a file's bytes, a command's stdout — and the only consumer downstream that
+// persists anything is the ledger, which is committed. What the pairing needs
+// is the id and the moment, not the payload.
+func parseUser(line []byte) ([]types.StreamEvent, error) {
+	var ul userLine
+	if err := json.Unmarshal(line, &ul); err != nil {
+		return nil, fmt.Errorf("parsing user line: %w", err)
+	}
+	var events []types.StreamEvent
+	for _, c := range ul.Message.Content {
+		if c.Type != "tool_result" {
+			continue
+		}
+		events = append(events, types.StreamEvent{Type: types.EventToolResult, ID: c.ToolUseID})
+	}
 	return events, nil
 }
 

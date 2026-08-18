@@ -6,7 +6,8 @@ started <DUR> ago  ·  <TMP>
 intent: characterize
 
 1/1 steps  ·  <COST>
-  worker        <COST>    ████████████████████
+  review        <COST>    ██████████
+  worker        <COST>    ██████████
 
   ✅ S01   First Task
         <DUR>  ·  <COST>

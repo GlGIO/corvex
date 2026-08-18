@@ -59,7 +59,11 @@ func renderRunHeader(r ops.RunReport) {
 	if r.Intent != "" {
 		fmt.Printf("intent: %s\n", r.Intent)
 	}
-	fmt.Printf("\n%d/%d steps  ·  $%.2f", r.Completed, r.Total, r.CostUSD)
+	fmt.Printf("\n%d/%d steps", r.Completed, r.Total)
+	if r.Skipped > 0 {
+		fmt.Printf("  ·  %d skipped", r.Skipped)
+	}
+	fmt.Printf("  ·  $%.2f", r.CostUSD)
 	// The human clock, apart from the run's clock. A run that took four hours of
 	// which three were a person asleep is not a slow run, and before F5 the two
 	// numbers were the same number.

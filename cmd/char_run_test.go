@@ -287,8 +287,10 @@ const runTasksOnePendingMD = "---\ngenerated_by: characterize\ndag:\n  S01: []\n
 // The one golden that proves a task can be executed end to end: worker →
 // reviewer → checkpoint → anchor → done, exit 0. Cost and duration are locked
 // unscrubbed because the fake provider reports fixed values, which also makes
-// this the golden that would catch a change in cost accounting (worker +
-// reviewer are summed into one attempt).
+// this the golden that would catch a change in cost accounting — this line is
+// the WORKER's own $0.02; the reviewer's other $0.02 now rides on the
+// review_result line instead of being folded in here (see internal/step's
+// task_complete emission).
 func TestCharacterizeRunTaskPasses(t *testing.T) {
 	stubClaude(t, runStubPass)
 	f := newFixture(t).AddProject("alpha", fixtureSpecMD, runTasksOnePendingMD).GitInit()
@@ -299,7 +301,7 @@ func TestCharacterizeRunTaskPasses(t *testing.T) {
 	runAssertRendererLines(t, stdout,
 		"+ plan ready (1 tasks)",
 		"> S01  First Task",
-		"+ S01  passed . 2s . $0.04",
+		"+ S01  passed . 2s . $0.02",
 		"+ done",
 	)
 	goldenAssert(t, "run_task_passes", runScrubDir(runRendererTranscript(args, stderr, err), f.Dir, "cost", "dur"))

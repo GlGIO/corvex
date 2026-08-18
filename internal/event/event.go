@@ -31,6 +31,15 @@ const (
 	HumanGate      Type = "human_gate"
 	TaskComplete   Type = "task_complete"
 
+	// AttemptCost reports what ONE attempt spent, on the paths where the
+	// attempt does not end in task_complete: rejected by review, or failed.
+	//
+	// It exists because a run that fails is the run whose cost somebody most
+	// wants to know, and it was the one run that reported nothing. Separate
+	// from task_complete rather than folded into it: task_complete is a step's
+	// outcome and there is exactly one per step, while attempts are many.
+	AttemptCost Type = "attempt_cost"
+
 	// Gate lifecycle (F2). These reach activity.jsonl, which is committed, so
 	// their Message carries only the gate's nature and the label the user wrote
 	// in their own recipe — never evidence content, which lives in the

@@ -3,6 +3,8 @@ package step
 import (
 	"context"
 	"github.com/giovannialves/corvex/internal/run"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 	"github.com/giovannialves/corvex/internal/event"
 	"github.com/giovannialves/corvex/internal/gate"
 	"github.com/giovannialves/corvex/internal/hooks"
+	"github.com/giovannialves/corvex/internal/recovery"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -181,6 +184,65 @@ func TestPhase_WorkerAndReviewOnACodeStep(t *testing.T) {
 	// that rejected it.
 	if got := rec.phaseOf(t, event.TaskComplete); got != event.PhaseWorker {
 		t.Errorf("task_complete phase = %q, want %q", got, event.PhaseWorker)
+	}
+}
+
+// gitInitForRecovery gives recovery.Manager a repo with a HEAD to diff
+// against, mirroring cmd's gitInit for this package's tests.
+func gitInitForRecovery(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "t@t.com"},
+		{"config", "user.name", "t"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+}
+
+// TestPhase_ReviewCostRidesReviewResultNotTaskComplete: the split S01 (the
+// cost-split task) exists for. Before it, task_complete carried worker+review
+// combined and review_result carried no money at all, which is how the 2f bar
+// misattributed the reviewer's spend to `worker`. Each line must now carry
+// only its own nature's spend.
+func TestPhase_ReviewCostRidesReviewResultNotTaskComplete(t *testing.T) {
+	p := &mockProvider{}
+	p.executeFn = func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		if strings.Contains(req.Prompt, "VERDICT") {
+			return &types.ExecuteResult{Output: "VERDICT: PASS\ngood", CostUSD: 0.03}, nil
+		}
+		return &types.ExecuteResult{Output: "did the work\n\nTASK-REPORT:\nSUMMARY: did it\nDECISIONS:\n- none\nHANDOFF: none", CostUSD: 0.02}, nil
+	}
+	rec := &recorder{}
+	e, r := aiExecutor(t, p, rec)
+	// The pass path checkpoints through recovery.Manager, which needs a real
+	// git repo to diff against; aiExecutor's other callers never reach it
+	// because their attempts all fail first.
+	dir := filepath.Dir(r.TasksPath)
+	gitInitForRecovery(t, dir)
+	e.recovery = recovery.NewManager(dir)
+
+	tk := &types.Task{ID: "S01", Title: "Do it"}
+	if err := e.runAITask(context.Background(), r, tk, newEvidenceSet()); err != nil {
+		t.Fatalf("a PASS verdict must pass the task: %v", err)
+	}
+
+	if got := rec.first(t, event.ReviewResult).CostUSD; got != 0.03 {
+		t.Errorf("review_result cost = %v, want the reviewer's own 0.03", got)
+	}
+	if got := rec.first(t, event.TaskComplete).CostUSD; got != 0.02 {
+		t.Errorf("task_complete cost = %v, want the worker's own 0.02, not worker+reviewer", got)
+	}
+	// The ceiling still sees the full attempt: charge() must keep summing
+	// worker+reviewer even though the two lines now report separately.
+	if got := *r.TotalCostUSD; got != 0.05 {
+		t.Errorf("run total after charge = %v, want 0.05 (0.02 worker + 0.03 reviewer)", got)
 	}
 }
 
@@ -372,5 +434,31 @@ func TestEnterGate_StaysParkedWhileAnyGateIsWaiting(t *testing.T) {
 	defer mu.Unlock()
 	if len(writes) != 2 || writes[0] != run.StatusParked || writes[1] != run.StatusRunning {
 		t.Fatalf("status writes = %v, want exactly [parked running] — one write per transition, not per gate", writes)
+	}
+}
+
+// A run that fails is the run whose cost somebody most wants to know, and it
+// was the one run that reported nothing: the first dogfood spent 36 minutes
+// over two attempts and printed `$0.00`. Cost only reached the ledger on the
+// pass path.
+func TestAttemptCost_AFailedAttemptStillReportsWhatItSpent(t *testing.T) {
+	var lines []event.Event
+	e := &Executor{emit: func(ev event.Event) { lines = append(lines, ev) }}
+
+	st := &aiTask{maxRetries: 1}
+	e.emitAttemptCost(st, &types.Task{ID: "S01"}, 0, &types.ExecuteResult{CostUSD: 0.12, TokensIn: 900, TokensOut: 300}, "worker attempt not completed")
+
+	if len(lines) != 1 {
+		t.Fatalf("emitted %d line(s), want 1", len(lines))
+	}
+	got := lines[0]
+	if got.Type != event.AttemptCost || got.Phase != event.PhaseWorker {
+		t.Errorf("line = %s/%s, want attempt_cost/worker", got.Type, got.Phase)
+	}
+	if got.CostUSD != 0.12 || got.TokensIn != 900 {
+		t.Errorf("the line does not carry what the attempt spent: %+v", got)
+	}
+	if got.Status != "" {
+		t.Error("an attempt line must not claim a step outcome — task_complete owns that")
 	}
 }

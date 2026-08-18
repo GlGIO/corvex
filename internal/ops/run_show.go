@@ -68,8 +68,12 @@ type RunReport struct {
 	Intent      string       `json:"intent,omitempty"`
 	Total       int          `json:"total"`
 	Completed   int          `json:"completed"`
-	CostUSD     float64      `json:"cost_usd"`
-	Tasks       []RunTaskRow `json:"tasks"`
+	// Skipped are steps a failed dependency took out. Kept apart from Completed
+	// because a run that skipped four of five steps did not almost finish — the
+	// first dogfood run reported "4/5 steps" for a run that completed nothing.
+	Skipped int          `json:"skipped,omitempty"`
+	CostUSD float64      `json:"cost_usd"`
+	Tasks   []RunTaskRow `json:"tasks"`
 
 	// PerPhase is where the money went, by the nature of the work that spent it
 	// (F5). It is the 2f bar, and it only became answerable when `phase` stopped
@@ -162,8 +166,15 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 		// task with last-write-wins — the same rule `inspect` has always used,
 		// and the reason a retried task counts once.
 		rep.CostUSD += t.CostUSD
-		if t.Status == types.StatusPassed || t.Status == types.StatusSkipped {
+		// SKIPPED is not done. A dogfood run whose first step failed and whose
+		// four dependents were skipped reported "4/5 steps" — a screen saying a
+		// run nearly finished when it did nothing. Skipped is counted and named
+		// separately.
+		if t.Status == types.StatusPassed {
 			rep.Completed++
+		}
+		if t.Status == types.StatusSkipped {
+			rep.Skipped++
 		}
 	}
 	rep.Total = len(rep.Tasks)
@@ -214,15 +225,29 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 		}
 		metrics[id] = &RunTaskRow{ID: t.ID, Title: t.Title, Status: t.Status, DependsOn: t.DependsOn}
 	}
+	// lastReviewCost mirrors internal/activity's aggregate(): task_complete only
+	// carries the worker's own spend, so the row's total is read back off the
+	// review_result line that shares its attempt. Consumed on use so an
+	// after-gate's later review_result (same task_id, no row of its own) is
+	// never folded in.
+	lastReviewCost := make(map[string]float64)
+	// Same two-accumulator rule as BuildInspectReport: task_complete assigns,
+	// the split-out lines accumulate, and mixing them into one field lets the
+	// assignment erase the others.
+	extra := make(map[string]RunTaskRow, len(view.Tasks))
 	for _, e := range entries {
 		row, ok := metrics[e.TaskID]
 		if !ok {
 			continue
 		}
 		switch e.Type {
+		case "review_result":
+			lastReviewCost[e.TaskID] = e.CostUSD
 		case "task_complete":
+			reviewCost := lastReviewCost[e.TaskID]
+			delete(lastReviewCost, e.TaskID)
 			row.DurationMs = e.DurationMs
-			row.CostUSD = e.CostUSD
+			row.CostUSD = e.CostUSD + reviewCost
 			row.TokensIn = e.TokensIn
 			row.TokensOut = e.TokensOut
 		case "retry":
@@ -231,9 +256,16 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 	}
 	rows := make([]RunTaskRow, 0, len(view.Order))
 	for _, id := range view.Order {
-		if row, ok := metrics[id]; ok {
-			rows = append(rows, *row)
+		row, ok := metrics[id]
+		if !ok {
+			continue
 		}
+		if acc, has := extra[id]; has {
+			row.CostUSD += acc.CostUSD
+			row.TokensIn += acc.TokensIn
+			row.TokensOut += acc.TokensOut
+		}
+		rows = append(rows, *row)
 	}
 	return rows
 }

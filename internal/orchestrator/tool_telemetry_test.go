@@ -442,3 +442,45 @@ func TestRun_StubbedWorkerPersistsToolLines(t *testing.T) {
 		t.Error("text chunks reached the ledger")
 	}
 }
+
+// Pairing by the provider's id, which is what a real turn needs: one assistant
+// message can issue several tool calls, and their results come back in whatever
+// order the tools finished. Arrival order then attributes each duration to the
+// wrong call — the debt this retires, once the parser started carrying the id.
+func TestToolTelemetry_PairsByIDNotByArrivalOrder(t *testing.T) {
+	var tt toolTelemetry
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+
+	tt.start("S01", "toolu_slow", "Bash", base)
+	tt.start("S01", "toolu_fast", "Read", base.Add(1*time.Second))
+
+	// The fast one answers first, out of order.
+	d, name, ok := tt.finish("S01", "toolu_fast", base.Add(2*time.Second))
+	if !ok {
+		t.Fatal("a result whose call is pending was not paired")
+	}
+	if name != "Read" || d != 1000 {
+		t.Errorf("paired with %s / %dms, want Read / 1000ms — arrival order would have said Bash / 2000ms", name, d)
+	}
+
+	d, name, ok = tt.finish("S01", "toolu_slow", base.Add(10*time.Second))
+	if !ok || name != "Bash" || d != 10000 {
+		t.Errorf("second pairing = %s / %dms (ok=%v), want Bash / 10000ms", name, d, ok)
+	}
+}
+
+// A result for a call this run never saw is not fabricated into a pairing: a
+// resumed run, or a start dropped by the cap, leaves a line with no duration
+// rather than one borrowed from an unrelated call.
+func TestToolTelemetry_UnknownIDDoesNotStealAnotherCallsStart(t *testing.T) {
+	var tt toolTelemetry
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	tt.start("S01", "toolu_mine", "Bash", base)
+
+	if _, _, ok := tt.finish("S01", "toolu_stranger", base.Add(time.Second)); ok {
+		t.Error("an unknown id consumed a pending start")
+	}
+	if _, name, ok := tt.finish("S01", "toolu_mine", base.Add(2*time.Second)); !ok || name != "Bash" {
+		t.Errorf("the real call lost its start: name=%s ok=%v", name, ok)
+	}
+}

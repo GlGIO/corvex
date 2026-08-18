@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","model":"claude-sonnet-4-5","permissionMode":"bypassPermissions","tools":["Read"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll read the file."}]},"session_id":"<session>"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Example","name":"Read","input":{"file_path":"/scrubbed/probe.txt"}}]},"session_id":"<session>"}
+{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01Example","type":"tool_result","content":"hello wire","is_error":false}]},"session_id":"<session>"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The file says: hello wire"}]},"session_id":"<session>"}
+{"type":"result","subtype":"success","is_error":false,"result":"The file says: hello wire","total_cost_usd":0.0123,"duration_ms":4200}

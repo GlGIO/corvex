@@ -79,6 +79,7 @@ const maxPendingToolsPerTask = 16
 // result event (protocol.go builds tool_result with Content only), and a closing
 // line without a name cannot be grouped by tool.
 type pendingTool struct {
+	id   string
 	name string
 	at   time.Time
 }
@@ -118,13 +119,13 @@ type toolTelemetry struct {
 // be. The correct fix is to carry the provider's `tool_use_id`, which
 // toolResultLine already parses and then discards because types.StreamEvent has
 // nowhere to put it; both files are outside this change. Registered as debt.
-func (tt *toolTelemetry) start(taskID, name string, at time.Time) {
+func (tt *toolTelemetry) start(taskID, id, name string, at time.Time) {
 	tt.mu.Lock()
 	defer tt.mu.Unlock()
 	if tt.pending == nil {
 		tt.pending = make(map[string][]pendingTool)
 	}
-	q := append(tt.pending[taskID], pendingTool{name: name, at: at})
+	q := append(tt.pending[taskID], pendingTool{id: id, name: name, at: at})
 	if len(q) > maxPendingToolsPerTask {
 		// Drop the oldest: the newest start is the one whose end is still
 		// plausibly coming, and an overflow means the old ones never closed.
@@ -137,18 +138,38 @@ func (tt *toolTelemetry) start(taskID, name string, at time.Time) {
 // took and what it was called. ok is false when no start is waiting — an end
 // without a beginning (a resumed run, or a start dropped by the cap), which is
 // recorded as a line with no duration rather than a fabricated zero.
-func (tt *toolTelemetry) finish(taskID string, at time.Time) (durationMs int64, name string, ok bool) {
+func (tt *toolTelemetry) finish(taskID, id string, at time.Time) (durationMs int64, name string, ok bool) {
 	tt.mu.Lock()
 	defer tt.mu.Unlock()
 	q := tt.pending[taskID]
 	if len(q) == 0 {
 		return 0, "", false
 	}
-	first := q[0]
+
+	// Pair by the provider's own id when it is there, and only fall back to
+	// arrival order when it is not. The fallback used to be the whole strategy,
+	// with the debt written down as "the correct fix is to carry the
+	// tool_use_id, which the parser reads and discards". It did not read it —
+	// it ignored the line the id arrives on. Now that the parser sees it, one
+	// assistant turn issuing several calls pairs exactly instead of plausibly.
+	idx := 0
+	if id != "" {
+		idx = -1
+		for i := range q {
+			if q[i].id == id {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return 0, "", false
+		}
+	}
+	first := q[idx]
 	if len(q) == 1 {
 		delete(tt.pending, taskID)
 	} else {
-		tt.pending[taskID] = q[1:]
+		tt.pending[taskID] = append(append([]pendingTool(nil), q[:idx]...), q[idx+1:]...)
 	}
 	d := at.Sub(first.at).Milliseconds()
 	if d < 0 {
@@ -247,12 +268,12 @@ func (o *Orchestrator) toolLine(ev Event) (activity.Entry, bool) {
 
 	if ev.Stream.Type == types.EventToolUse {
 		e.Type = toolUseLineType
-		o.tools.start(ev.TaskID, e.Tool, ev.Timestamp)
+		o.tools.start(ev.TaskID, ev.Stream.ID, e.Tool, ev.Timestamp)
 		return e, true
 	}
 
 	e.Type = toolResultLineType
-	if d, name, ok := o.tools.finish(ev.TaskID, ev.Timestamp); ok {
+	if d, name, ok := o.tools.finish(ev.TaskID, ev.Stream.ID, ev.Timestamp); ok {
 		e.DurationMs = d
 		if e.Tool == "" {
 			e.Tool = name

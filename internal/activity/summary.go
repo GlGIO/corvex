@@ -12,6 +12,7 @@ package activity
 // depending on it: see TestLedgerTypeLiterals_TrackTheEventVocabulary.
 const (
 	typeTaskComplete = "task_complete"
+	typeReviewResult = "review_result"
 	typeGateDecided  = "gate_decided"
 	typeToolUse      = "tool_use"
 )
@@ -169,26 +170,24 @@ func SummarizeRun(workDir, project, runID string) (Summary, error) {
 	return aggregate(FilterByRun(entries, runID)), nil
 }
 
-// Two debts the emitters owe this reduction. Both are in internal/step, which
-// this change does not own, and neither is repairable from the reading side:
+// One remaining debt the emitters owe this reduction. It is in internal/step,
+// which this change does not own, and is not repairable from the reading side:
 //
-//  1. The `task_complete` cost is a ROLL-UP. internal/step computes it as
-//     worker + reviewer for the attempt, while the `review_result` line that
-//     same code path emits carries no cost at all. So for a code step the
-//     reviewer's money is attributed to the worker bucket, and the 2f bar
-//     under-reports review by exactly that. There is no double counting — the
-//     roll-up and the leaf never both carry the number — and unrolling it here
-//     is not possible: `review_result` carries no attempt, so a retried task's
-//     review lines cannot be matched to the attempt that survived. The gate path
-//     (an inferential gate) does emit a priced `review_result` and is charged
-//     separately, so that money lands in the review bucket correctly. Fix
-//     belongs where the number is produced: emit the worker cost and the
-//     reviewer cost as their own lines.
-//  2. A failed attempt emits `task_complete` with NO cost. The ceiling is
+//   - A failed attempt emits `task_complete` with NO cost. The ceiling is
 //     charged, so the run knows it spent the money, and the ledger does not.
-//     Retried spend is therefore invisible to every column here, phase bar
-//     included, and the "superseded attempts" gap this file documents between
-//     the breakdown and the header is smaller than the real one.
+//     Retried spend that fails outright is therefore invisible to every
+//     column here, phase bar included, and the "superseded attempts" gap this
+//     file documents between the breakdown and the header is smaller than the
+//     real one.
+//
+// (Previously a second debt lived here: the `task_complete` cost was a
+// ROLL-UP of worker + reviewer while `review_result` on the same code path
+// carried no cost at all, so a code step's reviewer money was attributed to
+// the worker bucket. That is fixed at the source — `review_result` now
+// carries the reviewer's own spend and `task_complete` carries only the
+// worker's, same as the gate path already did. Reading that split back
+// together for PerTask is `lastReviewCost` below — see its comment for why
+// the header total still needs both lines.)
 //
 // aggregate is the shared reduction behind Summarize and SummarizeRun: latest
 // PASSED completion per task, totals over those winners, and the per-line
@@ -211,6 +210,14 @@ func aggregate(entries []Entry) Summary {
 	perPhase := make(map[string]PhaseMetric)
 	perTool := make(map[string]ToolMetric)
 	var humanWaitMs int64
+	// lastReviewCost holds, per task, the most recent review_result cost seen —
+	// the worker's own line no longer carries the reviewer's share, so PerTask
+	// has to read it back off the sibling line to keep reporting one attempt's
+	// full spend. Consumed (deleted) the moment a PASSED task_complete for that
+	// task claims it, so a later, unrelated review_result for the same task_id
+	// (an after-gate's, which lands AFTER the task's own task_complete) is never
+	// mistaken for the next run's pair.
+	lastReviewCost := make(map[string]float64)
 
 	for _, e := range entries {
 		phase := e.Phase
@@ -245,16 +252,22 @@ func aggregate(entries []Entry) Summary {
 			humanWaitMs += e.DurationMs
 		}
 
+		if e.Type == typeReviewResult && e.TaskID != "" {
+			lastReviewCost[e.TaskID] = e.CostUSD
+		}
+
 		if e.Type != typeTaskComplete || e.Status != "PASSED" || e.TaskID == "" {
 			continue
 		}
+		reviewCost := lastReviewCost[e.TaskID]
+		delete(lastReviewCost, e.TaskID)
 		// Last write wins: later PASSED entries override earlier ones from
 		// retried attempts. (A task that previously FAILED then PASSED only
 		// contributes its PASSED metrics.)
 		perTask[e.TaskID] = TaskMetric{
 			TaskID:     e.TaskID,
 			DurationMs: e.DurationMs,
-			CostUSD:    e.CostUSD,
+			CostUSD:    e.CostUSD + reviewCost,
 			TokensIn:   e.TokensIn,
 			TokensOut:  e.TokensOut,
 		}

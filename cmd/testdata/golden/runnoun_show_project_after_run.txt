@@ -7,7 +7,8 @@ scope: project (every run of it) — pass the run id above for one run
 intent: characterize
 
 1/1 steps  ·  <COST>
-  worker        <COST>    ████████████████████
+  review        <COST>    ██████████
+  worker        <COST>    ██████████
 
   ✅ S01   First Task
         <DUR>  ·  <COST>

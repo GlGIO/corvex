@@ -183,7 +183,7 @@ func TestCharacterizeRunRendererNotSilenced(t *testing.T) {
 	richWant := []string{
 		"+ plan ready (1 tasks)",
 		"> S01  First Task",
-		"+ S01  passed . 2s . $0.04",
+		"+ S01  passed . 2s . $0.02",
 		"+ done",
 	}
 

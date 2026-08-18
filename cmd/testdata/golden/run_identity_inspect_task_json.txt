@@ -23,6 +23,9 @@ $ corvex inspect alpha --task S01 --json
     "run_id": "<RUN_ID>",
     "task_id": "S01",
     "phase": "review",
+    "cost_usd": 0.02,
+    "tokens_in": 100,
+    "tokens_out": 50,
     "message": "PASS"
   },
   {
@@ -39,9 +42,9 @@ $ corvex inspect alpha --task S01 --json
     "task_id": "S01",
     "phase": "worker",
     "duration_ms": 2000,
-    "cost_usd": 0.04,
-    "tokens_in": 200,
-    "tokens_out": 100,
+    "cost_usd": 0.02,
+    "tokens_in": 100,
+    "tokens_out": 50,
     "status": "PASSED"
   }
 ]

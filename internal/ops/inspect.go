@@ -79,6 +79,12 @@ func BuildInspectReport(workDir, project string, entries []activity.Entry) (Insp
 	for _, t := range tasks {
 		statsByID[t.ID] = &InspectTaskStat{ID: t.ID, Title: t.Title, Status: string(t.Status)}
 	}
+	// Two accumulators, and the reason is a bug this file had for about ten
+	// minutes: task_complete ASSIGNS (last-write-wins is what makes a retried
+	// task count once) while the split-out lines ACCUMULATE, so a single field
+	// let the assignment wipe whatever the earlier lines had added. Kept apart
+	// and summed at the end, the two rules coexist.
+	extra := make(map[string]InspectTaskStat, len(tasks))
 
 	for _, e := range entries {
 		s, ok := statsByID[e.TaskID]
@@ -88,9 +94,27 @@ func BuildInspectReport(workDir, project string, entries []activity.Entry) (Insp
 		switch e.Type {
 		case "task_complete":
 			s.DurationMs = e.DurationMs
+			// Assignment, not accumulation: task_complete is written once per
+			// task and last-write-wins is what makes a retried task count once.
 			s.CostUSD = e.CostUSD
 			s.TokensIn = e.TokensIn
 			s.TokensOut = e.TokensOut
+		case "review_result", "attempt_cost":
+			// The lines that carry the rest of what this task cost. Since the
+			// ledger split worker from reviewer, task_complete alone is the
+			// worker's share — and "what did S01 cost me" has to keep meaning
+			// all of it. Accumulated, because there is one per attempt.
+			//
+			// Deliberately a DIFFERENT question from activity.Summary.PerTask,
+			// which reports the surviving attempt (last PASSED wins) because it
+			// feeds resume-safe accounting. This column is what the step cost
+			// the person paying: every attempt, every phase. Two questions, two
+			// numbers, and the only way they read as a bug is if nobody says so.
+			acc := extra[e.TaskID]
+			acc.CostUSD += e.CostUSD
+			acc.TokensIn += e.TokensIn
+			acc.TokensOut += e.TokensOut
+			extra[e.TaskID] = acc
 		case "retry":
 			s.Retries++
 		}
@@ -107,6 +131,11 @@ func BuildInspectReport(workDir, project string, entries []activity.Entry) (Insp
 	statList := make([]InspectTaskStat, 0, len(ids))
 	for _, id := range ids {
 		s := statsByID[id]
+		if acc, ok := extra[id]; ok {
+			s.CostUSD += acc.CostUSD
+			s.TokensIn += acc.TokensIn
+			s.TokensOut += acc.TokensOut
+		}
 		totalCost += s.CostUSD
 		if types.TaskStatus(s.Status) == types.StatusPassed {
 			completed++

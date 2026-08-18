@@ -27,7 +27,7 @@ func (e *Executor) finishPassedTask(
 	hookEnv hooks.HookEnv,
 	result *types.ExecuteResult,
 	reviewResult *ReviewResult,
-	attemptCost float64,
+	workerCost float64,
 ) (bool, error) {
 	// Determine the next task first — it decides whether a HANDOFF is required
 	// (the last task in the DAG has nothing to hand off to).
@@ -72,18 +72,21 @@ func (e *Executor) finishPassedTask(
 	e.commitPassedTask(r, t, report, reviewResult, nextTask)
 
 	e.emit(event.Event{Type: event.Checkpoint, TaskID: t.ID, Phase: event.PhaseWorker})
-	// `worker` on a number that is workerCost+reviewerCost: the honest split
-	// would move the reviewer's share onto the verdict line, and inspect/run
-	// show read this line as the task's total. Recorded in phase.go, not fixed
-	// here.
+	// CostUSD here is the worker's own share only — the reviewer's share rode
+	// on the review_result line already emitted for this attempt. Tokens and
+	// duration stay combined: the ceiling and this line are the only readers
+	// of cost, everything else is descriptive.
 	e.emit(event.Event{
-		Type:       event.TaskComplete,
-		TaskID:     t.ID,
-		Phase:      event.PhaseWorker,
-		Status:     types.StatusPassed,
-		CostUSD:    attemptCost,
-		TokensIn:   result.TokensIn + reviewResult.TokensIn,
-		TokensOut:  result.TokensOut + reviewResult.TokensOut,
+		Type:    event.TaskComplete,
+		TaskID:  t.ID,
+		Phase:   event.PhaseWorker,
+		Status:  types.StatusPassed,
+		CostUSD: workerCost,
+		// Tokens follow the cost: this line is the worker's share, and the
+		// reviewer's rides on review_result. Splitting one and not the other
+		// would leave a line whose cost and tokens describe different work.
+		TokensIn:   result.TokensIn,
+		TokensOut:  result.TokensOut,
 		DurationMs: result.DurationMs + reviewResult.DurationMs,
 	})
 	return true, nil

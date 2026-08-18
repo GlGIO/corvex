@@ -129,6 +129,16 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		if ceilErr := e.charge(r, t, st, workerCost); ceilErr != nil {
 			return false, ceilErr
 		}
+		// The attempt is charged, so it is also RECORDED. Until a dogfood run
+		// spent 36 minutes over two attempts and reported `$0.00`, cost only
+		// reached the ledger on the pass path — which made the accounting blind
+		// in exactly the case somebody is trying to account for: the run that
+		// burned money and produced nothing. The line is `retry`-shaped even on
+		// the last attempt, because what it reports is one attempt's spend, not
+		// the task's outcome.
+		if workerCost > 0 {
+			e.emitAttemptCost(st, t, attempt, result, "worker attempt not completed")
+		}
 		if attempt == st.maxRetries {
 			if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
@@ -174,14 +184,17 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return false, nil
 	}
 
-	// The verdict is `review`, but its COST is not here: the reviewer's spend
-	// is folded into the attempt total that task_complete carries, which is why
-	// that line's `worker` tag over-attributes (see phase.go).
+	// The reviewer's own spend rides on this line, not on task_complete's: that
+	// is what lets the phase breakdown attribute review money to the review
+	// bucket instead of folding it into the worker's roll-up.
 	e.emit(event.Event{
-		Type:    event.ReviewResult,
-		TaskID:  t.ID,
-		Phase:   event.PhaseReview,
-		Message: string(reviewResult.Verdict),
+		Type:      event.ReviewResult,
+		TaskID:    t.ID,
+		Phase:     event.PhaseReview,
+		Message:   string(reviewResult.Verdict),
+		CostUSD:   reviewerCost,
+		TokensIn:  reviewResult.TokensIn,
+		TokensOut: reviewResult.TokensOut,
 	})
 	// The reviewer's verdict is evidence whether it passed or not: a gate
 	// downstream of a code step is exactly where somebody needs to read why the
@@ -191,7 +204,13 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 
 	if reviewResult.Verdict == VerdictPass {
 		e.addDiffEvidence(ctx, t, acc)
-		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, attemptCost)
+		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, workerCost)
+	}
+
+	if reviewResult.Verdict != VerdictPass && attempt < st.maxRetries {
+		// A rejected attempt is money spent on work that will be redone. It was
+		// charged against the ceiling all along; now it is visible.
+		e.emitAttemptCost(st, t, attempt, result, "worker attempt rejected by review")
 	}
 
 	if reviewResult.Verdict == VerdictIndeterminate {
@@ -239,6 +258,29 @@ func (e *Executor) rejectAttempt(
 		Message: st.publishableReason(),
 	})
 	return e.applyEscalation(ctx, r, t, st, attempt, reviewResult)
+}
+
+// emitAttemptCost records what one attempt spent, on the paths where the
+// attempt does not end in a task_complete. It is a method rather than two
+// inline literals so the two producers cannot drift into reporting different
+// things about the same event.
+//
+// A nil result means the provider returned nothing at all — there is no number
+// to report, and inventing a zero would be worse than the silence it replaces.
+func (e *Executor) emitAttemptCost(_ *aiTask, t *types.Task, attempt int, result *types.ExecuteResult, why string) {
+	if result == nil {
+		return
+	}
+	e.emit(event.Event{
+		Type:      event.AttemptCost,
+		TaskID:    t.ID,
+		Phase:     event.PhaseWorker,
+		Attempt:   attempt,
+		CostUSD:   result.CostUSD,
+		TokensIn:  result.TokensIn,
+		TokensOut: result.TokensOut,
+		Message:   why,
+	})
 }
 
 // publishableReason is what a ledger line may say about a failure. Empty falls
