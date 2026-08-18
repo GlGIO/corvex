@@ -27,7 +27,7 @@ var gateShowCmd = &cobra.Command{
 	Use:               "show <run-id|project>",
 	Short:             "Show one gate or escalation and the evidence behind it",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeRunArg,
+	ValidArgsFunction: completeGateArg,
 	RunE:              runGateShow,
 }
 
@@ -39,7 +39,7 @@ var gateApproveCmd = &cobra.Command{
 		"With a project instead of a run id, it closes an escalation: the file is removed and " +
 		"the step goes back to PENDING, which is the \"I fixed it, try again\" answer.",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeRunArg,
+	ValidArgsFunction: completeGateArg,
 	RunE:              runGateApprove,
 }
 
@@ -47,7 +47,7 @@ var gateRejectCmd = &cobra.Command{
 	Use:               "reject <run-id|project>",
 	Short:             "Reject a gate, or close an escalation leaving its step failed",
 	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeRunArg,
+	ValidArgsFunction: completeGateArg,
 	RunE:              runGateReject,
 }
 

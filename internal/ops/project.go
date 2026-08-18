@@ -39,7 +39,14 @@ func ProjectNames(workDir string) []string {
 // SuggestProject returns the closest project name to name via case-insensitive
 // prefix/substring match or Levenshtein distance <= 2, or "" if none is close.
 func SuggestProject(workDir, name string) string {
-	names := ProjectNames(workDir)
+	return SuggestFrom(ProjectNames(workDir), name)
+}
+
+// SuggestFrom is the same "did you mean" rule over any list of names. It is
+// exported because the CLI needs it for command names too: once the root
+// command is runnable, cobra stops producing suggestions of its own, and a typo
+// with no suggestion is how a mistyped destructive command becomes a shrug.
+func SuggestFrom(names []string, name string) string {
 	lower := strings.ToLower(name)
 	for _, n := range names {
 		nl := strings.ToLower(n)

@@ -1,0 +1,13 @@
+$ corvex stauts
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+unknown command "stauts" for "corvex"
+
+Did you mean this?
+	start

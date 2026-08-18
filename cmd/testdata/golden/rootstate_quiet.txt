@@ -1,0 +1,12 @@
+$ corvex 
+
+--- stdout ---
+Nothing waiting on you, nothing running.
+
+→ corvex run list --projects   (or corvex --help)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

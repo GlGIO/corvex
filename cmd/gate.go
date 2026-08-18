@@ -44,6 +44,10 @@ func init() {
 	gateRejectCmd.Flags().StringVar(&gateStep, "step", "", "step id, when more than one gate is waiting on the run")
 	gateRejectCmd.Flags().StringVar(&gateReason, "reason", "", "why it was rejected")
 
+	for _, c := range []*cobra.Command{gateShowCmd, gateApproveCmd, gateRejectCmd} {
+		_ = c.RegisterFlagCompletionFunc("step", completeGateStep)
+	}
+
 	gateCmd.AddCommand(gateListCmd, gateShowCmd, gateApproveCmd, gateRejectCmd)
 	rootCmd.AddCommand(gateCmd)
 }

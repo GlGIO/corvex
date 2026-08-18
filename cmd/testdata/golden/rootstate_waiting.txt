@@ -1,0 +1,21 @@
+$ corvex 
+
+--- stdout ---
+1 thing(s) waiting on you.
+
+1 escalation(s) waiting:
+
+  alpha  step S02  ·  waiting <DUR>
+      # Escalation: alpha / S02
+      - Category: `tests`
+      - Logged at: <TS>
+      → corvex gate show alpha --step S02
+
+
+→ corvex gate show alpha --step S02
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

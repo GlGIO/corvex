@@ -7,6 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// deprecatedReplacement maps a hidden command's name to what replaced it, so a
+// typo of a deprecated name can still be answered usefully — cobra's own
+// suggestions skip hidden commands, which would make `corvex stauts` a bare
+// "unknown command" the day `status` went into hiding.
+var deprecatedReplacement = map[string]string{}
+
 // Deprecation, F3's D7: a legacy command keeps working and keeps its bytes, but
 // stops advertising itself and tells a human at a terminal where its replacement
 // lives.
@@ -26,6 +32,7 @@ import (
 // deadline is in the F3 document and in the notice itself.
 func deprecate(cmd *cobra.Command, replacement string) {
 	cmd.Hidden = true
+	deprecatedReplacement[cmd.Name()] = replacement
 	previous := cmd.PreRun
 	cmd.PreRun = func(c *cobra.Command, args []string) {
 		if previous != nil {

@@ -1,0 +1,15 @@
+$ corvex 
+
+--- stdout ---
+Nothing waiting on you, nothing running.
+
+Last 7 day(s):
+  <RUN_ID>  done      finished  alpha  (<DUR> ago)
+
+→ corvex run show <RUN_ID>
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

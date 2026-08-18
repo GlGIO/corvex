@@ -27,6 +27,12 @@ type RunRow struct {
 	Age       time.Duration `json:"age_ns"`
 }
 
+// Live reports whether this run still has a process behind it — including one
+// on its way out, because a cancelling run is still doing something.
+func (r RunRow) Live() bool {
+	return r.Liveness == run.LivenessAlive || r.Liveness == run.LivenessCanceling
+}
+
 // Label is what a human calls this run: the recipe when there is one, the
 // project otherwise. A legacy spec.md run has no recipe by design (F1 refused to
 // invent one), so the project name is the honest answer.
