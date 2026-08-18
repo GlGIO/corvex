@@ -1,0 +1,11 @@
+$ corvex gate approve alpha
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+an escalation is addressed by project AND step: name it with --step (e.g. --step S02).
+  → corvex gate list   shows which steps of alpha are waiting

@@ -1,0 +1,11 @@
+$ corvex gate approve alpha --step S02
+
+--- stdout ---
+Closed the escalation for alpha step S02 — the step is PENDING again.
+  → corvex run retry alpha --step S02
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

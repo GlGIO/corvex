@@ -1,0 +1,21 @@
+$ corvex gate show alpha --step S02
+
+--- stdout ---
+escalation  ·  alpha  ·  step S02
+<TMP>
+
+# Escalation: alpha / S02
+
+- Category: `tests`
+- Logged at: <TS>
+
+The task hit the escalation threshold for this category.
+
+  → corvex gate approve alpha --step S02   (fixed; run it again)
+  → corvex gate reject  alpha --step S02   (not fixing it; leave the step failed)
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,10 @@
+$ corvex gate reject alpha --step S02
+
+--- stdout ---
+Closed the escalation for alpha step S02 — the step stays FAILED.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

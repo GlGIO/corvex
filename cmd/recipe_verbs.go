@@ -11,7 +11,7 @@ import (
 )
 
 func runRecipeList(_ *cobra.Command, _ []string) error {
-	workDir, err := recipeWorkDir()
+	workDir, err := workspaceDir()
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func runRecipeList(_ *cobra.Command, _ []string) error {
 }
 
 func runRecipeShow(_ *cobra.Command, args []string) error {
-	workDir, err := recipeWorkDir()
+	workDir, err := workspaceDir()
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func runRecipeShow(_ *cobra.Command, args []string) error {
 }
 
 func runRecipeValidate(_ *cobra.Command, args []string) error {
-	workDir, err := recipeWorkDir()
+	workDir, err := workspaceDir()
 	if err != nil {
 		return err
 	}
@@ -72,17 +72,6 @@ func runRecipeValidate(_ *cobra.Command, args []string) error {
 
 func runRecipeCompile(_ *cobra.Command, args []string) error {
 	return compileRecipeInto(args[0])
-}
-
-func recipeWorkDir() (string, error) {
-	_, workDir, err := ops.LoadConfig()
-	if err != nil {
-		return "", err
-	}
-	if err := requireCorvexDir(workDir); err != nil {
-		return "", err
-	}
-	return workDir, nil
 }
 
 // recipeError answers a missing recipe with the hint the legacy command already

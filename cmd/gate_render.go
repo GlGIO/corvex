@@ -10,10 +10,31 @@ import (
 	"github.com/giovannialves/corvex/internal/types"
 )
 
-// renderGateList prints the inbox: what is blocked on you, oldest first.
+// renderInbox prints canvas 2a: everything that stopped and wants a person,
+// gates first because a gate has a live process waiting on the answer while an
+// escalation has already failed and will wait for ever.
+func renderInbox(inbox ops.Inbox) {
+	if inbox.Empty() {
+		fmt.Println("Nothing is waiting on you.")
+		return
+	}
+	renderGateList(inbox.Gates)
+	if len(inbox.Escalations) == 0 {
+		return
+	}
+	fmt.Printf("%d escalation(s) waiting:\n\n", len(inbox.Escalations))
+	for _, e := range inbox.Escalations {
+		fmt.Printf("  %s  step %s  ·  waiting %s\n", e.Project, e.Step, humanWait(e.Waiting))
+		for _, line := range e.Head {
+			fmt.Printf("      %s\n", line)
+		}
+		fmt.Printf("      → corvex gate show %s --step %s\n\n", e.Project, e.Step)
+	}
+}
+
+// renderGateList prints the gate half of the inbox, oldest first.
 func renderGateList(gates []ops.GateView) {
 	if len(gates) == 0 {
-		fmt.Println("No gates are waiting.")
 		return
 	}
 	fmt.Printf("%d gate(s) waiting:\n\n", len(gates))

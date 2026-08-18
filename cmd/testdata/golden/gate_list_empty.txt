@@ -1,7 +1,7 @@
 $ corvex gate list
 
 --- stdout ---
-No gates are waiting.
+Nothing is waiting on you.
 
 --- stderr ---
 (empty)

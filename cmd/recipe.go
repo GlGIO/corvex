@@ -36,7 +36,7 @@ func runRecipe(_ *cobra.Command, args []string) error {
 // compileRecipeInto is the one implementation both forms call, so the deprecated
 // spelling cannot drift from the verb.
 func compileRecipeInto(name string) error {
-	workDir, err := recipeWorkDir()
+	workDir, err := workspaceDir()
 	if err != nil {
 		return err
 	}
