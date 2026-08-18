@@ -10,7 +10,9 @@ package step
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,6 +96,10 @@ type Executor struct {
 	// answers "is anyone waiting", not "is this gate waiting".
 	parkedMu    sync.Mutex
 	parkedGates int
+
+	// baseSHA is the commit the run started from; see runBase.
+	baseOnce sync.Once
+	baseSHA  string
 }
 
 // enterGate reports the run as parked, and returns the function that leaves the
@@ -212,8 +218,40 @@ func (e *Executor) markGateFailure(r *Run, t *types.Task) {
 func (e *Executor) runShell(ctx context.Context, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = e.workDir
+	cmd.Env = append(os.Environ(), "CORVEX_RUN_BASE="+e.runBase(ctx))
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// runBase is the commit this run started from, memoised for its lifetime.
+//
+// It exists because of a dogfood run whose gate required reading a diff that
+// did not contain the change being approved. The recipe said
+// `from: "git show --stat HEAD"`, which is the obvious thing to write — but
+// auto_commit checkpoints EVERY step, so by the time a later step's gate opens,
+// HEAD is a bookkeeping commit and the work is one or more commits back. The
+// approver was asked to acknowledge reading a diff of corvex's own paperwork.
+//
+// That is the roadmap's risk #1 ("gate que vira carimbo") arriving through a
+// mechanism nobody predicted: not laziness, but evidence whose anchor drifts
+// under it. `$CORVEX_RUN_BASE` is an anchor that does not move, so a recipe can
+// say `git diff --stat $CORVEX_RUN_BASE -- README.md` and mean "everything this
+// run changed".
+//
+// A repository with no commits (or no git at all) yields an empty string rather
+// than an error: evidence must degrade to less information, never to a refused
+// step.
+func (e *Executor) runBase(ctx context.Context) string {
+	e.baseOnce.Do(func() {
+		cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+		cmd.Dir = e.workDir
+		out, err := cmd.Output()
+		if err != nil {
+			return
+		}
+		e.baseSHA = strings.TrimSpace(string(out))
+	})
+	return e.baseSHA
 }
 
 func (e *Executor) runHook(ctx context.Context, name string, env hooks.HookEnv, taskID string) {

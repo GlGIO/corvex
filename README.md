@@ -267,9 +267,14 @@ every such item has been acknowledged by label (`gate ack ... --ack "<label>"`):
     evidence:
       - kind: diff
         label: "schema migration"
-        from: git diff HEAD~1 -- db/migrations   # or `content:` inline
+        from: git diff --stat $CORVEX_RUN_BASE -- db/migrations   # or `content:` inline
         required_reading: true
 ```
+
+`from:` runs when the gate opens, with `$CORVEX_RUN_BASE` set to the commit the
+run started from. Anchor diffs to it rather than to `HEAD`: with `auto_commit`
+on, every step checkpoints, so by the time a later step's gate opens `HEAD` is a
+bookkeeping commit and a `HEAD`-anchored diff shows the approver nothing.
 
 A stage can also **fan out** over items discovered at run time — one template
 expanded into N instances, up to a cap:

@@ -55,3 +55,7 @@
 {"ts":"2026-08-18T15:23:52.087157-03:00","type":"gate_decided","run_id":"run_d458","recipe":"readme-recipes","task_id":"S03","phase":"gate","duration_ms":85143,"status":"PASSED","message":"human: Aprovar a marca do dogfood"}
 {"ts":"2026-08-18T15:23:52.097952-03:00","type":"task_start","run_id":"run_d458","recipe":"readme-recipes","task_id":"S03","phase":"validate"}
 {"ts":"2026-08-18T15:23:52.098361-03:00","type":"tool_use","run_id":"run_d458","recipe":"readme-recipes","task_id":"S03","phase":"validate","tool":"command"}
+{"ts":"2026-08-18T15:23:53.987382-03:00","type":"checkpoint","run_id":"run_d458","recipe":"readme-recipes","task_id":"S03","phase":"validate"}
+{"ts":"2026-08-18T15:23:53.987676-03:00","type":"task_complete","run_id":"run_d458","recipe":"readme-recipes","task_id":"S03","phase":"validate","duration_ms":163,"status":"PASSED"}
+{"ts":"2026-08-18T15:23:53.988376-03:00","type":"done","run_id":"run_d458","recipe":"readme-recipes"}
+{"ts":"2026-08-18T15:23:53.98855-03:00","type":"sandbox_cleanup","run_id":"run_d458","recipe":"readme-recipes"}

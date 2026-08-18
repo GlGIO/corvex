@@ -70,3 +70,54 @@ está escrita para comando **legado**; `run show` é superfície nova da F4.
 Isso é instrução para a próxima recipe: quando a mudança implica regravar golden, **a recipe
 tem de dizer isso no critério**, senão o gate inferencial vai parar o trabalho por obedecer uma
 regra que não se aplica.
+
+---
+
+# Segundo dogfood — o gate humano, ponta a ponta
+
+> Recipe `readme-recipes`, run `run_d458`, 7 minutos, **`done`**. A tarefa era real: a seção de
+> recipes do README estava desatualizada e, num ponto, **errada** (descrevia o `human-gate`
+> como "para o run, re-rode com `--approve-gates`", que a F2 substituiu há duas fases).
+
+## O que ficou provado
+
+O ciclo inteiro da tese do produto, com processos separados:
+
+1. o run **parkou** no gate humano e continuou vivo;
+2. `corvex gate list`, de outro processo, mostrou o gate com o rótulo de leitura obrigatória;
+3. `gate show` trouxe a evidência **coletada de verdade** — os dois `from:` rodaram;
+4. `gate approve` **sem** `--ack` foi recusado nomeando o que faltava;
+5. `gate ack` de outro processo gravou a leitura **com carimbo de hora** (o sensor de "gate
+   que vira carimbo": lido às 18:23:43, aprovado depois);
+6. `gate approve` destravou, o run terminou sozinho, e a ação guardada aconteceu (a tag existe).
+
+E os consertos do primeiro dogfood apareceram funcionando em campo:
+**`tool_result` 9 para 9, todos pareados por id, todos com duração** (`Skill 16ms`,
+`Bash 714ms`, `Read 33ms`) — o dado da tela 2d que até ontem não existia em lugar nenhum.
+
+A contabilidade também disse algo que ninguém sabia: **review $1,43 contra worker $0,90**,
+mais **$0,64 em tentativas superadas**. O reviewer custa mais que o worker neste repo, e isso
+era invisível antes de a F5 ser consertada.
+
+## O achado: a evidência tinha uma âncora que anda
+
+O gate exigia ler `git show --stat HEAD` — a coisa óbvia de se escrever. Mas `auto_commit`
+faz checkpoint **de cada step**, então no momento em que o gate do S03 abriu, `HEAD` era o
+checkpoint do S02: só a papelada do corvex. **O aprovador foi obrigado a reconhecer que leu um
+diff que não continha a mudança que ele estava aprovando.**
+
+É o risco #1 do roadmap ("gate que vira carimbo") chegando por um mecanismo que ninguém
+previu: não preguiça de quem aprova, mas evidência cuja âncora desliza por baixo dela. E a
+trava fecha do mesmo jeito — o que é pior que não ter trava, porque parece que houve leitura.
+
+**Conserto:** `$CORVEX_RUN_BASE` no ambiente de todo comando de evidência — o commit em que o
+run começou, que não se move. A recipe passa a dizer
+`git diff --stat $CORVEX_RUN_BASE -- README.md` e significar "tudo que este run mudou".
+Documentado no README, onde o autor de recipe olha.
+
+## Atrito registrado, ainda sem conserto
+
+- **`run list` mistura histórico e presente.** Automatizar em cima dele exige filtrar por id:
+  meu próprio laço de espera casou com o `failed` de um run anterior e saiu em 3 segundos.
+  Um `--status` ou um `--json` filtrável resolveria.
+- **O `task_warn` de 5 minutos não tem para onde ir** enquanto ninguém está olhando a UI.

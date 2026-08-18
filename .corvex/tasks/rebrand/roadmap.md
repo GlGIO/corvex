@@ -864,9 +864,17 @@ produção (o parser espera uma forma que o CLI não emite, então a F5 entregou
 duração" com só o início vivo em campo); um run que falha reportava `$0.00`; e `SKIPPED` contava
 como feito. Consertados em `0bbf619`.
 
-Aberto, e é o próximo: **o teto de 20 min por task é curto para trabalho real neste repo, e é de
-config, não de step** — um step `code` e um step `test` têm perfis de tempo diferentes e a recipe
-não tem como dizer isso.
+Segundo run (`readme-recipes`, `run_d458`): **`done`**, e provou a tese ponta a ponta — parkou,
+apareceu na caixa de outro processo, a trava recusou aprovação sem `--ack`, o `gate ack` gravou
+a leitura com carimbo de hora, e a aprovação destravou o run. Os consertos do primeiro dogfood
+apareceram em campo: `tool_result` 9 para 9, pareados por id, com duração.
+
+Achado do segundo: **a evidência tinha uma âncora que anda.** `git show --stat HEAD` no gate
+mostra o checkpoint do step ANTERIOR, porque `auto_commit` commita a cada step — o aprovador
+era obrigado a reconhecer um diff que não continha a mudança. Consertado com `$CORVEX_RUN_BASE`.
+
+Aberto: `run list` mistura histórico e presente, então automatizar em cima dele exige filtrar
+por id.
 
 ## Riscos
 
