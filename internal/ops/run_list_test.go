@@ -182,3 +182,58 @@ func asUnknownRun(err error, target **UnknownRunError) bool {
 	}
 	return ok
 }
+
+// Filtering, and why it exists: waiting for a run by grepping an unfiltered
+// listing bites, because the listing is history AND present at once. My own
+// wait loop matched the `failed` of a previous run and returned in 3 seconds.
+func TestListRuns_FiltersOnStatusAndOnLivenessSeparately(t *testing.T) {
+	f := newRunFixture(t)
+	f.add(t, "run_0001", "alpha", time.Hour, run.StatusFailed)
+	// Started seconds ago, not minutes: liveness needs a FRESH heartbeat, so a
+	// run whose record is older than StaleAfter reads `stale` however healthy
+	// its status looks. That is the whole reason the two axes are separate
+	// flags, and this fixture would be lying if it pretended otherwise.
+	f.add(t, "run_0002", "beta", 5*time.Second, run.StatusRunning)
+	f.add(t, "run_0003", "gamma", 5*time.Second, run.StatusParked)
+
+	failed, err := f.lister.ListRuns(RunListOptions{Status: run.StatusFailed})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if len(failed) != 1 || failed[0].RunID != "run_0001" {
+		t.Fatalf("--status failed kept %+v, want only run_0001", failed)
+	}
+
+	// The other axis. Every run in this fixture has a live probe, so `--live`
+	// keeps the two non-terminal ones and drops the finished one — which a
+	// status filter could not express, and vice versa.
+	live, err := f.lister.ListRuns(RunListOptions{Live: true})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if len(live) != 2 {
+		t.Fatalf("--live kept %d run(s), want 2 (running + parked): %+v", len(live), live)
+	}
+	for _, r := range live {
+		if r.Status == run.StatusFailed {
+			t.Errorf("--live kept a finished run: %s", r.RunID)
+		}
+	}
+}
+
+// A misspelled status must fail loudly. Silently matching nothing would produce
+// an empty listing, which reads exactly like "nothing is running" — the answer
+// the script waiting on it is looking for.
+func TestParseRunStatus_RefusesWhatItCannotMean(t *testing.T) {
+	if _, err := ParseRunStatus("dnoe"); err == nil {
+		t.Fatal("a misspelled status was accepted")
+	}
+	if _, err := ParseRunStatus("alive"); err == nil {
+		t.Error("`alive` is liveness, not status, and must be refused with a pointer to --live")
+	}
+	for _, ok := range []string{"", "running", "parked", "done", "failed", "canceled", "canceling"} {
+		if _, err := ParseRunStatus(ok); err != nil {
+			t.Errorf("ParseRunStatus(%q): %v", ok, err)
+		}
+	}
+}

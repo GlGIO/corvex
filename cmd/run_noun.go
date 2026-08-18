@@ -77,6 +77,8 @@ var (
 var (
 	runListSince    string
 	runListRepo     string
+	runListStatus   string
+	runListLive     bool
 	runListProjects bool
 	runShowStep     string
 	runWatchEvery   time.Duration
@@ -92,6 +94,8 @@ func init() {
 
 	runListCmd.Flags().StringVar(&runListSince, "since", "7d", "only runs started within this window — 90m, 36h, 7d (0 for all)")
 	runListCmd.Flags().StringVar(&runListRepo, "repo", "", "only runs of one repository (`--repo .` for the current one)")
+	runListCmd.Flags().StringVar(&runListStatus, "status", "", "only runs reporting this status: running, parked, canceling, done, failed, canceled")
+	runListCmd.Flags().BoolVar(&runListLive, "live", false, "only runs with a process behind them (the other axis: what a run REPORTS is --status)")
 	runListCmd.Flags().BoolVar(&runListProjects, "projects", false, "list projects of this repository instead of runs")
 	runListJSON = addJSONFlag(runListCmd)
 

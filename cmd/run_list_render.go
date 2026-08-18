@@ -9,9 +9,9 @@ import (
 
 // renderRunList prints the history screen (canvas 2e): newest first, one line
 // per run, with the id first because the id is what every other command takes.
-func renderRunList(rows []ops.RunRow, since time.Duration, scoped bool) {
+func renderRunList(rows []ops.RunRow, since time.Duration, scoped bool, filters string) {
 	if len(rows) == 0 {
-		fmt.Println(emptyRunList(since, scoped))
+		fmt.Println(emptyRunList(since, scoped, filters))
 		return
 	}
 	fmt.Printf("%d run(s):\n\n", len(rows))
@@ -22,15 +22,22 @@ func renderRunList(rows []ops.RunRow, since time.Duration, scoped bool) {
 	fmt.Printf("\n  → corvex run show %s\n", rows[0].RunID)
 }
 
-func emptyRunList(since time.Duration, scoped bool) string {
+func emptyRunList(since time.Duration, scoped bool, filters string) string {
 	where := "on this machine"
 	if scoped {
 		where = "in this repository"
 	}
-	if since <= 0 {
-		return "No runs recorded " + where + "."
+	// The filters are named in the empty message on purpose. An empty listing
+	// reads as "nothing is running", which is the answer a script waiting on one
+	// is looking for — and if the emptiness came from a filter rather than from
+	// the world, that reading is wrong in the direction that matters.
+	if filters != "" {
+		filters = " matching " + filters
 	}
-	return fmt.Sprintf("No runs %s in the last %s (--since 0 for all).", where, humanWait(since))
+	if since <= 0 {
+		return "No runs recorded " + where + filters + "."
+	}
+	return fmt.Sprintf("No runs %s in the last %s%s (--since 0 for all).", where, humanWait(since), filters)
 }
 
 // renderProjectRows prints the unit of the line F3's D11 kept: projects of this

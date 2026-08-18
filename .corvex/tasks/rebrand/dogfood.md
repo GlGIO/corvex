@@ -117,7 +117,12 @@ Documentado no README, onde o autor de recipe olha.
 
 ## Atrito registrado, ainda sem conserto
 
-- **`run list` mistura histórico e presente.** Automatizar em cima dele exige filtrar por id:
-  meu próprio laço de espera casou com o `failed` de um run anterior e saiu em 3 segundos.
-  Um `--status` ou um `--json` filtrável resolveria.
+- ~~**`run list` mistura histórico e presente.**~~ ✅ **consertado.** Meu próprio laço de espera
+  casou com o `failed` de um run anterior e saiu em 3 segundos. Agora há **dois** filtros, um
+  por eixo: `--status` (o que o run REPORTA de si) e `--live` (se há processo atrás dele) —
+  separados porque a F1 provou, com um leitor estrangeiro e um SIGKILL, que um `status` pode
+  dizer `running` para sempre sobre um processo que já morreu. Um flag só respondendo às duas
+  perguntas estaria errado metade do tempo. Status desconhecido é **recusado**: casar nada em
+  silêncio produziria uma lista vazia, que lê exatamente como "nada rodando" — a resposta que o
+  script esperando por ela procura. Pelo mesmo motivo, a mensagem de vazio nomeia o filtro.
 - **O `task_warn` de 5 minutos não tem para onde ir** enquanto ninguém está olhando a UI.

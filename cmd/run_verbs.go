@@ -27,14 +27,18 @@ func runRunList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	rows, err := ops.RunLister{}.ListRuns(ops.RunListOptions{Since: since, Repo: repo})
+	status, err := ops.ParseRunStatus(runListStatus)
+	if err != nil {
+		return err
+	}
+	rows, err := ops.RunLister{}.ListRuns(ops.RunListOptions{Since: since, Repo: repo, Status: status, Live: runListLive})
 	if err != nil {
 		return err
 	}
 	if *runListJSON {
 		return printJSON(os.Stdout, rows)
 	}
-	renderRunList(rows, since, repo != "")
+	renderRunList(rows, since, repo != "", describeRunFilters())
 	return nil
 }
 
@@ -71,6 +75,18 @@ func runRunShow(_ *cobra.Command, args []string) error {
 	}
 	renderRunReport(report)
 	return nil
+}
+
+// describeRunFilters names the narrowing flags in force, for the empty message.
+func describeRunFilters() string {
+	var on []string
+	if runListStatus != "" {
+		on = append(on, "--status "+runListStatus)
+	}
+	if runListLive {
+		on = append(on, "--live")
+	}
+	return strings.Join(on, " ")
 }
 
 // showWorkDir resolves where to read from. A run id needs no local workspace —

@@ -1,8 +1,10 @@
 package ops
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/run"
@@ -54,6 +56,16 @@ type RunListOptions struct {
 	Since time.Duration
 	// Repo keeps only runs of one repository. Empty keeps all.
 	Repo string
+	// Status keeps only runs whose own status matches. Empty keeps all.
+	//
+	// This is the run's REPORT of itself (`running`, `parked`, `done`, …) and
+	// nothing else. Liveness is the other axis and has its own field, because
+	// F1 established — with a foreign reader and a SIGKILL — that a status can
+	// say `running` forever about a process that is gone. One flag answering
+	// both questions would be one flag that is wrong half the time.
+	Status run.Status
+	// Live keeps only runs with a process behind them (alive or cancelling).
+	Live bool
 }
 
 // RunLister reads run identity. Like GateLister it owns no run and writes
@@ -91,6 +103,12 @@ func (l RunLister) ListRuns(opts RunListOptions) ([]RunRow, error) {
 		}
 		age := now.Sub(v.Record.StartedAt)
 		if opts.Since > 0 && age > opts.Since {
+			continue
+		}
+		if opts.Status != "" && v.Record.Status != opts.Status {
+			continue
+		}
+		if opts.Live && !(RunRow{Liveness: v.Liveness}).Live() {
 			continue
 		}
 		rows = append(rows, RunRow{
@@ -189,4 +207,25 @@ func canonicalRepo(path string) string {
 		return resolved
 	}
 	return filepath.Clean(abs)
+}
+
+// ParseRunStatus reads a status the user typed, refusing anything that is not a
+// status this tool writes.
+//
+// Refusing matters more than it looks: the whole reason this filter exists is
+// that scripting on top of an unfiltered listing bites. A misspelled `--status
+// dnoe` that silently matched nothing would produce an empty list — which reads
+// exactly like "nothing is running", the answer the script is waiting for.
+func ParseRunStatus(raw string) (run.Status, error) {
+	s := run.Status(strings.TrimSpace(raw))
+	switch s {
+	case "":
+		return "", nil
+	case run.StatusRunning, run.StatusParked, run.StatusCanceling,
+		run.StatusDone, run.StatusFailed, run.StatusCanceled:
+		return s, nil
+	default:
+		return "", fmt.Errorf("unknown status %q: use running, parked, canceling, done, failed or canceled "+
+			"(for \"is a process behind it\", that is --live)", raw)
+	}
 }
