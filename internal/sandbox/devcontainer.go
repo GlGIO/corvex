@@ -72,7 +72,7 @@ func (d *DevcontainerSandbox) Run(ctx context.Context, req RunRequest) (*RunResu
 	args = append(args, req.Command...)
 
 	cmd := d.cmdRunner(ctx, "devcontainer", args...)
-	cmd.Env = mergeEnv(os.Environ(), req.Env)
+	cmd.Env = mergeEnv(os.Environ(), req.Env, req.DenyEnv)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

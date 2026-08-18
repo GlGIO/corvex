@@ -141,9 +141,15 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg})
 		return fmt.Errorf("task %s: %s", t.ID, msg)
 	}
-	msg := fmt.Sprintf("%s did not pass after %d iteration(s): %v", cond, maxIter, lastErr)
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg})
-	return fmt.Errorf("task %s: %s", t.ID, msg)
+	// Two messages on purpose: the returned error carries what the command
+	// actually said (the operator needs it, and it goes to the terminal and the
+	// run log), while the emitted one stops at the count — the emitted one is
+	// the one that lands in activity.jsonl, which is committed, and a failing
+	// command's stderr is where paths and exported credentials live.
+	charmbraceletlog.Warn("command stage failed", "task", t.ID, "err", lastErr)
+	published := fmt.Sprintf("%s did not pass after %d iteration(s)", cond, maxIter)
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: published})
+	return fmt.Errorf("task %s: %s: %v", t.ID, published, lastErr)
 }
 
 // markStagePassed records a non-AI stage (command, approved human-gate) as

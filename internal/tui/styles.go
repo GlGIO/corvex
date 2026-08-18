@@ -11,13 +11,13 @@ import (
 // Palette — charm.sh-inspired. Soft accents, restrained reds/greens,
 // adaptive for light and dark terminals.
 var (
-	accent      = lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#AD8CFF"}
-	accentSoft  = lipgloss.AdaptiveColor{Light: "#B59FFF", Dark: "#8B6FE0"}
-	textMain    = lipgloss.AdaptiveColor{Light: "#1A1A2E", Dark: "#E6E6F0"}
-	textMuted   = lipgloss.AdaptiveColor{Light: "#5F5F6E", Dark: "#9696A8"}
-	textFaint   = lipgloss.AdaptiveColor{Light: "#9E9EAD", Dark: "#5F5F70"}
-	dividerCol  = lipgloss.AdaptiveColor{Light: "#D4D4DC", Dark: "#3A3A4A"}
-	chipBg      = lipgloss.AdaptiveColor{Light: "#EFEAFC", Dark: "#2A2240"}
+	accent     = lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#AD8CFF"}
+	accentSoft = lipgloss.AdaptiveColor{Light: "#B59FFF", Dark: "#8B6FE0"}
+	textMain   = lipgloss.AdaptiveColor{Light: "#1A1A2E", Dark: "#E6E6F0"}
+	textMuted  = lipgloss.AdaptiveColor{Light: "#5F5F6E", Dark: "#9696A8"}
+	textFaint  = lipgloss.AdaptiveColor{Light: "#9E9EAD", Dark: "#5F5F70"}
+	dividerCol = lipgloss.AdaptiveColor{Light: "#D4D4DC", Dark: "#3A3A4A"}
+	chipBg     = lipgloss.AdaptiveColor{Light: "#EFEAFC", Dark: "#2A2240"}
 
 	success = lipgloss.AdaptiveColor{Light: "#1E8A5E", Dark: "#4FD49C"}
 	running = lipgloss.AdaptiveColor{Light: "#0F8AAA", Dark: "#5EC4DA"}
@@ -86,9 +86,9 @@ var (
 
 	// ModalStyle wraps full-screen overlays (help, detail).
 	ModalStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(accent).
-		Padding(1, 2)
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(accent).
+			Padding(1, 2)
 	ModalTitle = lipgloss.NewStyle().Bold(true).Foreground(accent).MarginBottom(1)
 	ModalLabel = lipgloss.NewStyle().Foreground(textMuted).Bold(true)
 )

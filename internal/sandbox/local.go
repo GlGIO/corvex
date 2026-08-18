@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/giovannialves/corvex/internal/config"
 )
@@ -42,7 +43,7 @@ func (s *LocalSandbox) Run(ctx context.Context, req RunRequest) (*RunResult, err
 
 	cmd := s.cmdRunner(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Dir = s.workDir
-	cmd.Env = mergeEnv(os.Environ(), req.Env)
+	cmd.Env = mergeEnv(os.Environ(), req.Env, req.DenyEnv)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -75,10 +76,36 @@ func (s *LocalSandbox) IsAvailable(_ context.Context) bool {
 	return true
 }
 
-func mergeEnv(base []string, extra map[string]string) []string {
-	env := make([]string, len(base), len(base)+len(extra))
-	copy(env, base)
+// mergeEnv builds the child's environment: the host's, minus what custody holds
+// back, plus what the caller adds.
+//
+// The subtraction is not symmetric with the addition, and that is deliberate:
+// `extra` is what corvex decided to forward, `deny` is what it decided nobody
+// downstream may see. So deny wins even over an explicit addition — otherwise a
+// caller could hand back the credential custody just removed.
+func mergeEnv(base []string, extra map[string]string, deny ...[]string) []string {
+	held := make(map[string]struct{})
+	for _, list := range deny {
+		for _, name := range list {
+			if name = strings.TrimSpace(name); name != "" {
+				held[name] = struct{}{}
+			}
+		}
+	}
+
+	env := make([]string, 0, len(base)+len(extra))
+	for _, kv := range base {
+		if name, _, ok := strings.Cut(kv, "="); ok {
+			if _, blocked := held[name]; blocked {
+				continue
+			}
+		}
+		env = append(env, kv)
+	}
 	for k, v := range extra {
+		if _, blocked := held[k]; blocked {
+			continue
+		}
 		env = append(env, k+"="+v)
 	}
 	return env

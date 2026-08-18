@@ -6,10 +6,15 @@ package step
 // call away from leaving the machine, and no gate downstream can undo that.
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -66,4 +71,50 @@ func keysOf(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// The test the first version of custody did NOT have, and whose absence an
+// audit found: `collectAuthEnv` is a pure map filter, and filtering the
+// forwarded set proves nothing about what the CHILD inherits. Every sandbox and
+// the direct exec path start from os.Environ(), so a credential that was merely
+// "not forwarded" was inherited anyway — custody was inert on the default
+// configuration while three separate comments said it was not.
+//
+// This test runs a real process through the real sandbox and reads its
+// environment back.
+func TestCustody_HeldCredentialNeverReachesTheChildProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh to dump the environment")
+	}
+	t.Setenv("CORVEX_HELD_SECRET", "sk-ant-CANARY-CUSTODY")
+	t.Setenv("CORVEX_FORWARDED", "fine")
+
+	dump := filepath.Join(t.TempDir(), "env.txt")
+	sb := sandbox.NewLocalSandbox(config.SandboxConfig{WorkDir: t.TempDir()})
+	if err := sb.Prepare(context.Background()); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	if _, err := sb.Run(context.Background(), sandbox.RunRequest{
+		Command: []string{"/bin/sh", "-c", "env > " + dump},
+		Env:     map[string]string{"CORVEX_HELD_SECRET": "handed-back-explicitly"},
+		DenyEnv: []string{"CORVEX_HELD_SECRET"},
+	}); err != nil {
+		t.Fatalf("sandbox run: %v", err)
+	}
+
+	body, err := os.ReadFile(dump)
+	if err != nil {
+		t.Fatalf("reading the child's environment: %v", err)
+	}
+	got := string(body)
+	if strings.Contains(got, "CANARY-CUSTODY") {
+		t.Error("the held credential was inherited from the host environment")
+	}
+	if strings.Contains(got, "handed-back-explicitly") {
+		t.Error("deny lost to an explicit Env entry — custody must win over both sources")
+	}
+	if !strings.Contains(got, "CORVEX_FORWARDED=fine") {
+		t.Error("custody removed a variable nobody asked it to remove")
+	}
 }

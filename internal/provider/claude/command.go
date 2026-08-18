@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/log"
 
@@ -52,14 +53,32 @@ func configureCmd(cmd *exec.Cmd, req types.ExecuteRequest) {
 		cmd.Dir = req.WorkDir
 	}
 	if len(req.Env) > 0 {
-		cmd.Env = mergeEnv(os.Environ(), req.Env)
+		cmd.Env = mergeEnv(os.Environ(), req.Env, req.DenyEnv)
 	}
 }
 
-func mergeEnv(base []string, extra map[string]string) []string {
-	env := make([]string, len(base), len(base)+len(extra))
-	copy(env, base)
+// mergeEnv builds the child's environment: this process's, minus the names
+// custody holds back (F9), plus what the caller adds. Deny wins over both.
+func mergeEnv(base []string, extra map[string]string, deny []string) []string {
+	held := make(map[string]struct{}, len(deny))
+	for _, name := range deny {
+		if name = strings.TrimSpace(name); name != "" {
+			held[name] = struct{}{}
+		}
+	}
+	env := make([]string, 0, len(base)+len(extra))
+	for _, kv := range base {
+		if name, _, ok := strings.Cut(kv, "="); ok {
+			if _, blocked := held[name]; blocked {
+				continue
+			}
+		}
+		env = append(env, kv)
+	}
 	for k, v := range extra {
+		if _, blocked := held[k]; blocked {
+			continue
+		}
 		env = append(env, k+"="+v)
 	}
 	return env

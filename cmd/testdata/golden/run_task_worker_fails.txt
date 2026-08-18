@@ -5,6 +5,8 @@ $ corvex run alpha --plain --yes --task S02
 
 --- stderr ---
 Run "alpha": 1 pending task(s) · ceilings: <COST>/run, <COST>/task
+<TS> WARN worker attempt failed task=S02 attempt=0 err="worker execution for task S02: claude cli exited with error: exit status 3 (stderr: stub claude: refusing)"
+<TS> WARN worker attempt failed task=S02 attempt=1 err="worker execution for task S02: claude cli exited with error: exit status 3 (stderr: stub claude: refusing)"
 
 --- error ---
 run failed: task S02 failed after 3 attempts: worker execution for task S02: claude cli exited with error: exit status 3 (stderr: stub claude: refusing)

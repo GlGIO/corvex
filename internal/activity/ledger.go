@@ -160,6 +160,11 @@ func (l *Ledger) Append(e Entry) error {
 	if l.id.Recipe != "" {
 		e.Recipe = l.id.Recipe
 	}
+	// Last stop before a committed file. See redact.go: this catches absolute
+	// paths only, and it is the second layer — the producers are fixed at the
+	// source. A message is the one free-text field on the line, so it is the one
+	// place a future producer can reopen the hole without noticing.
+	e.Message = redactHome(RedactPaths(e.Message))
 
 	buf, err := json.Marshal(e)
 	if err != nil {

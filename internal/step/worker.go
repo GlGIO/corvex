@@ -107,6 +107,11 @@ func (w *Worker) buildRequest(t *types.Task, anchorCtx string, contextDocs []str
 		// Config adds to this list and can never shorten it (F9): a user closing
 		// `Bash` is closing a door, and no config value opens one corvex decided
 		// to keep shut.
+		// Custody travels WITH the request, because the request is what becomes
+		// a process. Computing the forwarded set was never enough: every sandbox
+		// and the direct exec path start the child from os.Environ(), so a
+		// variable that was merely "not forwarded" was inherited anyway.
+		DenyEnv: w.envDenylist,
 		DisallowedTools: append([]string{
 			"Edit(.corvex/**)",
 			"Write(.corvex/**)",
@@ -187,6 +192,7 @@ func (w *Worker) executeViaSandbox(
 	sandboxResult, err := w.sandbox.Run(ctx, sandbox.RunRequest{
 		Command: cmd,
 		Env:     authEnv,
+		DenyEnv: w.envDenylist,
 	})
 	elapsed := time.Since(start)
 

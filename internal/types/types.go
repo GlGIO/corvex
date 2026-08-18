@@ -168,6 +168,11 @@ type ExecuteRequest struct {
 	Env             map[string]string
 	AllowedTools    []string
 	DisallowedTools []string
+	// DenyEnv are variable NAMES the provider process must not inherit from
+	// corvex (F9 credential custody). Applied where the process is created,
+	// because that is the only place it is true — everywhere else it is a
+	// statement about a set nobody enforces.
+	DenyEnv []string
 }
 
 type ExecuteResult struct {

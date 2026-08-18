@@ -17,6 +17,15 @@ var (
 type RunRequest struct {
 	Command []string
 	Env     map[string]string
+	// DenyEnv are variable NAMES the child must not inherit from this process,
+	// whatever the host environment holds (F9 credential custody).
+	//
+	// It has to be applied HERE, where the process is actually created, and not
+	// only where the forwarded set is computed: every sandbox starts the child
+	// from os.Environ(), so a variable "not forwarded" was still inherited. The
+	// audit that found this walked a denied credential straight into the worker
+	// on the default configuration.
+	DenyEnv []string
 }
 
 // RunResult holds the output and exit code of a sandbox command execution.

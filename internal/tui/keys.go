@@ -71,9 +71,9 @@ func DefaultKeyMap() KeyMap {
 // HelpGroups returns the bindings grouped for the help modal.
 func (k KeyMap) HelpGroups() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.Detail, k.Esc},  // navigation
-		{k.Filter, k.Help},                // modes
+		{k.Up, k.Down, k.Detail, k.Esc},    // navigation
+		{k.Filter, k.Help},                 // modes
 		{k.Pause, k.Skip, k.Retry, k.Logs}, // actions
-		{k.Quit},                          // exit
+		{k.Quit},                           // exit
 	}
 }

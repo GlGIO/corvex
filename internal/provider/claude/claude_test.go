@@ -301,7 +301,7 @@ func TestMergeEnv(t *testing.T) {
 		"DEBUG":       "true",
 	}
 
-	result := mergeEnv(base, extra)
+	result := mergeEnv(base, extra, nil)
 
 	if len(result) != 4 {
 		t.Fatalf("expected 4 env vars, got %d", len(result))

@@ -159,12 +159,21 @@ func describeLast(live *liveness) string {
 
 // streamSummary renders a one-line description of a stream event for the
 // watchdog's "where it hung" diagnostic.
+//
+// The NAME of the tool and nothing else. This string ends up in the message of a
+// `task_timeout` / `task_warn` line, and those lines go to activity.jsonl, which
+// is committed — corvex's own auto_commit puts it in the user's git history.
+// `se.Content` is the provider's summary of the tool INPUT: the absolute
+// file_path for Read/Write/Edit, or the whole command line for Bash, which is
+// where an exported credential travels. F5 closed that door on the `tool_use`
+// line and left it open here; an adversarial audit walked through it with a
+// canary and found the token in a commit.
+//
+// The detail is not lost, it is relocated: the full stream event still reaches
+// the TUI and the run log, neither of which is versioned.
 func streamSummary(se types.StreamEvent) string {
 	switch se.Type {
 	case types.EventToolUse:
-		if se.Content != "" {
-			return fmt.Sprintf("tool %s (%s)", se.Tool, se.Content)
-		}
 		return fmt.Sprintf("tool %s", se.Tool)
 	case types.EventToolResult:
 		return "tool result"

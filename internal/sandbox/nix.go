@@ -54,7 +54,7 @@ func (s *NixSandbox) Run(ctx context.Context, req RunRequest) (*RunResult, error
 	args := append([]string{"develop", "--command"}, req.Command...)
 	cmd := s.cmdRunner(ctx, "nix", args...)
 	cmd.Dir = s.workDir
-	cmd.Env = mergeEnv(os.Environ(), req.Env)
+	cmd.Env = mergeEnv(os.Environ(), req.Env, req.DenyEnv)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

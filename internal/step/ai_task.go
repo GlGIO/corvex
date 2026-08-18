@@ -17,8 +17,16 @@ import (
 // to the next attempt, the per-category rejection counts the escalation policy
 // keys off, and the task's cumulative cost.
 type aiTask struct {
-	worker         *Worker
-	diagnosis      string
+	worker *Worker
+	// diagnosis is the full text fed back into the next attempt's PROMPT. It
+	// may carry anything the provider or a stack trace said, including absolute
+	// paths and whatever the user exported — so it must never be published.
+	diagnosis string
+	// reason is the publishable half: what the ledger line says happened. The
+	// two are separate fields rather than one string used twice because that is
+	// exactly how the leak happened — one value with two readers, and only one
+	// of them safe.
+	reason         string
 	categoryCounts map[string]int
 	costUSD        float64
 	maxRetries     int
@@ -96,7 +104,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		// A retry line is the worker being sent back in, even though the
 		// diagnosis on it was written by the reviewer: what the next attempt
 		// costs is worker spend.
-		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt, Message: st.diagnosis})
+		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt, Message: st.publishableReason()})
 		if _, err := e.recovery.Check(); err != nil {
 			charmbraceletlog.Warn("recovery check on retry", "task", t.ID, "err", err)
 		}
@@ -131,7 +139,15 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 			e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseWorker, Status: types.StatusFailed})
 			return false, fmt.Errorf("task %s failed after %d attempts: %w", t.ID, attempt+1, err)
 		}
+		// Two readers, two needs: the next attempt's PROMPT wants the whole
+		// error (that is what makes the retry informed), and the ledger LINE
+		// must not have it — the provider's error text carries its raw stderr,
+		// which carries paths and whatever the user exported. So the full text
+		// goes to the prompt and to the log, and the published line says only
+		// what happened.
+		charmbraceletlog.Warn("worker attempt failed", "task", t.ID, "attempt", attempt, "err", err)
 		st.diagnosis = err.Error()
+		st.reason = "worker call failed"
 		return false, nil
 	}
 
@@ -152,7 +168,9 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 			}
 			return false, fmt.Errorf("task %s review failed: %w", t.ID, reviewErr)
 		}
+		charmbraceletlog.Warn("reviewer failed", "task", t.ID, "attempt", attempt, "err", reviewErr)
 		st.diagnosis = reviewErr.Error()
+		st.reason = "reviewer call failed"
 		return false, nil
 	}
 
@@ -184,6 +202,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 			return false, fmt.Errorf("task %s reviewer never produced a verdict after %d attempts", t.ID, st.maxRetries+1)
 		}
 		st.diagnosis = "reviewer produced no parseable verdict on the previous attempt"
+		st.reason = st.diagnosis
 		return false, nil
 	}
 
@@ -203,6 +222,10 @@ func (e *Executor) rejectAttempt(
 	reviewResult *ReviewResult,
 ) error {
 	st.diagnosis = reviewResult.Summary
+	// A reviewer verdict is prose about the user's own code, written by the
+	// model — the closest thing to publishable text this loop produces. It is
+	// still passed through the ledger's path redaction on the way in.
+	st.reason = reviewResult.Summary
 	hookEnv.Status = "failed"
 	e.runHook(ctx, hooks.OnFailure, hookEnv, t.ID)
 	e.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
@@ -213,9 +236,19 @@ func (e *Executor) rejectAttempt(
 		TaskID:  t.ID,
 		Phase:   event.PhaseWorker,
 		Status:  types.StatusFailed,
-		Message: st.diagnosis,
+		Message: st.publishableReason(),
 	})
 	return e.applyEscalation(ctx, r, t, st, attempt, reviewResult)
+}
+
+// publishableReason is what a ledger line may say about a failure. Empty falls
+// back to a fixed string rather than to the diagnosis: a missing reason must
+// degrade to less information, never to more.
+func (st *aiTask) publishableReason() string {
+	if st.reason != "" {
+		return st.reason
+	}
+	return "attempt failed"
 }
 
 // charge adds an attempt's cost to the per-task and run totals and reports a

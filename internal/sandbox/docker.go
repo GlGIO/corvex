@@ -139,7 +139,17 @@ func (d *DockerSandbox) buildRunArgs(mount string) []string {
 
 func (d *DockerSandbox) buildExecArgs(req RunRequest) []string {
 	args := []string{"exec"}
+	// A container does not inherit this process's environment, so the host's
+	// variables are already absent here — but a denied name could still arrive
+	// through req.Env, and custody has to mean the same thing in every sandbox.
+	held := make(map[string]struct{}, len(req.DenyEnv))
+	for _, name := range req.DenyEnv {
+		held[name] = struct{}{}
+	}
 	for k, v := range req.Env {
+		if _, blocked := held[k]; blocked {
+			continue
+		}
 		args = append(args, "-e", k+"="+v)
 	}
 	args = append(args, d.containerName)

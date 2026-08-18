@@ -71,11 +71,11 @@ func TestLocalSandbox_Run(t *testing.T) {
 			wantExit: 0,
 		},
 		{
-			name:     "exit code 1",
-			command:  []string{"sh", "-c", "echo fail >&2; exit 1"},
-			prepare:  true,
-			wantOut:  "",
-			wantExit: 1,
+			name:       "exit code 1",
+			command:    []string{"sh", "-c", "echo fail >&2; exit 1"},
+			prepare:    true,
+			wantOut:    "",
+			wantExit:   1,
 			wantStderr: "fail\n",
 		},
 		{
