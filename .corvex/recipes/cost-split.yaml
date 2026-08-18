@@ -1,0 +1,89 @@
+name: cost-split
+description: Separa o custo do reviewer do custo do worker no ledger, para a barra por natureza parar de sub-reportar review.
+
+requires:
+  - bin: go
+    why: a suíte tem de rodar antes de qualquer gate desta recipe
+
+stages:
+  - id: S01
+    kind: code
+    type: backend
+    title: Emitir o custo do reviewer na própria linha
+    description: |
+      Hoje `internal/step/ai_task.go` soma `attemptCost = workerCost + reviewerCost` e emite
+      esse número na linha `task_complete` (phase=worker), enquanto a linha `review_result`
+      do mesmo caminho sai SEM custo. Consequência: a agregação por fase (`internal/activity`,
+      `Summary.PerPhase`) atribui o dinheiro do reviewer ao balde `worker`, e a barra de custo
+      por natureza sub-reporta `review`.
+
+      Mude para: `review_result` carrega `CostUSD` = custo do reviewer daquela tentativa, e
+      `task_complete` carrega apenas o custo do worker. NÃO mude a semântica do teto de custo:
+      `e.charge` continua cobrando worker+reviewer do acumulado da task e do run.
+
+      O caminho do gate inferencial (`internal/step/gates.go`) já emite `review_result` com
+      custo e já cai no balde certo — não mexa nele, e não deixe o número ser contado duas vezes.
+    criteria:
+      - "review_result do caminho de retry carrega o custo do reviewer"
+      - "task_complete carrega apenas o custo do worker"
+      - "o teto de custo por task e por run continua somando worker+reviewer"
+      - "nenhum custo é contado duas vezes na agregação"
+    gates:
+      - nature: policy
+        max_attempts: 2
+      - nature: inferential
+        label: "Review do diff de contabilidade"
+
+  - id: S02
+    kind: code
+    type: backend
+    title: Manter o custo por task inteiro na leitura
+    depends_on: [S01]
+    description: |
+      Com S01, quem lê `task_complete` como "o que a task custou" passa a ver só o worker.
+      Dois leitores dependem disso e têm de continuar mostrando worker+review por task:
+      `internal/ops/inspect.go` (BuildInspectReport, contrato do `inspect --json`) e
+      `internal/ops/run_show.go` (buildRunTaskRows, a tela do `run show`).
+
+      Some o custo de `review_result` no mesmo balde da task nos dois. A soma por FASE
+      continua separada — é a linha que decide, não o agregado por task.
+    criteria:
+      - "inspect --json continua mostrando worker+review no custo da task"
+      - "run show continua mostrando worker+review por step"
+      - "a barra por natureza mostra review > 0 quando houve reviewer pago"
+    gates:
+      - nature: policy
+        max_attempts: 2
+      - nature: inferential
+        label: "Review dos dois leitores"
+
+  - id: S03
+    kind: test
+    title: Suíte inteira verde
+    depends_on: [S02]
+    command: "go test ./... -count=1"
+
+  - id: S04
+    kind: test
+    title: Invariantes de tamanho e domínio
+    depends_on: [S03]
+    command: "test -z \"$(for f in cmd/*.go; do case \"$f\" in *_test.go) continue;; esac; n=$(wc -l < \"$f\"); [ \"$n\" -gt 150 ] && echo \"$f\"; done)\" && test -z \"$(grep -rn -iE 'azure|smartcare|yandeh' --include='*.go' cmd internal | grep -vE ':[0-9]+:[[:space:]]*//' | grep -v _test.go)\""
+
+  - id: S05
+    kind: tool
+    title: Commitar a mudança de formato do ledger
+    depends_on: [S04]
+    command: "git add -A && git commit -m 'fix(ledger): custo do reviewer sai da linha do worker'"
+    gates:
+      - nature: human
+        when: before
+        label: "Aprovar mudança de formato do ledger"
+        prompt: "Isto muda o que a linha `task_complete` significa em todo ledger novo. Ledgers antigos continuam legíveis, mas a coluna passa a querer dizer outra coisa a partir daqui. Aprova?"
+    evidence:
+      - kind: diff
+        label: "Diff"
+        required_reading: true
+        from: "git diff --stat"
+      - kind: test_output
+        label: "Suíte"
+        from: "go test ./internal/activity/ ./internal/step/ ./internal/ops/ -count=1"
