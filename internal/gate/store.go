@@ -92,19 +92,39 @@ func Decide(repo, runID, stepID string, d Decision) (Pending, error) {
 		return p, fmt.Errorf("gate %s/%s: unknown verdict %q", runID, stepID, d.Verdict)
 	}
 	if d.Verdict == Approved {
-		if missing := MissingAcks(p.Evidence, d.Acked); len(missing) > 0 {
+		// The lock asks the gate, not the argv: a label acknowledged yesterday
+		// by `gate ack` counts exactly as much as one typed now. What it will
+		// not do is let an unread item through, which is why the check moved
+		// rather than softened.
+		if missing := p.MissingReading(d.Acked); len(missing) > 0 {
 			return p, &UnreadError{RunID: runID, StepID: stepID, Missing: missing}
+		}
+		// An inline --ack is a reading too, and it is dated at the decision
+		// itself because that is when it happened. The zero gap it leaves
+		// between reading and deciding is not noise to be smoothed over: it is
+		// the measurement risk #1 asks for, and smoothing it would hide the one
+		// case worth catching.
+		if !d.DecidedAt.IsZero() {
+			known, _ := canonicalLabels(p.Evidence, d.Acked)
+			p.Reads, _ = applyReads(p.Reads, known, d.DecidedAt)
 		}
 	}
 	p.Decision = &d
-	buf, err := json.MarshalIndent(p, "", "  ")
-	if err != nil {
-		return p, fmt.Errorf("gate marshal %s/%s: %w", runID, stepID, err)
-	}
-	if err := writeAtomic(path, append(buf, '\n')); err != nil {
+	if err := writeGate(path, p); err != nil {
 		return p, err
 	}
 	return p, nil
+}
+
+// writeGate replaces a gate file with the whole struct, atomically. Both writers
+// after Open go through here, so a decision and a reading mark cannot disagree
+// about how the file is produced.
+func writeGate(path string, p Pending) error {
+	buf, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return fmt.Errorf("gate marshal %s/%s: %w", p.RunID, p.StepID, err)
+	}
+	return writeAtomic(path, append(buf, '\n'))
 }
 
 // UnreadError is the approval lock firing: evidence marked required_reading was

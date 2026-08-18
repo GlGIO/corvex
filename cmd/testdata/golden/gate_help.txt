@@ -7,6 +7,7 @@ Usage:
   corvex gate [command]
 
 Available Commands:
+  ack         Mark required-reading evidence as read, without deciding the gate
   approve     Approve a gate, or close an escalation and let its step run again
   list        List every gate and escalation waiting for a decision, across repositories
   reject      Reject a gate, or close an escalation leaving its step failed

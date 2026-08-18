@@ -1,0 +1,10 @@
+$ corvex gate ack <RUN_ID> --step S01 --ack Migraton
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+gate <RUN_ID>/S01: no evidence labelled "Migraton" — it carries: Migration, Plano de query, Testes (run `corvex gate show <RUN_ID> --step S01`)

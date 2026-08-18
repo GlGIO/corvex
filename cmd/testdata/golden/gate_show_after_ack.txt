@@ -1,0 +1,27 @@
+$ corvex gate show <RUN_ID> --step S01
+
+--- stdout ---
+<RUN_ID>  ·  step S01  ·  human: Aprovacao de STG
+Aplicar migration em STG
+
+Aplicar esta migration em STG?
+
+run is alive · waiting <DUR>
+
+── Migration  [sql/—]  ★ required reading  ✓ read <TS>
+alter table users add column x int;
+
+── Plano de query  [verdict/—]  ★ required reading
+seq scan on users
+
+── Testes  [test_output/pass]
+312/312
+
+To approve, acknowledge each starred item:
+  corvex gate approve <RUN_ID> --step S01 --ack "Plano de query"
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

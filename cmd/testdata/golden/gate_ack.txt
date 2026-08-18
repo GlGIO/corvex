@@ -1,0 +1,13 @@
+$ corvex gate ack <RUN_ID> --step S01 --ack Migration
+
+--- stdout ---
+Read "Migration" at <TS>
+
+Still unread: Plano de query
+  corvex gate show <RUN_ID> --step S01
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

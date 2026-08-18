@@ -1,0 +1,10 @@
+$ corvex gate ack <RUN_ID> --step S01
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+nothing to acknowledge: name each label with --ack (the labels come from `corvex gate show`)

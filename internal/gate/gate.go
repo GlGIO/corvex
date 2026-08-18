@@ -92,6 +92,12 @@ type Pending struct {
 	Title string `json:"title,omitempty"`
 
 	Evidence []types.Evidence `json:"evidence,omitempty"`
+	// Reads is the persistent reading state F5 asked for: closing the terminal
+	// does not reset it, because it was never in the terminal. It lives in the
+	// gate file rather than anywhere near the ledger for the reason stated at
+	// the top of this file — the ledger is committed, and who-read-what is
+	// still evidence-shaped state about a working session.
+	Reads []ReadMark `json:"reads,omitempty"`
 
 	OpenedAt  time.Time  `json:"opened_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`

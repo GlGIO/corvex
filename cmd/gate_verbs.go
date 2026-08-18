@@ -35,7 +35,9 @@ var gateApproveCmd = &cobra.Command{
 	Use:   "approve <run-id|project>",
 	Short: "Approve a gate, or close an escalation and let its step run again",
 	Long: "Approve a gate. Evidence marked required_reading must be acknowledged by label " +
-		"with --ack; the labels come from `corvex gate show`.\n\n" +
+		"with --ack; the labels come from `corvex gate show`. Anything you already marked with " +
+		"`corvex gate ack` counts and needs no repeating — the lock asks that every required item " +
+		"was acknowledged, not that it was acknowledged in this command.\n\n" +
 		"With a project instead of a run id, it closes an escalation: the file is removed and " +
 		"the step goes back to PENDING, which is the \"I fixed it, try again\" answer.",
 	Args:              cobra.ExactArgs(1),

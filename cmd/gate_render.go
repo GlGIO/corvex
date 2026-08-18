@@ -79,22 +79,36 @@ func renderGateDetail(g ops.GateView) {
 		if e.Truncated {
 			fmt.Print("  (truncated)")
 		}
+		// Reading state, only when there is some: a gate nobody has opened yet
+		// must read exactly as it did before F5 gave it memory.
+		if mark, ok := g.Gate.ReadOf(e.Label); ok {
+			fmt.Printf("  ✓ read %s", mark.At.Format(time.RFC3339))
+		}
 		fmt.Println()
 		if body := strings.TrimSpace(e.Content); body != "" {
 			fmt.Println(body)
 		}
 	}
 
-	if required := gate.RequiredLabels(g.Gate.Evidence); len(required) > 0 {
+	// What is still owed, not what was ever required: naming an item somebody
+	// already read would train them to retype acknowledgements, which is the
+	// habit that makes the lock a formality.
+	required := gate.RequiredLabels(g.Gate.Evidence)
+	missing := g.Gate.MissingReading(nil)
+	switch {
+	case len(missing) > 0:
 		fmt.Printf("\nTo approve, acknowledge each starred item:\n  corvex gate approve %s --step %s",
 			g.Gate.RunID, g.Gate.StepID)
-		for _, label := range required {
+		for _, label := range missing {
 			fmt.Printf(" --ack %q", label)
 		}
 		fmt.Println()
-		return
+	case len(required) > 0:
+		fmt.Printf("\nAll required reading acknowledged.\n  corvex gate approve %s --step %s\n",
+			g.Gate.RunID, g.Gate.StepID)
+	default:
+		fmt.Printf("\n  corvex gate approve %s --step %s\n", g.Gate.RunID, g.Gate.StepID)
 	}
-	fmt.Printf("\n  corvex gate approve %s --step %s\n", g.Gate.RunID, g.Gate.StepID)
 }
 
 func statusOrNeutral(s types.EvidenceStatus) types.EvidenceStatus {

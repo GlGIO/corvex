@@ -1,0 +1,26 @@
+$ corvex gate ack --help
+
+--- stdout ---
+Record that you read a piece of evidence, now, and leave the gate open.
+
+Why a verb and not a flag on approve: `--ack` at approve time can only say "I read it and decided in the same breath". This says only the first half, it persists, and a later `corvex gate approve` accepts it — so reading on Monday and deciding on Tuesday is expressible. The lock does not loosen: every required item still has to be acknowledged.
+
+The labels come from `corvex gate show`. A label the gate does not carry is refused.
+
+Usage:
+  corvex gate ack <run-id> [flags]
+
+Flags:
+      --ack stringArray   mark one piece of evidence as read, by label (repeatable)
+  -h, --help              help for ack
+      --step string       step id, when more than one gate is waiting on the run
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
