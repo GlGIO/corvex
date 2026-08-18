@@ -152,7 +152,9 @@ func (e *Executor) Execute(ctx context.Context, r *Run, t *types.Task) error {
 	switch {
 	case t.Kind == types.LegacyKindHumanGate:
 		// The gate was the whole step, and it passed.
-		e.markStagePassed(r, t, "human gate approved: "+t.Title, 0)
+		// The gate WAS the step, so its completion is gate spend, not validate:
+		// nothing deterministic ran.
+		e.markStagePassed(r, t, "human gate approved: "+t.Title, 0, event.PhaseGate)
 		return nil
 	case types.NormalizeKind(t.Kind).IsComputational():
 		return e.runComputationalStage(ctx, r, t, acc)
@@ -168,7 +170,7 @@ func (e *Executor) markGateFailure(r *Run, t *types.Task) {
 	if err := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); err != nil {
 		charmbraceletlog.Warn("updating gated task status to failed", "task", t.ID, "err", err)
 	}
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "refused by gate"})
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseGate, Status: types.StatusFailed, Message: "refused by gate"})
 }
 
 // runShell runs a shell command in the workDir and returns combined output.

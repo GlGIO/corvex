@@ -28,7 +28,7 @@ func (e *Executor) runWorker(ctx context.Context, r *Run, t *types.Task, st *aiT
 	st.worker.SetOnStream(func(se types.StreamEvent) {
 		live.touch(streamSummary(se))
 		ev := se
-		e.emit(event.Event{Type: event.TaskStream, TaskID: taskID, Stream: &ev})
+		e.emit(event.Event{Type: event.TaskStream, TaskID: taskID, Phase: event.PhaseWorker, Stream: &ev})
 	})
 
 	// Watchdog: warn after task_warn_minutes, and CANCEL (not just warn) when

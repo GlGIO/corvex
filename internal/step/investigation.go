@@ -52,9 +52,14 @@ func (e *Executor) applyEscalation(
 	case ActionSpawnInvestigation:
 		investigationDiagnosis := e.runInvestigation(ctx, t, reviewResult.Summary)
 		st.diagnosis = investigationDiagnosis
+		// `worker` for the same reason as the plain retry: the line marks the
+		// worker going again. The investigator's own spend is invisible either
+		// way — runInvestigation drops result.CostUSD on the floor, so there is
+		// no number here to attribute to anybody.
 		e.emit(event.Event{
 			Type:    event.Retry,
 			TaskID:  t.ID,
+			Phase:   event.PhaseWorker,
 			Attempt: attempt,
 			Message: "spawn-investigation: " + investigationDiagnosis,
 		})

@@ -38,14 +38,17 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 			charmbraceletlog.Warn("updating command task status to failed", "task", t.ID, "err", statusErr)
 		}
-		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "command stage has no command"})
+		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: "command stage has no command"})
 		return fmt.Errorf("task %s: command stage has no command", t.ID)
 	}
 
 	if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusRunning); statusErr != nil {
 		charmbraceletlog.Warn("updating command task status to running", "task", t.ID, "err", statusErr)
 	}
-	e.emit(event.Event{Type: event.TaskStart, TaskID: t.ID})
+	// A command stage is the deterministic third of the cost-by-nature bar:
+	// tool, test, repro. No LLM, so the honest number is a measured $0 rather
+	// than an absent one.
+	e.emit(event.Event{Type: event.TaskStart, TaskID: t.ID, Phase: event.PhaseValidate})
 
 	// Reuse the per-task wall-clock ceiling so a hung command can't stall the run.
 	cmdCtx := ctx
@@ -79,12 +82,12 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		if maxIter > 1 {
 			label = fmt.Sprintf("[%d/%d] %s", iter, maxIter, label)
 		}
-		e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
+		e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
 
 		out, runErr := e.runShell(cmdCtx, t.Command)
 		if trimmed := strings.TrimSpace(out); trimmed != "" {
 			ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
-			e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Stream: &ev})
+			e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &ev})
 		}
 
 		// Decide success for this iteration.
@@ -119,7 +122,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 			if maxIter > 1 {
 				summary += fmt.Sprintf(" (passed on iteration %d/%d)", iter, maxIter)
 			}
-			e.markStagePassed(r, t, summary, time.Since(start).Milliseconds())
+			e.markStagePassed(r, t, summary, time.Since(start).Milliseconds(), event.PhaseValidate)
 			return nil
 		}
 	}
@@ -135,18 +138,23 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		// The honest message for the most valuable repro verdict: the bug is
 		// not there, so there is nothing to fix.
 		msg := fmt.Sprintf("the repro command did not reproduce (it exited 0); nothing to fix at %s", t.ID)
-		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: msg})
+		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg})
 		return fmt.Errorf("task %s: %s", t.ID, msg)
 	}
 	msg := fmt.Sprintf("%s did not pass after %d iteration(s): %v", cond, maxIter, lastErr)
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: msg})
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg})
 	return fmt.Errorf("task %s: %s", t.ID, msg)
 }
 
 // markStagePassed records a non-AI stage (command, approved human-gate) as
 // PASSED with the serialised git+state bookkeeping the AI path uses, then emits
 // the checkpoint + completion events. Concurrency-safe.
-func (e *Executor) markStagePassed(r *Run, t *types.Task, summary string, durationMs int64) {
+//
+// phase is a parameter because the two callers are two different natures of
+// work — a deterministic command and a gate that was the whole step — and the
+// cost-by-nature bar needs them in different buckets. Deriving it from the task
+// here would mean this function re-deciding something its callers already know.
+func (e *Executor) markStagePassed(r *Run, t *types.Task, summary string, durationMs int64, phase string) {
 	e.book.Lock()
 	if len(t.Items) > 0 {
 		// A discovery step carries state a status-only write would drop.
@@ -183,6 +191,6 @@ func (e *Executor) markStagePassed(r *Run, t *types.Task, summary string, durati
 	r.Completed[t.ID] = true
 	e.book.Unlock()
 
-	e.emit(event.Event{Type: event.Checkpoint, TaskID: t.ID})
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusPassed, DurationMs: durationMs})
+	e.emit(event.Event{Type: event.Checkpoint, TaskID: t.ID, Phase: phase})
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: phase, Status: types.StatusPassed, DurationMs: durationMs})
 }

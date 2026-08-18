@@ -58,10 +58,10 @@ func (e *Executor) finishPassedTask(
 			if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
 			}
-			e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed, Message: "passed review but never produced a TASK-REPORT/HANDOFF"})
+			e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseWorker, Status: types.StatusFailed, Message: "passed review but never produced a TASK-REPORT/HANDOFF"})
 			return false, fmt.Errorf("task %s passed review but never produced a TASK-REPORT with a HANDOFF after %d attempts", t.ID, st.maxRetries+1)
 		}
-		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Attempt: attempt + 1, Message: "missing TASK-REPORT/HANDOFF"})
+		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt + 1, Message: "missing TASK-REPORT/HANDOFF"})
 		return false, nil
 	}
 
@@ -71,10 +71,15 @@ func (e *Executor) finishPassedTask(
 
 	e.commitPassedTask(r, t, report, reviewResult, nextTask)
 
-	e.emit(event.Event{Type: event.Checkpoint, TaskID: t.ID})
+	e.emit(event.Event{Type: event.Checkpoint, TaskID: t.ID, Phase: event.PhaseWorker})
+	// `worker` on a number that is workerCost+reviewerCost: the honest split
+	// would move the reviewer's share onto the verdict line, and inspect/run
+	// show read this line as the task's total. Recorded in phase.go, not fixed
+	// here.
 	e.emit(event.Event{
 		Type:       event.TaskComplete,
 		TaskID:     t.ID,
+		Phase:      event.PhaseWorker,
 		Status:     types.StatusPassed,
 		CostUSD:    attemptCost,
 		TokensIn:   result.TokensIn + reviewResult.TokensIn,

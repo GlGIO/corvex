@@ -137,7 +137,10 @@ func (e *Executor) inferentialGate(ctx context.Context, r *Run, t *types.Task, g
 	if strings.TrimSpace(skill) == "" {
 		skill = e.cfg.SkillRouting["review"]
 	}
-	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Message: g.Describe()})
+	// An inferential gate is a judge, so its spend is `review`, not `gate` —
+	// the same nature as the reviewer built into a code step. What makes it a
+	// gate is where it sits in the recipe, not what it costs.
+	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview, Message: g.Describe()})
 
 	reviewer := NewReviewer(e.provider, model, e.workDir, skill)
 	res, err := reviewer.Review(ctx, t)
@@ -150,7 +153,7 @@ func (e *Executor) inferentialGate(ctx context.Context, r *Run, t *types.Task, g
 	}
 	passed := res.Verdict == VerdictPass
 	acc.add(gate.FromVerdict(gateLabel(g, "review"), string(res.Verdict), res.Category, res.Summary, passed))
-	e.emit(event.Event{Type: event.ReviewResult, TaskID: t.ID, Message: string(res.Verdict), CostUSD: res.CostUSD})
+	e.emit(event.Event{Type: event.ReviewResult, TaskID: t.ID, Phase: event.PhaseReview, Message: string(res.Verdict), CostUSD: res.CostUSD})
 	if !passed {
 		return e.gateRefused(t, g, fmt.Sprintf("independent review returned %s: %s", res.Verdict, res.Summary))
 	}
@@ -199,10 +202,15 @@ func (e *Executor) currentBranch(ctx context.Context) (string, error) {
 // existing cascade skips that step's dependents while independent branches of
 // the DAG keep running. Rejection is not a special case.
 func (e *Executor) gateRefused(t *types.Task, g types.Gate, reason string) error {
+	// `gate`, whatever the nature that refused. A screen counting how often
+	// gates say no must not have to know whether a shell check, a policy rule
+	// or an independent judge produced the evidence; the judge's own spend has
+	// already accounted for itself on its review lines.
 	e.emit(event.Event{
 		Type:    event.GateFailed,
 		TaskID:  t.ID,
 		Status:  types.StatusFailed,
+		Phase:   event.PhaseGate,
 		Message: g.Describe(),
 	})
 	charmbraceletlog.Warn("gate refused", "task", t.ID, "gate", g.Describe(), "reason", reason)

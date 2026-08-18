@@ -118,9 +118,13 @@ func (e *Executor) watchTask(
 
 			if warnAt > 0 && !warned && elapsed >= warnAt {
 				warned = true
+				// The watchdog only ever watches a worker attempt (its sole
+				// caller is runWorker), so its warnings and kills are worker
+				// lines: they describe how the worker's time was spent.
 				e.emit(event.Event{
 					Type:    event.TaskWarn,
 					TaskID:  taskID,
+					Phase:   event.PhaseWorker,
 					Message: fmt.Sprintf("task running > %s — consider pausing if stuck", warnAt),
 				})
 			}
@@ -129,7 +133,7 @@ func (e *Executor) watchTask(
 				msg := fmt.Sprintf("task %s aborted: wall-clock timeout after %s (last activity: %s)",
 					taskID, elapsed.Round(time.Second), describeLast(live))
 				timedOut.set(msg)
-				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Message: msg})
+				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Phase: event.PhaseWorker, Message: msg})
 				cancel()
 				return
 			}
@@ -138,7 +142,7 @@ func (e *Executor) watchTask(
 				msg := fmt.Sprintf("task %s aborted: no provider output for %s (last activity: %s)",
 					taskID, live.idleFor().Round(time.Second), describeLast(live))
 				timedOut.set(msg)
-				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Message: msg})
+				e.emit(event.Event{Type: event.TaskTimeout, TaskID: taskID, Phase: event.PhaseWorker, Message: msg})
 				cancel()
 				return
 			}

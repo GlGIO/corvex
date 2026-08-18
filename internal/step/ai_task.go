@@ -93,7 +93,10 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *ev
 // (false, nil) when the loop should retry with the updated diagnosis.
 func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTask, attempt int, acc *evidenceSet) (bool, error) {
 	if attempt > 0 {
-		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Attempt: attempt, Message: st.diagnosis})
+		// A retry line is the worker being sent back in, even though the
+		// diagnosis on it was written by the reviewer: what the next attempt
+		// costs is worker spend.
+		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt, Message: st.diagnosis})
 		if _, err := e.recovery.Check(); err != nil {
 			charmbraceletlog.Warn("recovery check on retry", "task", t.ID, "err", err)
 		}
@@ -107,7 +110,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 	if err := e.book.SetStatus(r.TasksPath, t.ID, types.StatusRunning); err != nil {
 		charmbraceletlog.Warn("updating task status to running", "task", t.ID, "err", err)
 	}
-	e.emit(event.Event{Type: event.TaskStart, TaskID: t.ID, Attempt: attempt, Message: t.Title})
+	e.emit(event.Event{Type: event.TaskStart, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt, Message: t.Title})
 
 	result, err := e.runWorker(ctx, r, t, st)
 	var workerCost float64
@@ -125,14 +128,14 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 			hookEnv.Status = "failed"
 			e.runHook(ctx, hooks.OnFailure, hookEnv, t.ID)
 			e.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
-			e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Status: types.StatusFailed})
+			e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseWorker, Status: types.StatusFailed})
 			return false, fmt.Errorf("task %s failed after %d attempts: %w", t.ID, attempt+1, err)
 		}
 		st.diagnosis = err.Error()
 		return false, nil
 	}
 
-	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID})
+	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview})
 	reviewResult, reviewErr := e.reviewer.Review(ctx, t)
 	var reviewerCost float64
 	if reviewErr == nil && reviewResult != nil {
@@ -153,9 +156,13 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return false, nil
 	}
 
+	// The verdict is `review`, but its COST is not here: the reviewer's spend
+	// is folded into the attempt total that task_complete carries, which is why
+	// that line's `worker` tag over-attributes (see phase.go).
 	e.emit(event.Event{
 		Type:    event.ReviewResult,
 		TaskID:  t.ID,
+		Phase:   event.PhaseReview,
 		Message: string(reviewResult.Verdict),
 	})
 	// The reviewer's verdict is evidence whether it passed or not: a gate
@@ -199,9 +206,12 @@ func (e *Executor) rejectAttempt(
 	hookEnv.Status = "failed"
 	e.runHook(ctx, hooks.OnFailure, hookEnv, t.ID)
 	e.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
+	// The step's terminal line belongs to the work that was attempted, not to
+	// the judge that rejected it: the judgement already has its own line.
 	e.emit(event.Event{
 		Type:    event.TaskComplete,
 		TaskID:  t.ID,
+		Phase:   event.PhaseWorker,
 		Status:  types.StatusFailed,
 		Message: st.diagnosis,
 	})

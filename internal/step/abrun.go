@@ -82,9 +82,11 @@ func (e *Executor) RunAB(ctx context.Context, t *types.Task, models []string) er
 
 	winner, reason := decideABWinner(results)
 
+	// Two workers raced; whichever won, what was bought was worker output.
 	e.emit(event.Event{
 		Type:    event.TaskComplete,
 		TaskID:  t.ID,
+		Phase:   event.PhaseWorker,
 		Status:  statusForWinner(winner),
 		Message: fmt.Sprintf("a/b: %s (%s)", reason, summariseModels(models, winner)),
 	})

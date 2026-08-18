@@ -39,14 +39,31 @@ const DefaultGatePoll = 2 * time.Second
 //     already written that this is the right answer for `parked`;
 //  4. on a decision, record it, return the record to `running`, and continue.
 func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types.Gate, acc *evidenceSet) error {
-	e.emit(event.Event{Type: event.HumanGate, TaskID: t.ID, Message: gateLabel(g, t.Title)})
+	e.emit(event.Event{Type: event.HumanGate, TaskID: t.ID, Phase: event.PhaseGate, Message: gateLabel(g, t.Title)})
 
 	// --approve-gates stays the CI path. Without it a pipeline with a human
 	// gate would block until it timed out, which is worse than a documented
 	// auto-approval.
 	if e.approveGates {
 		charmbraceletlog.Info("human gate auto-approved (--approve-gates)", "task", t.ID, "gate", g.Describe())
-		e.emit(event.Event{Type: event.GateDecided, TaskID: t.ID, Status: types.StatusPassed, Message: g.Describe()})
+		// A zero wait is not enough to say "no person was involved": somebody
+		// who hits approve in the same second the gate opened also rounds to
+		// zero, and duration_ms is `omitempty`, so on disk that zero is
+		// indistinguishable from a line that measured nothing. The ledger has
+		// no "decided by" field and adding one means adding a key to the user's
+		// git history, so the distinction rides where it is already free — in
+		// the message, and structurally in the fact that this path emits no
+		// gate_pending at all, because no gate file was ever written for
+		// anybody to answer. A screen looking for rubber stamps must exclude
+		// these rather than average them in at 0s: policy approval is a
+		// declared choice, not a fast human.
+		e.emit(event.Event{
+			Type:    event.GateDecided,
+			TaskID:  t.ID,
+			Status:  types.StatusPassed,
+			Phase:   event.PhaseGate,
+			Message: g.Describe() + " (auto-approved by policy, no human waited)",
+		})
 		return nil
 	}
 
@@ -62,7 +79,7 @@ func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types
 		return Fatal(fmt.Errorf("task %s: opening human gate: %w", t.ID, err))
 	}
 
-	e.emit(event.Event{Type: event.GatePending, TaskID: t.ID, Message: g.Describe()})
+	e.emit(event.Event{Type: event.GatePending, TaskID: t.ID, Phase: event.PhaseGate, Message: g.Describe()})
 	e.setRunStatus(run.StatusParked)
 	defer e.setRunStatus(run.StatusRunning)
 
@@ -75,7 +92,12 @@ func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types
 		Type:    event.GateDecided,
 		TaskID:  t.ID,
 		Status:  verdictStatus(decided.Verdict),
+		Phase:   event.PhaseGate,
 		Message: g.Describe(),
+		// The human's clock, not the run's — see humanWaitMs. The run spent
+		// this time asleep, which is exactly why it has to be recorded
+		// separately from the time it spent working.
+		DurationMs: humanWaitMs(pending.OpenedAt, decided, e.now()),
 	})
 	if decided.Verdict == gate.Approved {
 		return nil
