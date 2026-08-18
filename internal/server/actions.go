@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	charmlog "github.com/charmbracelet/log"
+
+	"github.com/giovannialves/corvex/internal/run"
 )
 
 // Action is one thing the UI did, recorded as the command that would have done
@@ -27,10 +31,16 @@ type Action struct {
 
 // ActionLog appends actions to `<repo>/.corvex/runs/ui-actions.jsonl`.
 //
-// It lives under `.corvex/runs/`, which F1 gitignores with `*`, for the same
-// reason the run record does: a command line carries repository paths, and this
-// file is not the user's history to publish. It is scratch a supervisor reads,
-// not an artefact a project keeps.
+// It lives under `.corvex/runs/` for the same reason the run record does: a
+// command line carries repository paths, and this file is not the user's history
+// to publish. It is scratch a supervisor reads, not an artefact a project keeps.
+//
+// The `*` gitignore that makes that true is ESTABLISHED here, not assumed. The
+// first version of this comment said "which F1 gitignores with `*`" — but F1
+// writes that file when a RUN RECORD is written, and a UI that has only ever
+// approved a gate has no record: the directory existed, the guard did not, and
+// the action log was committable. An audit found it. A safety property a
+// comment asserts and no code establishes is the most expensive kind of comment.
 type ActionLog struct {
 	dir string
 	now func() time.Time
@@ -63,6 +73,11 @@ func (l *ActionLog) Record(command string, err error) Action {
 	defer l.mu.Unlock()
 	if mkErr := os.MkdirAll(l.dir, 0o755); mkErr != nil {
 		return a
+	}
+	if igErr := run.EnsureScratchIgnored(l.dir); igErr != nil {
+		// Refusing to record the action would be worse than recording it in a
+		// directory that might be committed: the action already happened.
+		charmlog.Warn("could not write the scratch gitignore", "dir", l.dir, "err", igErr)
 	}
 	f, oerr := os.OpenFile(l.Path(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if oerr != nil {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,9 +55,11 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 	opt := ops.RunListOptions{Since: 7 * 24 * time.Hour}
 	if raw := r.URL.Query().Get("since"); raw != "" {
-		d, err := time.ParseDuration(raw)
+		// The same parser the CLI uses, so `?since=2d` and `--since 2d` cannot
+		// disagree about what a day is — or about whether days exist.
+		d, err := ops.ParseWindow(raw)
 		if err != nil {
-			fail(w, http.StatusBadRequest, fmt.Errorf("since: %w", err))
+			fail(w, http.StatusBadRequest, err)
 			return
 		}
 		opt.Since = d

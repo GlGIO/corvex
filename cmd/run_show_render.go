@@ -76,8 +76,19 @@ func renderRunHeader(r ops.RunReport) {
 // attributed something — every line written before F5 has no phase, and a
 // breakdown of a run that predates the column would be a bar of one bucket
 // called "unattributed" pretending to be information.
-func renderPhaseBar(phases []ops.PhaseCost, total float64) {
-	if len(phases) == 0 || total <= 0 {
+func renderPhaseBar(phases []ops.PhaseCost, headerTotal float64) {
+	if len(phases) == 0 {
+		return
+	}
+	// Scale to the breakdown's OWN total, not to the header's. The header counts
+	// each step once (last attempt wins); the breakdown counts every line, so on
+	// a retried project it is legitimately larger — and dividing by the smaller
+	// number drew bars past the edge of their own scale.
+	var total float64
+	for _, p := range phases {
+		total += p.CostUSD
+	}
+	if total <= 0 {
 		return
 	}
 	for _, p := range phases {
@@ -86,6 +97,12 @@ func renderPhaseBar(phases []ops.PhaseCost, total float64) {
 		}
 		share := int((p.CostUSD / total) * 20)
 		fmt.Printf("  %-13s $%-7.2f %s\n", p.Phase, p.CostUSD, strings.Repeat("█", max(share, 1)))
+	}
+	// Said out loud rather than reconciled: the difference is retried attempts,
+	// and hiding it would make the screen agree with itself by lying about one
+	// of the two questions.
+	if diff := total - headerTotal; diff > 0.005 {
+		fmt.Printf("  %-13s $%-7.2f (attempts superseded by a later one)\n", "", diff)
 	}
 }
 

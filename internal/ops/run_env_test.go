@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -173,5 +174,61 @@ func TestNewRunner_RefusesAnUnknownEnvironmentBeforeRegistering(t *testing.T) {
 	views, lerr := run.Resolver{Home: home}.ListRepo(repo)
 	if lerr == nil && len(views) != 0 {
 		t.Errorf("a refused invocation left %d record(s) behind", len(views))
+	}
+}
+
+// The ordering half of F6's guarantee: the environment comes down BEFORE the
+// terminal status is written, so a reader that sees `done` is not still holding
+// a container. The first version of this phase asserted the ordering in a
+// comment and in the roadmap, and tested only the count.
+func TestExecute_TearsDownBeforeWritingTheTerminalStatus(t *testing.T) {
+	var order []string
+	var mu sync.Mutex
+	note := func(what string) {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, what)
+	}
+
+	repo, home := t.TempDir(), t.TempDir()
+	reg := run.Registry{Repo: repo, Home: home, Machine: "test-machine"}
+	handle, err := reg.Start(run.StartOptions{Project: "alpha", Environment: string(EnvStack)})
+	if err != nil {
+		t.Fatalf("registering: %v", err)
+	}
+	r := &Runner{
+		Project: "alpha", RunID: handle.RunID(), Repo: repo,
+		Environment: EnvStack,
+		handle:      handle,
+		interval:    time.Hour,
+		env:         &runEnvironment{kind: EnvStack},
+		stackUp: func(context.Context) (func(), error) {
+			return func() { note("teardown") }, nil
+		},
+	}
+
+	// The record's mtime is not fine-grained enough to order two writes, so the
+	// probe is the record itself: a watcher that sees the terminal status.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			if rec, rerr := run.ReadRecord(repo, handle.RunID()); rerr == nil && rec.Status.IsTerminal() {
+				note("status:" + string(rec.Status))
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+
+	if err := r.Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) < 2 || order[0] != "teardown" {
+		t.Fatalf("order = %v, want teardown before the terminal status: a reader that sees `done` must not still be holding a container", order)
 	}
 }

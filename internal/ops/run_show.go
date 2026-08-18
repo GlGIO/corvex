@@ -158,6 +158,9 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 	rep.PerPhase, rep.HumanWaitMs = summarise(entries)
 	rep.Tasks = buildRunTaskRows(view, entries)
 	for _, t := range rep.Tasks {
+		// The header's total is the sum of the per-step rows, which are keyed by
+		// task with last-write-wins — the same rule `inspect` has always used,
+		// and the reason a retried task counts once.
 		rep.CostUSD += t.CostUSD
 		if t.Status == types.StatusPassed || t.Status == types.StatusSkipped {
 			rep.Completed++
@@ -178,6 +181,13 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 // summarise reduces the same slice of entries the screen already holds, rather
 // than re-reading the ledger: `run show <id>` filters to one execution, and a
 // second read would summarise the project instead of the run.
+//
+// The breakdown sums EVERY line, while the header sums the per-step rows with
+// last-write-wins. The two answer different questions — "what did this project
+// ever spend on this step" versus "what did the surviving attempt cost" — and on
+// a project that was retried the breakdown is legitimately larger. That is worth
+// a line on screen rather than a silent discrepancy, so renderPhaseBar scales
+// its bars to the breakdown's own total and says so when the two disagree.
 func summarise(entries []activity.Entry) ([]PhaseCost, int64) {
 	sum := activity.AggregateEntries(entries)
 	phases := make([]PhaseCost, 0, len(sum.PerPhase))

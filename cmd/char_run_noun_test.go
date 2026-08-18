@@ -410,3 +410,23 @@ func TestCharacterizeRunListFilters(t *testing.T) {
 		t.Errorf("--repo . dropped this repository:\n%s", local)
 	}
 }
+
+// F5's headline number on this screen: the human clock, kept apart from the
+// run's clock. Nothing observed the line that prints it, so it could be deleted
+// with the suite green — the gap an audit found. The fixture is a gate that was
+// decided after two hours of somebody not looking at it.
+func TestCharacterizeRunShowSeparatesTheHumanClock(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t).AddProject("alpha", fixtureSpecMD, fixtureTasksMD)
+	f.AddLedger("alpha",
+		activity.Entry{Type: "task_complete", TaskID: "S01", Phase: "worker", CostUSD: 0.25, DurationMs: 1500},
+		activity.Entry{Type: "gate_decided", TaskID: "S02", Phase: "gate", DurationMs: 2 * 60 * 60 * 1000, Message: "human: ship it"},
+	)
+
+	args := []string{"run", "show", "alpha"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "runnoun_show_human_clock", scrub(transcript(args, stdout, stderr, err)))
+	if !strings.Contains(stdout, "waiting on a person") {
+		t.Errorf("the human clock is not on the screen:\n%s", stdout)
+	}
+}

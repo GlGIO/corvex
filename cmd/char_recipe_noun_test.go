@@ -209,3 +209,34 @@ func touchLater(t *testing.T, path string) {
 func statFile(path string) (os.FileInfo, error) { return os.Stat(path) }
 
 func chtimes(path string, when time.Time) error { return os.Chtimes(path, when, when) }
+
+// F9's preflight, observed where it has to be true: on the run path, before the
+// cost preview. Every earlier test called ops directly, so deleting the two
+// lines that wire it into `run` left the whole suite green — an audit checked.
+func TestCharacterizeRunStartRefusesOnAMissingDependency(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t).GitInit()
+	writeRecipe(t, f, "needs", `name: needs
+requires:
+  - bin: corvex-absent-binary
+    why: it is how the release is cut
+stages:
+  - id: S01
+    title: Build
+    kind: tool
+    command: "true"
+`)
+
+	args := []string{"run", "start", "needs", "--dry-run"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "recipenoun_start_preflight", scrub(transcript(args, stdout, stderr, err)))
+	if err == nil {
+		t.Fatal("a recipe declaring a missing binary was allowed to run")
+	}
+	// Before the preview, not after: the preview is what tells the user what
+	// they are about to spend, and a refusal after it has already spent the
+	// user's attention on a number that will never happen.
+	if strings.Contains(stderr, "ceilings:") {
+		t.Errorf("the cost preview ran before the preflight:\n%s", stderr)
+	}
+}

@@ -80,8 +80,10 @@ func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types
 	}
 
 	e.emit(event.Event{Type: event.GatePending, TaskID: t.ID, Phase: event.PhaseGate, Message: g.Describe()})
-	e.setRunStatus(run.StatusParked)
-	defer e.setRunStatus(run.StatusRunning)
+	// Counted, not flagged: see Executor.enterGate. Two gates of the same wave
+	// used to un-park each other, and the loser vanished from the inbox.
+	leaveGate := e.enterGate()
+	defer leaveGate()
 
 	decided, err := e.awaitDecision(ctx, r, t, pending)
 	if err != nil {

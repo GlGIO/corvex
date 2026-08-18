@@ -13,6 +13,7 @@ import (
 
 	"github.com/giovannialves/corvex/internal/gate"
 	"github.com/giovannialves/corvex/internal/ops"
+	"github.com/giovannialves/corvex/internal/run"
 )
 
 // startRequest is what the "dispatch a run" screen (2c) sends.
@@ -77,13 +78,30 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
 		return
 	}
-	// Release rather than Wait: this process must not be the child's parent for
-	// the rest of its life. init reaps it, and nothing here turns into a zombie
-	// that a liveness probe would misread.
-	_ = cmd.Process.Release()
+	// The pid is read BEFORE anything releases the handle: os.Process.Release
+	// sets Pid to -1 as part of releasing, so the first version of this handler
+	// reported -1 on every dispatch — the one identifier the caller gets back,
+	// always the sentinel.
+	pid := cmd.Process.Pid
+
+	// Reap on a goroutine instead of releasing.
+	//
+	// `Release` was chosen first with the argument that "this process must not
+	// be the child's parent". That argument is wrong about what Release does:
+	// it frees the Go-side handle and changes nothing about the process tree.
+	// The child stays a child of this server, and with nobody calling Wait it
+	// becomes a <defunct> zombie the moment it exits — which is exactly the
+	// failure F1 documented, because a zombie still answers signal 0 and would
+	// be read as `alive` by the liveness probe.
+	//
+	// Setsid is what actually delivers "close the UI and the run keeps going":
+	// the child is in its own session, so no terminal signal reaches it. Waiting
+	// costs one parked goroutine per dispatch and buys a process table that
+	// tells the truth.
+	go func() { _ = cmd.Wait() }()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"pid":     cmd.Process.Pid,
+		"pid":     pid,
 		"log":     logPath,
 		"action":  action,
 		"command": command,
@@ -145,7 +163,20 @@ func (s *Server) runLog(target string) (string, *os.File, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("creating the run log directory: %w", err)
 	}
-	path := filepath.Join(dir, sanitize(target)+".log")
+	// A run's whole stdout lands here — the model's output, the commands it ran,
+	// whatever a failing tool printed. It is not the user's history to publish,
+	// and the guard is written HERE rather than assumed from F1: a UI that
+	// dispatches before any run has recorded itself would otherwise create the
+	// directory without it.
+	if err := run.EnsureScratchIgnored(filepath.Join(s.opts.WorkDir, ".corvex", "runs")); err != nil {
+		return "", nil, fmt.Errorf("guarding the run log directory: %w", err)
+	}
+	// One file per dispatch, not one per target: with a shared name the path the
+	// API hands back points at a file that already holds every earlier run of
+	// the same recipe, and nothing rotates it. The run id would be the right
+	// key and cannot be used — it is minted inside the child, after the spawn —
+	// so the dispatch time is the next best thing that is unique and readable.
+	path := filepath.Join(dir, fmt.Sprintf("%s-%s.log", sanitize(target), s.now().Format("20060102-150405")))
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", nil, fmt.Errorf("opening %s: %w", path, err)

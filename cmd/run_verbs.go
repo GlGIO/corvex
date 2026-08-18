@@ -23,14 +23,18 @@ func runRunList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	rows, err := ops.RunLister{}.ListRuns(ops.RunListOptions{Since: runListSince, Repo: repo})
+	since, err := ops.ParseWindow(runListSince)
+	if err != nil {
+		return err
+	}
+	rows, err := ops.RunLister{}.ListRuns(ops.RunListOptions{Since: since, Repo: repo})
 	if err != nil {
 		return err
 	}
 	if *runListJSON {
 		return printJSON(os.Stdout, rows)
 	}
-	renderRunList(rows, runListSince, repo != "")
+	renderRunList(rows, since, repo != "")
 	return nil
 }
 

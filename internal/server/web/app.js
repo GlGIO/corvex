@@ -235,7 +235,13 @@ async function renderGateDetail(root, id, step) {
   const view = await api.get(`/api/gates/${encodeURIComponent(id)}?step=${encodeURIComponent(step || '')}`);
   const g = view.gate;
   const required = (g.evidence || []).filter((e) => e.required_reading).map((e) => e.label);
-  const read = new Set();
+  // Seeded from what is already on disk, not from an empty set. The reading
+  // state F5 built is persistent precisely so closing the tab does not undo it —
+  // and the CLI (`corvex gate ack`) writes into the same place. A lock that
+  // ignored it would tell someone who already read the evidence that they had
+  // not, which is how a real check trains people to click past it.
+  const alreadyRead = new Set((g.reads || []).map((r) => r.label));
+  const read = new Set(alreadyRead);
 
   const approve = el('button', { class: 'primary', disabled: required.length ? '' : null }, 'Approve');
   const relock = () => { approve.toggleAttribute('disabled', read.size < required.length); };
@@ -262,9 +268,10 @@ async function renderGateDetail(root, id, step) {
         ? el('label', { class: 'read' },
             el('input', {
               type: 'checkbox',
+              checked: alreadyRead.has(e.label) ? '' : null,
               onchange: (ev) => { ev.target.checked ? read.add(e.label) : read.delete(e.label); relock(); },
             }),
-            el('span', { class: 'required', text: 'I read this' }))
+            el('span', { class: 'required', text: alreadyRead.has(e.label) ? 'read' : 'I read this' }))
         : null,
     );
     root.append(el('div', { class: 'evidence' }, head, body));
@@ -358,6 +365,14 @@ async function refresh() {
 }
 
 function boot() {
+  // The token did its job on the first request: the server answered with a
+  // cookie. Leaving it in the address bar is what makes it end up in a
+  // screenshot of the gate inbox or in a pasted link — and the comment in
+  // index.go claimed this already happened, which it did not until here.
+  if (location.search.includes('token=')) {
+    history.replaceState(null, '', location.pathname);
+  }
+
   for (const tab of document.querySelectorAll('.tab')) {
     tab.addEventListener('click', () => {
       state.view = tab.dataset.view;

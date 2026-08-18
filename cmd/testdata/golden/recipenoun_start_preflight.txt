@@ -1,0 +1,14 @@
+$ corvex run start needs --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+compiled needs from its recipe — 1 step(s)
+
+--- error ---
+this recipe declares dependencies that are not here:
+  ✗ bin corvex-absent-binary — not on PATH (it is how the release is cut)
+
+→ install or export them, or edit `requires:` in the recipe.
+  Nothing was spent: the check runs before the first token.

@@ -78,8 +78,12 @@ func TestKillRun_RefusesARunThatIsNotAlive(t *testing.T) {
 	if err == nil {
 		t.Fatal("KillRun on a finished run returned nil")
 	}
-	if !strings.Contains(err.Error(), "finished") {
-		t.Errorf("error does not name the liveness: %v", err)
+	// The assertion names the guard's own sentence, not a word that also appears
+	// in the stdlib's "file already finished". The first version asserted
+	// "finished" alone and stayed green with the guard deleted — a ratchet that
+	// held nothing, found by an audit that deleted the guard to check.
+	if !strings.Contains(err.Error(), "there is no live process to signal") {
+		t.Errorf("error does not come from the liveness guard: %v", err)
 	}
 }
 

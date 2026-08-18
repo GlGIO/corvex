@@ -2,8 +2,10 @@ package step
 
 import (
 	"context"
+	"github.com/giovannialves/corvex/internal/run"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -331,5 +333,44 @@ func TestHumanWaitMs_FallsBackWhenTheDecidersClockIsUnusable(t *testing.T) {
 	}
 	if got := humanWaitMs(observed, gate.Decision{}, opened); got != 0 {
 		t.Errorf("negative wait = %d, want 0", got)
+	}
+}
+
+// Two human gates of the same wave, and the property an audit found broken: the
+// run stays `parked` while ANY gate is waiting.
+//
+// The old code wrote `parked` on entry and `running` on exit, per gate. With
+// execution.parallel the first decision un-parked the run while the second gate
+// was still blocked — and a run that is not `parked` is not in `corvex gate
+// list` (ops.GateLister filters on exactly that status), so the second gate
+// disappeared from the inbox and from the UI while its run waited forever.
+func TestEnterGate_StaysParkedWhileAnyGateIsWaiting(t *testing.T) {
+	var mu sync.Mutex
+	var writes []run.Status
+	e := &Executor{setStatus: func(s run.Status) error {
+		mu.Lock()
+		defer mu.Unlock()
+		writes = append(writes, s)
+		return nil
+	}}
+
+	leaveFirst := e.enterGate()
+	leaveSecond := e.enterGate()
+	leaveFirst()
+
+	mu.Lock()
+	afterFirstLeaves := append([]run.Status(nil), writes...)
+	mu.Unlock()
+	for _, s := range afterFirstLeaves {
+		if s == run.StatusRunning {
+			t.Fatalf("the run went back to `running` with a gate still waiting: %v", afterFirstLeaves)
+		}
+	}
+
+	leaveSecond()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(writes) != 2 || writes[0] != run.StatusParked || writes[1] != run.StatusRunning {
+		t.Fatalf("status writes = %v, want exactly [parked running] — one write per transition, not per gate", writes)
 	}
 }

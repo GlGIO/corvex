@@ -14,8 +14,8 @@ import (
 // Cobra resolves a first argument that matches a verb as that verb, and hands
 // anything else to the parent's RunE — which is exactly D1: the verb wins, and
 // `corvex run start list` is the escape hatch for a project unlucky enough to be
-// named after one. `checkVerbShadow` prints that escape hatch instead of letting
-// the shadowing happen in silence.
+// named after one. noticeVerbShadow prints that escape hatch instead of letting
+// the shadowing happen in silence (see run_shadow.go).
 var (
 	runStartCmd = &cobra.Command{
 		Use:               "start <recipe|project>",
@@ -75,7 +75,7 @@ var (
 )
 
 var (
-	runListSince    time.Duration
+	runListSince    string
 	runListRepo     string
 	runListProjects bool
 	runShowStep     string
@@ -90,7 +90,7 @@ var (
 func init() {
 	addRunFlags(runStartCmd)
 
-	runListCmd.Flags().DurationVar(&runListSince, "since", 7*24*time.Hour, "only runs started within this window (0 for all)")
+	runListCmd.Flags().StringVar(&runListSince, "since", "7d", "only runs started within this window — 90m, 36h, 7d (0 for all)")
 	runListCmd.Flags().StringVar(&runListRepo, "repo", "", "only runs of one repository (`--repo .` for the current one)")
 	runListCmd.Flags().BoolVar(&runListProjects, "projects", false, "list projects of this repository instead of runs")
 	runListJSON = addJSONFlag(runListCmd)
@@ -109,6 +109,11 @@ func init() {
 
 	runKillCmd.Flags().BoolVar(&runKillNow, "now", false, "signal without first proving the pid still belongs to this run")
 	runKillCmd.Flags().BoolVarP(&runYes, "yes", "y", false, "skip the confirmation prompt")
+
+	// Every verb of the noun warns when it shadows a project of the same name.
+	for _, verb := range []*cobra.Command{runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd} {
+		verb.PreRun = noticeVerbShadow
+	}
 
 	runCmd.AddCommand(runStartCmd, runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd)
 }

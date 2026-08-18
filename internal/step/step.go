@@ -11,6 +11,7 @@ package step
 import (
 	"context"
 	"os/exec"
+	"sync"
 	"time"
 
 	charmbraceletlog "github.com/charmbracelet/log"
@@ -81,6 +82,40 @@ type Executor struct {
 	gatePoll           time.Duration
 	nowFn              func() time.Time
 	branchFn           func(context.Context) (string, error)
+
+	// parkedMu/parkedGates count how many human gates are holding this run.
+	//
+	// `parked` on the record is a scalar and gates are not: with
+	// execution.parallel, two steps of the same wave can be waiting at once,
+	// and the first one to be decided used to write `running` while the second
+	// was still blocked — which took the second gate out of `corvex gate list`
+	// and out of the UI inbox while its run sat there forever, waiting for a
+	// decision nobody could see was owed. Counting fixes it because the status
+	// answers "is anyone waiting", not "is this gate waiting".
+	parkedMu    sync.Mutex
+	parkedGates int
+}
+
+// enterGate reports the run as parked, and returns the function that leaves the
+// gate. Only the 0→1 and 1→0 transitions touch the record: a status write per
+// gate would be the same bug with more syscalls.
+func (e *Executor) enterGate() func() {
+	e.parkedMu.Lock()
+	e.parkedGates++
+	first := e.parkedGates == 1
+	e.parkedMu.Unlock()
+	if first {
+		e.setRunStatus(run.StatusParked)
+	}
+	return func() {
+		e.parkedMu.Lock()
+		e.parkedGates--
+		last := e.parkedGates == 0
+		e.parkedMu.Unlock()
+		if last {
+			e.setRunStatus(run.StatusRunning)
+		}
+	}
 }
 
 // NewExecutor creates an Executor from the given options.
