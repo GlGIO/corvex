@@ -1,0 +1,10 @@
+$ corvex recipe validate bad
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe "bad": stage "S01" depends on unknown stage "S99"

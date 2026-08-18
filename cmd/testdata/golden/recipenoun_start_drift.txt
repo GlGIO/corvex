@@ -1,0 +1,12 @@
+$ corvex run start demo --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe "demo" changed after <TMP> was compiled (1 step(s) already finished).
+  recompile and lose that progress:  corvex run start demo --recompile
+  or keep the compiled DAG as it is: corvex run start demo --no-recompile

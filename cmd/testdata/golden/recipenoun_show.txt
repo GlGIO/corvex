@@ -1,0 +1,22 @@
+$ corvex recipe show shipit
+
+--- stdout ---
+shipit  ·  2 stage(s), 1 gate(s)
+ship with a human gate
+<TMP>
+
+  S01        tool   Build
+             $ make build
+  S02        tool   Ship
+             after S01
+             $ make ship
+             gate human/before
+             evidence: Diff ★
+
+  → corvex run start shipit
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

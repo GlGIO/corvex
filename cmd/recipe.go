@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/charmbracelet/log"
@@ -15,22 +14,30 @@ var recipeCmd = &cobra.Command{
 	Long: "Read .corvex/recipes/<name>.yaml, compile its stages into " +
 		".corvex/tasks/<name>/tasks.md (a fixed DAG), and skip AI planning. " +
 		"Then run it with `corvex run <name>`.",
-	Args: cobra.ExactArgs(1),
-	RunE: runRecipe,
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeRecipeArg,
+	RunE:              runRecipe,
 }
 
 func init() {
 	rootCmd.AddCommand(recipeCmd)
 }
 
+// runRecipe is the bare form `corvex recipe <name>`, which compiles. F3
+// deprecated the FORM, not the command: the verb is `recipe compile`. The bytes
+// it prints are unchanged, and the notice only reaches a terminal — same rule as
+// every other deprecation in this phase, and the same reason (the golden network
+// records stdout and stderr together).
 func runRecipe(_ *cobra.Command, args []string) error {
-	name := args[0]
+	noticeDeprecatedForm("recipe <name>", "corvex recipe compile <name>")
+	return compileRecipeInto(args[0])
+}
 
-	_, workDir, err := ops.LoadConfig()
+// compileRecipeInto is the one implementation both forms call, so the deprecated
+// spelling cannot drift from the verb.
+func compileRecipeInto(name string) error {
+	workDir, err := recipeWorkDir()
 	if err != nil {
-		return err
-	}
-	if err := requireCorvexDir(workDir); err != nil {
 		return err
 	}
 
@@ -38,11 +45,7 @@ func runRecipe(_ *cobra.Command, args []string) error {
 	if err != nil {
 		// A missing recipe is the one failure worth answering with a hint about
 		// what to write and where.
-		var notFound *ops.RecipeNotFoundError
-		if errors.As(err, &notFound) {
-			return fmt.Errorf("recipe not found: %s (create a recipe YAML there, then re-run)", notFound.Path)
-		}
-		return err
+		return recipeError(err)
 	}
 
 	log.Info("compiled recipe", "name", name, "stages", count, "tasks", tasksPath)

@@ -1,0 +1,10 @@
+$ corvex recipe validate demo
+
+--- stdout ---
+Recipe "demo" is valid — compiles to 3 task(s). Nothing was written.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

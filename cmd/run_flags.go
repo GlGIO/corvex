@@ -26,6 +26,7 @@ var (
 	runSkipDoctor   bool
 	runApproveGates bool
 	runRecompile    bool
+	runNoRecompile  bool
 )
 
 func addRunFlags(cmd *cobra.Command) {
@@ -41,6 +42,8 @@ func addRunFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&runYes, "yes", "y", false, "skip the cost-preview confirmation prompt (for CI/scripts)")
 	cmd.Flags().BoolVar(&runSkipDoctor, "skip-doctor", false, "skip the pre-run config checks (corvex doctor)")
 	cmd.Flags().BoolVar(&runApproveGates, "approve-gates", false, "auto-approve recipe human-gate stages (otherwise a gate stops the run)")
+	cmd.Flags().BoolVar(&runRecompile, "recompile", false, "recompile the recipe over the compiled DAG, DISCARDING the status of every step")
+	cmd.Flags().BoolVar(&runNoRecompile, "no-recompile", false, "run the compiled DAG as it is, even when the recipe changed")
 }
 
 func init() {

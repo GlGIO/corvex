@@ -1,0 +1,17 @@
+$ corvex run start demo --dry-run --recompile
+
+--- stdout ---
+Dry run for project: demo
+
+Execution order:
+  → ⬜ S01 — Bootstrap [PENDING]
+  → ⬜ S02 — Build backend [PENDING]
+  → ⬜ S03 — Verify [PENDING]
+
+3 task(s) would be executed
+
+--- stderr ---
+compiled demo from its recipe — 3 step(s), discarding 1 finished step(s)
+
+--- error ---
+(nil)

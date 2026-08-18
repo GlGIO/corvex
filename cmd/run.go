@@ -36,6 +36,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// A name may be a compiled project or a recipe that has never been compiled
+	// (F3, D4). Resolving it here — before CheckProject — is what lets
+	// `corvex run start <recipe>` work without a separate compile step.
+	if err := resolveRecipeTarget(workDir, project); err != nil {
+		return err
+	}
+
 	// Fail early with a helpful message when the project does not exist.
 	if missing := ops.CheckProject(workDir, project); missing != nil {
 		return missingProjectError(missing)

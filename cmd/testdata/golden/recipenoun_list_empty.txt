@@ -1,0 +1,10 @@
+$ corvex recipe list
+
+--- stdout ---
+No recipes found. Write one at <TMP>
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

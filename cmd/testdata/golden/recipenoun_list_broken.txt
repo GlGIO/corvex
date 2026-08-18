@@ -1,0 +1,11 @@
+$ corvex recipe list
+
+--- stdout ---
+  broken                   broken — parsing recipe: yaml: line 1: did not find expected ',' or ']'
+  demo                     3 stage(s), 0 gate(s)  ·  characterization recipe
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
