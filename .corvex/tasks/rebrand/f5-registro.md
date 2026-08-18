@@ -30,11 +30,20 @@ humano; a UI (F7) mostra os mesmos números no detalhe do run.
 ## Regras que a fase manteve, e por quê
 
 - **Só o NOME da ferramenta vai para o ledger.** `StreamEvent` também carrega o resumo do
-  input e o path do arquivo; nenhum dos dois entra. `activity.jsonl` é commitado, input de
-  `Read` é path absoluto sob `/Users/<username>`, input de `Bash` é linha de comando, e
-  qualquer um dos dois pode carregar segredo exportado. Já custou correção pós-fecho na F1,
-  quando o campo `repo` publicou o home de quem rodou. O teste falha **por valor e por chave**:
-  contrabandear o path dentro de `message` também fica vermelho.
+  input e o path do arquivo; nenhum dos dois entra na linha `tool_use`. `activity.jsonl` é
+  commitado, input de `Read` é path absoluto sob `/Users/<username>`, input de `Bash` é linha
+  de comando, e qualquer um dos dois pode carregar segredo exportado.
+
+  > **CORREÇÃO PÓS-FECHO (auditoria).** A frase que estava aqui — *"o teste falha por valor e
+  > por chave: contrabandear o path dentro de `message` também fica vermelho"* — **era falsa**.
+  > O tripwire só cobria o caminho de stream. Dois outros produtores punham os mesmos bytes em
+  > `Entry.Message`: o watchdog (`streamSummary` embutia o resumo do input na mensagem de
+  > `task_timeout`) e o laço de tentativa (`err.Error()` cru, com o stderr do provider, na linha
+  > de `retry`). Um auditor levou `sk-ant-CANARY111` e `/Users/victim/...` até dentro de um
+  > commit que o próprio `auto_commit` criou. Fechado em `4017dcf`: o watchdog publica só o
+  > nome, o diagnóstico foi partido em dois campos (`diagnosis` para o prompt, `reason` para a
+  > linha), e o ledger passou a redigir path absoluto na entrada como segunda camada — que
+  > **não** procura segredo, e diz isso.
 - **Texto e chunk continuam descartados.** É regra, não detalhe: uma tentativa emite milhares.
 - **Teto de linhas de ferramenta por tarefa (200), não amostragem.** Amostrar enviesa em
   silêncio exatamente os dois consumidores que motivam o dado — um ledger amostrado não

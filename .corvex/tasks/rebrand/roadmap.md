@@ -847,6 +847,15 @@ medição, e é por isso que o knob existe. · contrato de contexto cross-repo (
 
 ---
 
+## Auditoria adversarial (pós-F9)
+
+Rodada depois de fechar F3–F7 e F9: **cinco lentes, 24 achados brutos, 22 confirmados** por
+céticos independentes, 2 refutados. Registro em `auditoria.md`. Quatro de severidade alta, e
+os quatro tinham a mesma forma — **uma afirmação escrita que o código não cumpria**: ledger
+publicando segredo por `Entry.Message`, custódia da F9 inerte na configuração default, gate
+sumindo da caixa quando dois abrem na mesma onda, e zumbi do spawn da UI. Todos consertados
+(`4017dcf`, `0223c28`), com o registro da F5 corrigido no ponto em que ele mentia.
+
 ## Riscos
 
 1. **Gate que vira carimbo.** É a cicatriz #4 na versão humana. A 2b/1d já força leitura,

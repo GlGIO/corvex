@@ -6,6 +6,15 @@
 
 ## O que existe agora
 
+> **CORREÇÃO PÓS-FECHO (auditoria).** Na primeira versão o mecanismo era **inerte na
+> configuração default**: `collectAuthEnv` é um filtro de mapa puro, e filtrar o conjunto
+> *encaminhado* não diz nada sobre o que o **filho** herda — todo sandbox e o exec direto
+> montam o ambiente a partir de `os.Environ()`. A credencial negada chegava ao worker assim
+> mesmo (e `sandbox.env_allowlist` também nunca restringiu nada nesses caminhos). Corrigido em
+> `4017dcf`: a negação viaja no `RunRequest`/`ExecuteRequest` e é aplicada **onde o processo
+> nasce**, vencendo inclusive uma entrada explícita em `Env`. O teste que faltava roda um
+> processo de verdade e lê o próprio ambiente de volta.
+
 ### 1. `security.runner_only_env` — a credencial fica com o runner
 Nomes **exatos** que nunca são repassados ao worker, mesmo quando um prefixo de
 `sandbox.env_allowlist` casaria com eles. A negação vence qualquer prefixo, e isso tem teste
