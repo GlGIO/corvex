@@ -101,6 +101,11 @@ type Orchestrator struct {
 	// emitMu serialises ledger appends so parallel tasks don't interleave
 	// bytes in activity.jsonl. The events channel send is already goroutine-safe.
 	emitMu sync.Mutex
+	// tools pairs a tool call's start with its end (for duration_ms) and rations
+	// how many tool lines one task may commit. Zero value ready; see
+	// tool_telemetry.go for why emit persists tool boundaries and nothing else
+	// of the stream.
+	tools toolTelemetry
 }
 
 // New creates an Orchestrator from the given options.
@@ -197,15 +202,19 @@ func (o *Orchestrator) emit(ev Event) {
 		ev.Timestamp = time.Now()
 	}
 
-	// Persist to the activity ledger (skip noisy stream chunks — those go to
-	// the TUI but explode disk usage and reading time without adding
-	// debugging signal). Errors are warned, never blocking the run.
-	if o.ledger != nil && ev.Type != EventTaskStream {
-		o.emitMu.Lock()
-		err := o.ledger.Append(ledgerEntryFromEvent(ev))
-		o.emitMu.Unlock()
-		if err != nil {
-			charmbraceletlog.Warn("activity ledger append", "type", ev.Type, "err", err)
+	// Persist to the activity ledger. Stream events are still mostly dropped —
+	// per-token text chunks go to the TUI but explode disk usage and reading
+	// time without adding debugging signal — except for the two that carry the
+	// answer to "which tool ran, and for how long": see toolLine. Errors are
+	// warned, never blocking the run.
+	if o.ledger != nil {
+		if entry, ok := o.ledgerEntry(ev); ok {
+			o.emitMu.Lock()
+			err := o.ledger.Append(entry)
+			o.emitMu.Unlock()
+			if err != nil {
+				charmbraceletlog.Warn("activity ledger append", "type", ev.Type, "err", err)
+			}
 		}
 	}
 
@@ -241,6 +250,14 @@ func ledgerEntryFromEvent(ev Event) activity.Entry {
 		TokensIn:   ev.TokensIn,
 		TokensOut:  ev.TokensOut,
 		Message:    ev.Message,
+		// Phase and Tool are carried, never derived. `phase` has been a column
+		// of the on-disk schema since before F1 with nobody ever writing to it,
+		// which is why every cost in every ledger on disk is unattributed; the
+		// producer of the event is the only one who knows which part of the
+		// machine it came from, so this hop is a copy and the mistake would be
+		// to guess here.
+		Phase: ev.Phase,
+		Tool:  ev.Tool,
 	}
 	if ev.Status != "" {
 		e.Status = string(ev.Status)
