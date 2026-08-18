@@ -65,7 +65,7 @@ depends_on: [S01]
 
 ---
 
-## S03 — Marcar o commit do dogfood ⬜ PENDING
+## S03 — Marcar o commit do dogfood ✅ PASSED
 
 ```yaml
 type: general

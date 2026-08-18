@@ -1,5 +1,5 @@
 project: ""
-updated_at: "2026-08-18T18:22:24Z"
+updated_at: "2026-08-18T18:23:52Z"
 spec_hash: ""
 intent: ""
 completed:
@@ -19,8 +19,14 @@ completed:
       files_created: []
       files_modified: []
       decisions: []
+    - id: S03
+      title: Marcar o commit do dogfood
+      summary: 'ran command: git tag -f dogfood-gate-drill'
+      files_created: []
+      files_modified: []
+      decisions: []
 current_state:
     total_tasks: 3
-    completed_tasks: 2
-next_task: S03
+    completed_tasks: 3
+next_task: ""
 next_task_context: ""
