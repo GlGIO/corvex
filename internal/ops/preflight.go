@@ -54,22 +54,13 @@ func checkRequirements(workDir string, reqs []recipe.Requirement) []RequirementC
 	for _, req := range reqs {
 		switch {
 		case strings.TrimSpace(req.Bin) != "":
-			c := RequirementCheck{Kind: "bin", Name: req.Bin, Why: req.Why, Detail: "not on PATH"}
+			c := RequirementCheck{Kind: "bin", Name: req.Bin, Why: req.Why}
 			target := resolveBin(workDir, req.Bin)
-			if strings.ContainsRune(req.Bin, '/') {
-				// A path that is not there is not a PATH problem, and saying so
-				// sends the reader to look at the wrong thing.
-				c.Detail = "not found: " + target
-			}
 			path, err := exec.LookPath(target)
-			switch {
-			case err == nil:
+			if err == nil {
 				c.OK, c.Detail = true, path
-			case errors.Is(err, fs.ErrPermission):
-				// LookPath reports the file it found but could not execute as an
-				// error like any other. Reporting that as "not on PATH" is a lie
-				// that costs an install attempt: the fix is chmod, not apt.
-				c.Detail = "found but not executable: " + target
+			} else {
+				c.Detail = whyNotRunnable(req.Bin, target, err)
 			}
 			out = append(out, c)
 		case strings.TrimSpace(req.Env) != "":
@@ -81,6 +72,96 @@ func checkRequirements(workDir string, reqs []recipe.Requirement) []RequirementC
 		}
 	}
 	return out
+}
+
+// whyNotRunnable turns a LookPath failure into the sentence that sends the
+// reader to the right fix: install it, or chmod it.
+//
+// # Why this cannot be read off the error
+//
+// exec.LookPath answers a bare name and a path with DIFFERENT vocabularies, and
+// the difference is exactly where the interesting case lives:
+//
+//   - A path ("scripts/deploy.sh", "/usr/local/bin/az") is stat'd directly, so a
+//     file without its execute bit comes back as fs.ErrPermission and a
+//     directory comes back as syscall.EISDIR — two distinguishable failures.
+//   - A bare name ("az") is searched along PATH, and every candidate that is not
+//     runnable is skipped in silence: the walk ends with one flat "executable
+//     file not found in $PATH" whether the machine has no `az` at all or has one
+//     sitting in /usr/local/bin with mode 0644. Measured on go1.26 and asserted
+//     by TestPreflight_BareBinFoundOnPATHButNotExecutable.
+//
+// So the honest answer for a bare name has to be recovered by walking PATH here.
+// The cost is one stat per PATH entry — a dozen, typically — and it is paid only
+// on the failure path, where the run is already being refused and nothing has
+// been spent. A "not on PATH" that sends somebody to reinstall a CLI they
+// already have is worth more than that.
+//
+// The `bin: az` in the README is precisely the bare-name case, which is why this
+// is not an edge: it is the shape most recipes declare.
+func whyNotRunnable(bin, target string, err error) string {
+	if strings.ContainsRune(bin, '/') {
+		// A path that is not there is not a PATH problem, and saying so sends
+		// the reader to look at the wrong thing.
+		if reason, ok := whyThisFileIsNotRunnable(target); ok {
+			return reason
+		}
+		if errors.Is(err, fs.ErrPermission) {
+			// The file is there and this process may not run it — the mode bits
+			// can look fine and eaccess still refuse (owner, ACL, noexec mount),
+			// so LookPath's own verdict wins over anything stat can see.
+			return "found but not executable: " + target
+		}
+		return "not found: " + target
+	}
+
+	// A bare name: LookPath already failed, so nothing on PATH is runnable under
+	// this name. Whatever we find here is therefore the reason it failed.
+	dirHit := ""
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			// LookPath reads an empty PATH entry as the current directory.
+			dir = "."
+		}
+		candidate := filepath.Join(dir, bin)
+		reason, ok := whyThisFileIsNotRunnable(candidate)
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(reason, "found but is a directory") {
+			// Keep looking: a directory shadowing the name is less actionable
+			// than a real file a chmod away, and LookPath walks past it too.
+			if dirHit == "" {
+				dirHit = reason
+			}
+			continue
+		}
+		return reason
+	}
+	if dirHit != "" {
+		return dirHit
+	}
+	return "not on PATH"
+}
+
+// whyThisFileIsNotRunnable reports why a file that EXISTS cannot be executed, or
+// false when there is nothing there to talk about.
+//
+// The directory case is its own sentence rather than folded into "not found":
+// `bin: scripts/` names something that IS on disk, and telling its author it is
+// missing sends them to create a file that is already there under that name.
+func whyThisFileIsNotRunnable(path string) (string, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	if fi.IsDir() {
+		return "found but is a directory: " + path, true
+	}
+	if fi.Mode().Perm()&0o111 == 0 {
+		return "found but not executable: " + path, true
+	}
+	return "", false
 }
 
 // resolveBin says which file the preflight has to stat for a declared `bin:`.

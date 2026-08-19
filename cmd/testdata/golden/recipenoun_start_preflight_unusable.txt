@@ -1,0 +1,15 @@
+$ corvex run start unusable --dry-run
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+compiled unusable from its recipe — 1 step(s)
+
+--- error ---
+this recipe declares dependencies that are not here:
+  ✗ bin corvex-chmod-me — found but not executable: <TMP> (it is how the release is cut)
+  ✗ bin scripts/deploy.sh — found but is a directory: <TMP> (it is how the deploy runs)
+
+→ install or export them, or edit `requires:` in the recipe.
+  Nothing was spent: the check runs before the first token.

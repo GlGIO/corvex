@@ -279,9 +279,12 @@ every such item has been acknowledged by label (`gate ack ... --ack "<label>"`):
 ```
 
 Evidence is collected only by a gate that parks the run on a person — `nature:
-human` or `nature: question`. Declaring it under a computational, inferential or
-policy gate would promise a lock nobody arms, so `recipe validate` refuses that
-recipe instead of letting it run.
+human` or `nature: question`. Under a computational, inferential or policy gate
+the block is inert: the `from:` never runs and no screen ever prints it. That is
+allowed (it costs nothing and breaks nothing), but `required_reading: true`
+there is not: it announces a lock nobody arms, so the recipe is **refused** —
+and because `corvex run` compiles the recipe through the same validator, the
+refusal stops the run too, not just `corvex recipe validate`.
 
 `from:` runs when the gate opens, with `$CORVEX_RUN_BASE` set to the commit the
 run started from. Anchor diffs to it rather than to `HEAD`: with `auto_commit`
@@ -319,8 +322,11 @@ requires:
 
 A `bin:` with a separator is checked as a file — the same file the stage's
 command will resolve, since stages run with the workDir as their working
-directory — and the check also distinguishes "not there" from "there but not
-executable", because one of those is fixed with `chmod`.
+directory. Either form distinguishes "not there" from "there and not runnable",
+because one of those is fixed with an install and the other with a `chmod`: a
+bare name sitting in a PATH directory without its execute bit reports `found but
+not executable: /usr/local/bin/az`, not `not on PATH`, and a `bin:` that turns
+out to be a directory says that instead of claiming the path is missing.
 
 `timeout:` on a stage overrides `execution.task_timeout_minutes` for that one
 step (`"45m"`, `"2h"`) — use it for a stage that's known to run long or short.

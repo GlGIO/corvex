@@ -1,0 +1,11 @@
+$ corvex recipe compile inert
+
+--- stdout ---
+Compiled recipe "inert" → 1 task(s) at <TMP>
+Next: corvex run inert
+
+--- stderr ---
+<TS> INFO compiled recipe name=inert stages=1 tasks=<TMP>
+
+--- error ---
+(nil)

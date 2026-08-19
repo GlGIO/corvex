@@ -108,11 +108,14 @@ func TestCharacterizeRecipeValidateRejectsABadRecipe(t *testing.T) {
 }
 
 // recipeLyingAboutTheLockYAML is the shape found in the wild: a stage whose only
-// gate is computational, declaring required-reading evidence under it. It
+// gate is computational, declaring REQUIRED-READING evidence under it. It
 // validated, it printed a star in `recipe show`, and it collected nothing —
 // declared evidence is only ever resolved by the two gates that park a run on a
 // person. The recipe announced an approval lock the runner never armed, which is
 // the failure `required_reading` exists to prevent.
+//
+// The `required_reading: true` line is the whole reason it is refused; see
+// recipeInertEvidenceYAML below for the same shape without it, which is legal.
 const recipeLyingAboutTheLockYAML = `name: liar
 description: promises a lock nobody arms
 stages:
@@ -141,6 +144,46 @@ func TestCharacterizeRecipeValidateRejectsEvidenceNobodyReads(t *testing.T) {
 	args := []string{"recipe", "validate", "liar"}
 	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
 	goldenAssert(t, "recipenoun_validate_evidence_no_reader", scrub(transcript(args, stdout, stderr, err)))
+}
+
+// recipeInertEvidenceYAML is the POSITIVE CONTROL beside the refusal above: the
+// same stage, the same computational gate, the same evidence block — minus
+// `required_reading: true`. Nothing here announces a lock, so nothing is refused.
+//
+// This is a user's file, not a rule: `corvex run` compiles the recipe through
+// the same Validate() that `recipe validate` calls, so the first version of this
+// check did not merely fail a lint — it stopped runs that had worked the day
+// before. `recipe compile` is characterised rather than `recipe validate`
+// because compiling IS the door the run goes through.
+const recipeInertEvidenceYAML = `name: inert
+description: declares evidence nobody collects, and promises nothing
+stages:
+  - id: S01
+    title: Merge
+    kind: tool
+    command: "git merge --ff-only"
+    gates:
+      - nature: computational
+        when: before
+        label: "mayComplete"
+        command: "./may-complete.sh"
+    evidence:
+      - kind: diff
+        label: "O que este run mudou"
+        from: "git diff --stat"
+`
+
+func TestCharacterizeRecipeCompileEvidenceWithoutRequiredReading(t *testing.T) {
+	f := newFixture(t)
+	writeRecipe(t, f, "inert", recipeInertEvidenceYAML)
+
+	args := []string{"recipe", "compile", "inert"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	if err != nil {
+		t.Fatalf("compiling a recipe with an inert `evidence:` block failed — this is somebody's existing "+
+			"file and `run` uses this same door: %v\n%s\n%s", err, stdout, stderr)
+	}
+	goldenAssert(t, "recipenoun_compile_inert_evidence", scrub(transcript(args, stdout, stderr, err)))
 }
 
 // recipeWithTwoDoorsYAML is the shape that used to validate and then kill a run
@@ -269,6 +312,62 @@ func touchLater(t *testing.T, path string) {
 	later := time.Now().Add(time.Minute)
 	if err := chtimes(path, later); err != nil {
 		t.Fatalf("touch %s: %v", path, err)
+	}
+}
+
+// TestCharacterizeRunStartNamesWhyABinaryIsUnusable is the other half of the
+// preflight's promise, observed on the run path: it does not merely say a
+// dependency is absent, it says WHICH problem it is, because "install it" and
+// "chmod it" are different afternoons.
+//
+// The bare name is the case that used to be told wrong, and it is the case the
+// README's own example declares (`bin: az`). exec.LookPath answers a bare name
+// by walking PATH and skipping everything it cannot run, then reports one flat
+// "not found in $PATH" — so a CLI sitting in a PATH directory with mode 0644
+// was announced as missing. The directory is the second: it is on disk under
+// exactly the declared name, and "not found" about a path the reader can see is
+// the kind of message that makes people distrust the tool.
+func TestCharacterizeRunStartNamesWhyABinaryIsUnusable(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t).GitInit()
+
+	// On PATH, and one chmod away from working.
+	binDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binDir, "corvex-chmod-me"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// In the repo, under exactly the declared name, and not a file.
+	if err := os.MkdirAll(filepath.Join(f.Dir, "scripts", "deploy.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeRecipe(t, f, "unusable", `name: unusable
+requires:
+  - bin: corvex-chmod-me
+    why: it is how the release is cut
+  - bin: scripts/deploy.sh
+    why: it is how the deploy runs
+stages:
+  - id: S01
+    title: Build
+    kind: tool
+    command: "true"
+`)
+
+	args := []string{"run", "start", "unusable", "--dry-run"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "recipenoun_start_preflight_unusable", scrub(transcript(args, stdout, stderr, err)))
+	if err == nil {
+		t.Fatal("a recipe whose declared binaries cannot be executed was allowed to run")
+	}
+	if strings.Contains(err.Error(), "not on PATH") {
+		t.Errorf("a binary that IS on PATH was reported as missing:\n%v", err)
+	}
+	for _, want := range []string{"found but not executable", "is a directory"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal never says %q:\n%v", want, err)
+		}
 	}
 }
 

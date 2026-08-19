@@ -466,3 +466,40 @@ func TestGateVerdict_ThreeBucketsAndNoMore(t *testing.T) {
 		t.Errorf("decided=%d but approved+rejected+expired=%d", g.Decided, g.Approved+g.Rejected+g.Expired)
 	}
 }
+
+// TestLoadGateAudit_LatencyPopulationIsTheSampleNotTheJudgedCount is the
+// arithmetic behind the `(measured on X of Y)` the CLI prints.
+//
+// auditRow leaves LatencyMs nil for a gate that was judged but whose file has no
+// `decided_at` — on purpose, because the alternative is inventing a latency from
+// now(), which measures when the audit ran and not how long a person took. That
+// gate is Judged and contributes nothing to the distribution, so a screen that
+// labelled the median `n = Judged` credited it with a sample it never saw.
+func TestLoadGateAudit_LatencyPopulationIsTheSampleNotTheJudgedCount(t *testing.T) {
+	f := newGateFixture(t, run.StatusParked, requiredEvidence())
+	base := f.now.Add(-4 * time.Hour)
+	read := []gate.ReadMark{{Label: "Migration", At: base.Add(time.Minute)}}
+
+	f.seedDecidedGate(t, "run_bbb1", "S31", requiredEvidence(), gate.Rejected, base, base.Add(5*time.Minute), read)
+	// Judged, and unmeasurable: no decided_at on the file.
+	f.seedDecidedGate(t, "run_bbb2", "S31", requiredEvidence(), gate.Rejected, base, time.Time{}, read)
+
+	audit, err := f.lister.LoadGateAudit(f.repo, GateAuditOptions{})
+	if err != nil {
+		t.Fatalf("LoadGateAudit: %v", err)
+	}
+	g := groupOf(t, audit, "gate-demo/S31")
+
+	if g.Judged != 2 {
+		t.Fatalf("judged is %d, want 2: both gates were answered by a person", g.Judged)
+	}
+	if g.LatencyMeasured != 1 {
+		t.Errorf("latency_measured is %d, want 1 — only one of the two gates carries a decided_at", g.LatencyMeasured)
+	}
+	if g.LatencyMsMedian == nil || *g.LatencyMsMedian != (5*time.Minute).Milliseconds() {
+		t.Errorf("the median is %v, want the one measurable latency (5m)", g.LatencyMsMedian)
+	}
+	if g.LatencyMeasured == g.Judged {
+		t.Error("the latency population equals the judged count, which is exactly the overstatement this guards")
+	}
+}

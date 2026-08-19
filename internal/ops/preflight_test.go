@@ -257,3 +257,83 @@ func writeScript(t *testing.T, dir string, mode os.FileMode) {
 		t.Fatal(err)
 	}
 }
+
+// TestPreflight_BareBinFoundOnPATHButNotExecutable is the case the message used
+// to get wrong, and it is the DOMINANT one: `bin: az` — a bare name — is the
+// shape the README's own example declares.
+//
+// exec.LookPath only distinguishes "missing" from "there but not executable" for
+// the PATH form of a `bin:`. For a bare name it walks PATH and skips every
+// candidate it cannot run, then returns one flat "executable file not found in
+// $PATH". So the ErrPermission branch this check used to rely on never fired
+// here, and a CLI sitting in a PATH directory with mode 0644 was reported as not
+// installed — which costs the reader an install of something they already have.
+//
+// The negative control is in the same test: a name that really is nowhere still
+// has to read "not on PATH", or the fix has traded one lie for the other.
+func TestPreflight_BareBinFoundOnPATHButNotExecutable(t *testing.T) {
+	binDir := t.TempDir()
+	present := filepath.Join(binDir, "corvex-preflight-chmodme")
+	if err := os.WriteFile(present, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	workDir := t.TempDir()
+	writeRecipeFile(t, workDir, "shipit", `name: shipit
+requires:
+  - bin: corvex-preflight-chmodme
+    why: it is how the release is cut
+  - bin: corvex-preflight-nowhere
+stages:
+  - id: S01
+    title: Build
+    kind: tool
+    command: "true"
+`)
+
+	checks, err := PreflightRequirements(workDir, "shipit")
+	if err != nil {
+		t.Fatalf("PreflightRequirements: %v", err)
+	}
+	if len(checks) != 2 {
+		t.Fatalf("got %d check(s), want 2: %+v", len(checks), checks)
+	}
+	if checks[0].OK {
+		t.Fatalf("a binary without its execute bit passed the preflight: %+v", checks[0])
+	}
+	if !strings.Contains(checks[0].Detail, "found but not executable") {
+		t.Errorf("Detail is %q, want it to say the file is there and needs a chmod, not an install", checks[0].Detail)
+	}
+	if !strings.Contains(checks[0].Detail, present) {
+		t.Errorf("Detail is %q, want it to name %s — the reader has to know WHICH copy to chmod", checks[0].Detail, present)
+	}
+	// Negative control: nothing anywhere is still "not on PATH".
+	if checks[1].Detail != "not on PATH" {
+		t.Errorf("a binary that is genuinely absent reads %q, want %q", checks[1].Detail, "not on PATH")
+	}
+}
+
+// A `bin:` that resolves to a DIRECTORY is on disk under exactly that name, and
+// LookPath rejects it with EISDIR — which is neither ErrPermission nor a missing
+// file, so it used to be reported as "not found: <abs>" about a path the reader
+// can see in their own repository.
+func TestPreflight_BinThatIsADirectorySaysSo(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "scripts", "deploy.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeRecipeFile(t, workDir, "shipit", relativeBinRecipe)
+	t.Chdir(t.TempDir())
+
+	checks, err := PreflightRequirements(workDir, "shipit")
+	if err != nil {
+		t.Fatalf("PreflightRequirements: %v", err)
+	}
+	if checks[0].OK {
+		t.Fatalf("a directory passed the preflight as a binary: %+v", checks[0])
+	}
+	if !strings.Contains(checks[0].Detail, "is a directory") {
+		t.Errorf("Detail is %q, want it to say the path is a directory instead of claiming it is not there", checks[0].Detail)
+	}
+}

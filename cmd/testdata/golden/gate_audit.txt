@@ -6,8 +6,8 @@ $ corvex gate audit
   gate-demo/S01
       decided 3   approved 1 · rejected 1 · expired 1   open 0
       rejection rate 50%  (2 judged; 1 expired, outside the rate)
-      latency    min 4s · median 4s · max 9m  (n=2)
-      latency    p95 withheld — 2 judged, 20 needed for a percentile to mean anything
+      latency    min 4s · median 4s · max 9m  (measured on 2 of 2)
+      latency    p95 withheld — 2 measured, 20 needed for a percentile to mean anything
       read gap   median 0ms  (measured on 2 of 2; 1 decided in the same breath)
 
   gate-demo/S02

@@ -268,22 +268,37 @@ stages:
 	}
 }
 
-// evidenceStage builds a one-stage recipe whose gate block is the variable: the
-// evidence is always the same required-reading declaration, so what the cases
-// below measure is only whether anything on the stage would ever read it.
-func evidenceStage(gates string) string {
-	return "name: x\nstages:\n  - id: S01\n    kind: tool\n    command: \"true\"\n" + gates +
-		"    evidence:\n      - kind: diff\n        label: \"Diff\"\n        required_reading: true\n        from: \"git diff --stat\"\n"
+// evidenceStage builds a one-stage recipe whose gate block and required_reading
+// mark are the two variables: everything else about the declaration is fixed, so
+// what the cases below measure is only whether the lock is announced and whether
+// anything on the stage would ever ask a person to acknowledge it.
+func evidenceStage(gates string, requiredReading bool) string {
+	y := "name: x\nstages:\n  - id: S01\n    kind: tool\n    command: \"true\"\n" + gates +
+		"    evidence:\n      - kind: diff\n        label: \"Diff\"\n        from: \"git diff --stat\"\n"
+	if requiredReading {
+		y += "        required_reading: true\n"
+	}
+	return y
 }
 
-// TestValidate_EvidenceNeedsAReader is the fail-closed half of the
+// nonReaderGates are the gate blocks that never park the run on a person, and so
+// never collect evidence: everything except human and question, plus the stage
+// with no gate at all.
+var nonReaderGates = map[string]string{
+	"computational only": "    gates:\n      - nature: computational\n        command: \"./check.sh\"\n",
+	"inferential only":   "    gates:\n      - nature: inferential\n        reviewer: dba\n",
+	"policy only":        "    gates:\n      - nature: policy\n        branch_not: [main]\n",
+	"no gate at all":     "",
+}
+
+// TestValidate_RequiredReadingNeedsAReader is the fail-closed half of the
 // required_reading contract. The lock is armed by the gate file that humanGate
 // and questionGate write; every other nature runs, records its own verdict, and
 // never calls resolveDeclared. A recipe that declares the lock under one of
 // those natures announces a barrier the runner does not build — the exact
 // failure mode `required_reading` exists to prevent — so validation refuses it
 // rather than letting `recipe show` print a star nobody has to earn.
-func TestValidate_EvidenceNeedsAReader(t *testing.T) {
+func TestValidate_RequiredReadingNeedsAReader(t *testing.T) {
 	readers := map[string]string{
 		"human gate":    "    gates:\n      - nature: human\n        label: \"Aprovar\"\n",
 		"question gate": "    gates:\n      - nature: question\n        prompt: \"Qual ambiente?\"\n",
@@ -292,34 +307,59 @@ func TestValidate_EvidenceNeedsAReader(t *testing.T) {
 	}
 	for name, gates := range readers {
 		t.Run("valid/"+name, func(t *testing.T) {
-			if err := mustParse(t, evidenceStage(gates)).Validate(); err != nil {
+			if err := mustParse(t, evidenceStage(gates, true)).Validate(); err != nil {
 				t.Fatalf("Validate() = %v, want nil: this stage does park on a person", err)
 			}
 		})
 	}
 
-	nonReaders := map[string]string{
-		"computational only": "    gates:\n      - nature: computational\n        command: \"./check.sh\"\n",
-		"inferential only":   "    gates:\n      - nature: inferential\n        reviewer: dba\n",
-		"policy only":        "    gates:\n      - nature: policy\n        branch_not: [main]\n",
-		"no gate at all":     "",
-	}
-	for name, gates := range nonReaders {
+	for name, gates := range nonReaderGates {
 		t.Run("refused/"+name, func(t *testing.T) {
-			err := mustParse(t, evidenceStage(gates)).Validate()
+			err := mustParse(t, evidenceStage(gates, true)).Validate()
 			if err == nil {
-				t.Fatalf("Validate() = nil, want a refusal: nothing on this stage collects the evidence")
+				t.Fatalf("Validate() = nil, want a refusal: nobody here can acknowledge the required reading")
 			}
 			for _, want := range []string{
-				`recipe "x": stage "S01" declares ` + "`evidence:`" + ` but has no gate that reads it`,
-				"`nature: human` or `nature: question`",
+				`recipe "x": stage "S01" marks evidence "Diff" as ` + "`required_reading: true`",
+				"`nature: human` and `nature: question`",
 				"move the evidence to the stage whose gate a person answers",
-				`Worse here: "Diff" is marked ` + "`required_reading: true`",
-				"promises a barrier that the runner does not build",
+				"announces a barrier the runner",
+				"drop `required_reading: true`",
 			} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("the refusal does not say %q; it says: %v", want, err)
 				}
+			}
+		})
+	}
+}
+
+// TestCompile_EvidenceWithoutRequiredReadingIsNotARefusal is the POSITIVE
+// CONTROL of the pair, and it guards a user's file rather than a rule.
+//
+// The first version of this rule refused the whole `evidence:` block on a stage
+// with no person-gate. Compile() calls Validate() and `corvex run` compiles
+// through that same door, so the refusal did not merely fail `recipe validate`:
+// a recipe already written on somebody's disk stopped RUNNING, on a machine
+// whose owner had changed nothing. Evidence without `required_reading` announces
+// no lock — it is documentation that is not collected today, which is dull, not
+// dangerous — so it compiles, and this test fails if the rule ever widens back.
+func TestCompile_EvidenceWithoutRequiredReadingIsNotARefusal(t *testing.T) {
+	for name, gates := range nonReaderGates {
+		t.Run(name, func(t *testing.T) {
+			r := mustParse(t, evidenceStage(gates, false))
+			if err := r.Validate(); err != nil {
+				t.Fatalf("Validate() = %v, want nil: no lock is announced here", err)
+			}
+			tasks, _, err := r.Compile()
+			if err != nil {
+				t.Fatalf("Compile() = %v, want nil: `corvex run` compiles through this same door, "+
+					"so a refusal here stops a run that works today", err)
+			}
+			// The evidence survives compilation verbatim; what the runner does
+			// with it is measured in internal/step.
+			if len(tasks) != 1 || len(tasks[0].Evidence) != 1 || tasks[0].Evidence[0].Label != "Diff" {
+				t.Fatalf("the declared evidence did not reach the task: %+v", tasks)
 			}
 		})
 	}
@@ -347,7 +387,7 @@ func TestValidate_FanoutTemplateEvidenceNeedsAReader(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Validate() = nil, want a refusal for the template step")
 	}
-	if !strings.Contains(err.Error(), `template step "check" declares `+"`evidence:`") {
+	if !strings.Contains(err.Error(), `template step "check" marks evidence "Diff" as `+"`required_reading: true`") {
 		t.Errorf("the refusal does not name the template step: %v", err)
 	}
 }

@@ -52,7 +52,7 @@ func (r *Recipe) validateStage(s Stage) error {
 			return err
 		}
 	}
-	if err := validateEvidenceHasAReader(fmt.Sprintf("recipe %q: stage %q", r.Name, s.ID), s.Kind, s.Gates, s.Evidence); err != nil {
+	if err := validateRequiredReadingHasAReader(fmt.Sprintf("recipe %q: stage %q", r.Name, s.ID), s.Kind, s.Gates, s.Evidence); err != nil {
 		return err
 	}
 	return r.validateFanout(s)
@@ -182,40 +182,56 @@ func (r *Recipe) validateEvidence(s Stage, i int, e types.Evidence) error {
 	return nil
 }
 
-// validateEvidenceHasAReader refuses `evidence:` declared where nothing will
-// ever read it.
+// validateRequiredReadingHasAReader refuses `required_reading: true` declared
+// where no gate will ever ask a person to acknowledge it.
 //
-// Measured, not assumed. The only code that turns a declared item into evidence
+// # What the rule refuses, and what it deliberately lets through
+//
+// It refuses ONLY the item marked `required_reading: true`. Evidence declared
+// without that mark on a stage whose gates never stop for a person passes, and
+// the earlier, wider version of this rule — which refused the whole `evidence:`
+// block — was wrong to refuse it. Two reasons, in order of weight:
+//
+//  1. The defect is a LIE ABOUT A LOCK, and only required_reading tells it.
+//     `required_reading: true` announces the approval lock `gate approve`
+//     enforces by label: the reader concludes a barrier exists. Evidence without
+//     it announces nothing enforceable; at worst it is documentation that is not
+//     collected today, which is dull, not dangerous, and a validator that
+//     refuses dull things spends the author's trust on nothing.
+//  2. The refusal reaches `run`, not just `recipe validate` — see below. A rule
+//     that broke every existing file with an inert `evidence:` block would stop
+//     runs that work today, on a machine whose owner changed nothing.
+//
+// # What is true of the evidence this rule lets through
+//
+// It is not collected. The only code that turns a declared item into evidence
 // with content is Executor.resolveDeclared, and its only callers are humanGate
 // and questionGate (internal/step/human_gate.go): both park the run and write a
-// gate file. The accumulated set has exactly one consumer, openGate, which fills
-// that file. So on a stage whose gates never stop for a person, a declared item
-// is inert — the `from:` command never runs, the `content:` never surfaces, and
-// no screen ever prints either.
+// gate file, whose single consumer is openGate. So on a stage whose gates never
+// stop for a person, the `from:` command never runs, the `content:` never
+// surfaces, and no screen prints either — `recipe show` lists the item because
+// it reads the YAML (internal/ops/recipe_catalog.go), not because anything will
+// show it to somebody. That is recorded here, in the README, and measured by
+// TestEvidenceWithoutRequiredReadingRunsAndIsNotCollected in internal/step: the
+// recipe is accepted, and the claim about what happens to it is a test rather
+// than a promise.
 //
-// # Why the whole block, and not only `required_reading: true`
+// # Why the refusal lives in Validate(), which `run` also crosses
 //
-// required_reading is the graver half: it announces the approval lock that
-// `gate approve` enforces by label, and a lock that is never armed is the most
-// expensive kind of false comfort — the reader believes a barrier exists where
-// there is none. But plain evidence on such a stage lies in the same family,
-// because `recipe show` lists every declared item straight from the YAML
-// (internal/ops/recipe_catalog.go), so a person reading the recipe concludes
-// this material will be put in front of somebody. It will not. The alternative
-// reading — "declare it anyway, it shows up in the run report" — was checked
-// against the code and there is no such report: nothing outside openGate reads
-// the evidence set. If one is ever built, this rule loosens in the same commit
-// that gives the evidence its reader, not before.
+// Recipe.Compile calls Validate (internal/recipe/recipe.go), and `corvex run`
+// compiles through the same door, so this refusal stops a run and not merely a
+// `recipe validate`. That is the intended reach and it is the reason the rule
+// had to be narrowed rather than kept: the cost of a false refusal here is a
+// user's working recipe that stops executing, not a lint they can ignore.
 //
-// The strongest counter-argument found in the wild is a recipe that keeps the
-// block on purpose, without required_reading, as a placeholder: "the day a human
-// gate lands on this stage the evidence starts working, and nobody has to
-// rediscover what to show." It loses to the rule validateGate already applies a
-// few lines up: `expires_after` on a gate that does not wait is refused because
-// it is a value no reader ever consults. A placeholder `expires_after` would be
-// exactly as well-intentioned and is already illegal here. Intent belongs in a
-// YAML comment, which nobody mistakes for behaviour; a declared block is
-// mistakable, and `recipe show` prints it.
+// The alternative — refuse only on the explicit `recipe validate` path
+// (ops.ValidateRecipe) and let Compile through — was considered and rejected.
+// It inverts the severity: the case that survives narrowing is exactly the one
+// where a run must NOT proceed, because a recipe that says "a person must read
+// this before approval" and has nobody to approve gives the whole pipeline the
+// appearance of a reviewed change. Fail-open there would mean the lock is
+// missing precisely when it is announced. A validator-only warning is the right
+// shape for the inert case, and the inert case is now simply legal.
 //
 // # Why not the other fix — teach the computational gate to collect evidence
 //
@@ -225,21 +241,17 @@ func (r *Recipe) validateEvidence(s Stage, i int, e types.Evidence) error {
 // collected" to "collected and never read", which is the same false comfort at a
 // higher bill. The lock means "a person acknowledged this item by label", and
 // only a gate that parks a run on a person can produce that acknowledgement.
-func validateEvidenceHasAReader(where, kind string, gates []types.Gate, evidence []types.Evidence) error {
-	if len(evidence) == 0 || readsEvidence(kind, gates) {
+func validateRequiredReadingHasAReader(where, kind string, gates []types.Gate, evidence []types.Evidence) error {
+	label, ok := firstRequiredReading(evidence)
+	if !ok || readsEvidence(kind, gates) {
 		return nil
 	}
-	msg := fmt.Sprintf("%s declares `evidence:` but has no gate that reads it: declared evidence is collected "+
-		"only when a gate parks the run on a person (`nature: human` or `nature: question`), so here the `from:` "+
-		"commands never run and nobody is ever shown anything. "+
-		"Add the human or question gate this evidence is for, move the evidence to the stage whose gate a person "+
-		"answers, or drop the block", where)
-	if label, ok := firstRequiredReading(evidence); ok {
-		msg += fmt.Sprintf(". Worse here: %q is marked `required_reading: true`, which announces the approval lock "+
-			"of `gate approve` — a lock armed by the gate file this stage never opens, so the recipe promises a "+
-			"barrier that the runner does not build", label)
-	}
-	return fmt.Errorf("%s", msg)
+	return fmt.Errorf("%s marks evidence %q as `required_reading: true`, but no gate here parks the run on a "+
+		"person: that lock is armed by the gate file only `nature: human` and `nature: question` open, and "+
+		"`gate approve` is the only command that enforces it — so this recipe announces a barrier the runner "+
+		"never builds. Add the human or question gate this reading is for, move the evidence to the stage whose "+
+		"gate a person answers, or drop `required_reading: true` (the item itself may stay: without the mark it "+
+		"promises nothing, though nothing collects it here either)", where, label)
 }
 
 // validateOnePersonGate refuses a stage that would park the run on a person
@@ -406,7 +418,7 @@ func (r *Recipe) validateFanout(s Stage) error {
 		// A template step becomes a real task (internal/orchestrator/fanout.go
 		// copies Gates and Evidence verbatim onto every item), so the same lie
 		// is available here and is refused the same way.
-		if err := validateEvidenceHasAReader(fmt.Sprintf("%s: template step %q", where, ts.ID), ts.Kind, ts.Gates, ts.Evidence); err != nil {
+		if err := validateRequiredReadingHasAReader(fmt.Sprintf("%s: template step %q", where, ts.ID), ts.Kind, ts.Gates, ts.Evidence); err != nil {
 			return err
 		}
 		// Same for the gate file: a template step becomes a real task with a

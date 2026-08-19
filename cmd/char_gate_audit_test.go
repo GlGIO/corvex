@@ -134,11 +134,72 @@ func TestGateAuditNeverPrintsEvidence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
+		// POSITIVE CONTROL, and it is not optional: without it this guard passes
+		// for an audit that prints nothing at all. A mutant that dropped every
+		// row would satisfy the canaries below and leave the whole screen green,
+		// which is the shape of a leak test that has stopped testing.
+		for _, present := range []string{"run_9999", "Aprovacao de STG"} {
+			if !contains(stdout, present) {
+				t.Fatalf("%v did not print %q — the seeded gate never reached the output, so the canaries "+
+					"below prove nothing", args, present)
+			}
+		}
 		for _, canary := range []string{"CANARY111", "sk-ant", "/Users/someone", "Testes"} {
 			if contains(stdout+stderr, canary) {
 				t.Errorf("%v printed %q — the audit carries labels and counts, never evidence", args, canary)
 			}
 		}
+	}
+}
+
+// TestGateAuditLatencyNamesItsOwnSample: the population printed beside the
+// latency distribution is the number of gates that HAD a latency, not the number
+// of judged gates.
+//
+// auditRow leaves LatencyMs nil for a gate judged without a `decided_at` stamp,
+// rather than inventing one from now(). Such a gate is judged and unmeasurable at
+// the same time, so `(n=judged)` credited the median with a sample that never
+// entered it — a lie of composition of exactly the kind this screen exists to
+// report about other people's gates.
+func TestGateAuditLatencyNamesItsOwnSample(t *testing.T) {
+	f := newFixture(t)
+	t.Setenv("CORVEX_HOME", t.TempDir())
+	opened := time.Now().UTC().Add(-time.Hour)
+
+	seed := func(runID, stepID string, decidedAt time.Time) {
+		if err := gate.Open(gate.Pending{
+			RunID: runID, StepID: stepID, Repo: f.Dir, Project: "alpha", Recipe: "gate-demo",
+			Nature: types.GateHuman, Label: "Aprovacao de STG", OpenedAt: opened,
+			Decision: &gate.Decision{Verdict: gate.Rejected, DecidedAt: decidedAt, Reason: "nao"},
+		}); err != nil {
+			t.Fatalf("seeding gate %s: %v", runID, err)
+		}
+	}
+	seed("run_8881", "S01", opened.Add(4*time.Minute))
+	// Judged by a person, with no stamp saying when: measurable population 1,
+	// judged population 2.
+	seed("run_8882", "S01", time.Time{})
+	// A whole key with nothing measurable in it. There is no honest median to
+	// print here, so the line says so instead of showing three dashes under an
+	// `n` that suggests a distribution exists.
+	seed("run_8883", "S02", time.Time{})
+
+	stdout, stderr, err := runCLIIn(t, f.Dir, "gate", "audit")
+	if err != nil {
+		t.Fatalf("gate audit: %v\n%s", err, stderr)
+	}
+	if !contains(stdout, "measured on 1 of 2") {
+		t.Errorf("the latency line does not name its own sample:\n%s", stdout)
+	}
+	if contains(stdout, "(n=2)") {
+		t.Errorf("the latency line still counts a gate it never measured:\n%s", stdout)
+	}
+	if !contains(stdout, "unmeasurable — 1 judged") {
+		t.Errorf("a key whose only judgement has no decided_at still printed a distribution:\n%s", stdout)
+	}
+	// The read-gap line has always said it this way; the two must not drift apart.
+	if !contains(stdout, "read gap") {
+		t.Errorf("the read gap line vanished:\n%s", stdout)
 	}
 }
 

@@ -17,6 +17,7 @@ $ corvex gate audit --json
       "latency_ms_min": 4000,
       "latency_ms_median": 4000,
       "latency_ms_max": 540000,
+      "latency_measured": 2,
       "read_gap_ms_median": 0,
       "read_gap_measured": 2,
       "read_gap_zero": 1
@@ -31,6 +32,7 @@ $ corvex gate audit --json
       "rejected": 0,
       "expired": 0,
       "judged": 0,
+      "latency_measured": 0,
       "read_gap_measured": 0,
       "read_gap_zero": 0
     }

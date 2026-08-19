@@ -164,6 +164,15 @@ type GateAuditGroup struct {
 	LatencyMsMax    *int64 `json:"latency_ms_max,omitempty"`
 	LatencyMsP95    *int64 `json:"latency_ms_p95,omitempty"`
 
+	// LatencyMeasured is how many of the Judged gates actually contributed to
+	// the distribution above, and it is NOT always Judged: auditRow leaves
+	// LatencyMs nil for a decided gate whose file carries no `decided_at` stamp,
+	// on purpose (a latency invented from now() would be a measurement of when
+	// the audit ran). Reporting the distribution under `n = Judged` therefore
+	// claimed a bigger sample than the one that produced it — the same lie of
+	// composition ReadGapMeasured exists to prevent one line below.
+	LatencyMeasured int `json:"latency_measured"`
+
 	ReadGapMsMedian *int64 `json:"read_gap_ms_median,omitempty"`
 	// ReadGapMeasured is how many judged gates had a measurable gap at all, so
 	// a median is never read as covering the whole group.
@@ -402,6 +411,7 @@ func groupAuditRows(rows []GateAuditRow) []GateAuditGroup {
 		grp.Judged++
 		if r.LatencyMs != nil {
 			latencies[r.Key] = append(latencies[r.Key], *r.LatencyMs)
+			grp.LatencyMeasured++
 		}
 		if r.ReadGapMs != nil {
 			gaps[r.Key] = append(gaps[r.Key], *r.ReadGapMs)

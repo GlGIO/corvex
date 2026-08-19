@@ -160,8 +160,11 @@ func humanWait(d time.Duration) string {
 // (--suspect-under) and the accusation is printed prose, next to the counts that
 // support it.
 //
-// Every number is followed by its population. With one decided gate on disk in
-// the whole repository, a median with no `n` beside it is a lie of composition.
+// Every number is followed by the population THAT NUMBER came from. With one
+// decided gate on disk in the whole repository, a median with no `n` beside it
+// is a lie of composition — and an `n` that counts gates the median never saw is
+// the same lie wearing a number, which is why the latency line reports its own
+// sample and not the judged count.
 func renderGateAudit(audit ops.GateAudit, suspectUnder time.Duration) {
 	if len(audit.Rows) == 0 {
 		fmt.Println(emptyGateAudit(audit))
@@ -200,13 +203,24 @@ func renderGateAudit(audit ops.GateAudit, suspectUnder time.Duration) {
 		// answered strictly.
 		fmt.Printf("      rejection rate %.0f%%  (%d judged; %d expired, outside the rate)\n",
 			*g.RejectionRate*100, g.Judged, g.Expired)
-		fmt.Printf("      latency    min %s · median %s · max %s  (n=%d)\n",
-			optMs(g.LatencyMsMin), optMs(g.LatencyMsMedian), optMs(g.LatencyMsMax), g.Judged)
-		if g.LatencyMsP95 != nil {
-			fmt.Printf("      latency    p95 %s\n", optMs(g.LatencyMsP95))
+		// The population beside the distribution is the SAMPLE, not the judged
+		// count: a decided gate whose file has no `decided_at` is judged and
+		// unmeasurable at once (auditRow leaves its LatencyMs nil rather than
+		// invent one from now()), so printing `n = judged` credited the median
+		// with gates that contributed nothing to it. Said the way the read-gap
+		// line below has always said it.
+		if g.LatencyMeasured == 0 {
+			fmt.Printf("      latency    unmeasurable — %d judged, none carries a decided_at to measure from\n",
+				g.Judged)
 		} else {
-			fmt.Printf("      latency    p95 withheld — %d judged, %d needed for a percentile to mean anything\n",
-				g.Judged, ops.P95MinSample)
+			fmt.Printf("      latency    min %s · median %s · max %s  (measured on %d of %d)\n",
+				optMs(g.LatencyMsMin), optMs(g.LatencyMsMedian), optMs(g.LatencyMsMax), g.LatencyMeasured, g.Judged)
+			if g.LatencyMsP95 != nil {
+				fmt.Printf("      latency    p95 %s\n", optMs(g.LatencyMsP95))
+			} else {
+				fmt.Printf("      latency    p95 withheld — %d measured, %d needed for a percentile to mean anything\n",
+					g.LatencyMeasured, ops.P95MinSample)
+			}
 		}
 		fmt.Printf("      read gap   median %s  (measured on %d of %d; %d decided in the same breath)\n",
 			optMs(g.ReadGapMsMedian), g.ReadGapMeasured, g.Judged, g.ReadGapZero)
