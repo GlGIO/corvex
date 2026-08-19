@@ -68,8 +68,17 @@ varrendo o que é servido, e `strings` do binário em 0.
 
 ## Dívidas
 
-- **Poll de 5s, não stream.** O único canal cross-process que existe hoje é o que está em disco
-  (F1/F2); SSE é plumbing que só paga quando houver evento em memória para transmitir.
+- ~~**Poll de 5s, não stream.**~~ **Pago em parte, e o resto está escrito.** `GET /api/events`
+  é SSE atrás da mesma auth (`internal/server/stream.go`). Mas **o poll não sumiu: trocou de
+  lado.** O argumento acima continua verdadeiro — o servidor supervisiona runs e nunca é dono
+  deles (`Setsid` + `Release`, nunca `Wait`), então não existe evento em memória para
+  transmitir. Quem observa o disco agora é o servidor, a cada 1s, e ele só escreve para o
+  navegador quando a impressão digital do que leu **muda**. O que se ganhou é latência de tela
+  (de até 5s para até 1s) e requisição (de 12 por minuto para uma conexão aberta); o que se
+  pagou é 5x mais leitura de disco por página aberta. Não é arquitetura nova, e não é push:
+  vigiar o filesystem (fsnotify) nem resolveria, porque a mudança que mais importa — um run que
+  morreu — não escreve nada em disco, é o `kill -0` que descobre. A UI degrada: o poll de 5s
+  continua no `app.js` e volta a trabalhar assim que o stream para de provar que está vivo.
 - **`gate answer` (2g) continua só um nome.** O eixo "o agente pergunta" não tem evento em
   disco.
 - **`run pause` continua fora** (F3, D13): falta arquivo de controle e ponto de leitura na

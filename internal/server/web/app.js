@@ -45,7 +45,7 @@ const api = {
   },
 };
 
-const state = { view: 'inbox', detail: null, data: null, timer: null };
+const state = { view: 'inbox', detail: null, data: null, timer: null, stream: null, streamAt: 0, fingerprint: '' };
 
 function status(msg, kind = '') {
   const bar = $('#status');
@@ -346,6 +346,51 @@ async function openPalette() {
   $('#palette').classList.remove('hidden');
 }
 
+// ── the stream, and the poll under it ───────────────────────────────────────
+// The server watches the disk and tells us when it changed (internal/server/
+// stream.go). Under that it is still a poll — it just moved to the side that can
+// hold one connection open instead of asking twelve times a minute.
+//
+// Nothing here parses state out of the event. The payload says "something
+// changed"; the page then re-reads /api/state through the same authenticated
+// route it always used. That keeps one shape on the wire and keeps evidence out
+// of a channel that exists to carry a nudge.
+const POLL_MS = 5000;
+// Three missed heartbeats. The server pings every 10s while quiet, so silence
+// this long means the stream is gone even if the browser has not said so yet.
+const STREAM_TRUST_MS = 35000;
+
+const streamAlive = () => state.streamAt > 0 && Date.now() - state.streamAt < STREAM_TRUST_MS;
+
+function startStream() {
+  if (typeof EventSource !== 'function') return; // no stream: the poll above is already the whole answer
+  const es = new EventSource('/api/events');
+  // A ping counts as proof of life exactly like a change does: that is what lets
+  // the fallback poll stand down during a quiet hour without going blind.
+  const alive = () => { state.streamAt = Date.now(); };
+  es.addEventListener('open', alive);
+  es.addEventListener('ping', alive);
+  es.addEventListener('state', (ev) => {
+    alive();
+    // The fingerprint is why the payload carries anything at all. The stream
+    // sends its current one on every connect, so a stream that flapped and came
+    // back would otherwise trigger a full re-read for nothing; and it is only
+    // remembered once it has been acted on, so a change that arrived while a
+    // detail screen was open is not forgotten when that screen closes.
+    let fp = '';
+    try { fp = JSON.parse(ev.data).fingerprint || ''; } catch (_) { fp = ''; }
+    if (fp && fp === state.fingerprint) return;
+    if (state.detail) return;
+    state.fingerprint = fp;
+    refresh();
+  });
+  // EventSource reconnects on its own, so there is nothing to retry here. What
+  // matters is admitting the stream is down NOW, so the next tick of the poll
+  // does the work instead of skipping it.
+  es.addEventListener('error', () => { state.streamAt = 0; });
+  state.stream = es;
+}
+
 // ── shell ───────────────────────────────────────────────────────────────────
 async function render() {
   const root = $('#view');
@@ -395,11 +440,18 @@ function boot() {
     if (e.key === 'Escape') $('#palette').classList.add('hidden');
   });
   refresh();
-  // Poll rather than stream: the run's own ledger and record are the only
-  // cross-process channel that exists today (F1/F2), and a five-second poll of
-  // three files is cheaper than the SSE plumbing it would replace. Registered as
-  // a debt rather than pretended away.
-  state.timer = setInterval(() => { if (!state.detail) refresh(); }, 5000);
+  startStream();
+  // The poll never goes away, it stands down. While the stream is proving itself
+  // alive this timer does nothing; the moment it stops proving it, the page is
+  // back to exactly the five-second poll it shipped with. A page that trusted
+  // the stream and went mute when the stream died would be strictly worse than
+  // polling — the screen would look current and be wrong, and the whole reason
+  // this screen exists is that something is blocked on a person.
+  state.timer = setInterval(() => {
+    if (state.detail) return;
+    if (streamAlive()) return;
+    refresh();
+  }, POLL_MS);
 }
 
 boot();

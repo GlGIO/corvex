@@ -19,6 +19,7 @@ import (
 // `corvex ... --json` cannot disagree about what a run is.
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/state", s.handleState)
+	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.mux.HandleFunc("GET /api/runs", s.handleRuns)
 	s.mux.HandleFunc("GET /api/runs/{id}", s.handleRun)
 	s.mux.HandleFunc("POST /api/runs", s.handleStartRun)
@@ -33,6 +34,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.handleIndex)
 }
 
+// stateWindow is how far back the two list screens look. It is one constant
+// because the event stream fingerprints the same set (stream.go): if the window
+// the stream watches and the window the screen shows could drift apart, a run
+// could change inside one and not the other, and the page would sit still
+// holding a row that had moved.
+const stateWindow = 7 * 24 * time.Hour
+
 // handleState is screen 2a in one request: what is waiting, and what ran.
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	inbox, err := s.gates().LoadInbox(s.opts.WorkDir)
@@ -40,7 +48,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
-	runs, err := s.lister().ListRuns(ops.RunListOptions{Since: 7 * 24 * time.Hour})
+	runs, err := s.lister().ListRuns(ops.RunListOptions{Since: stateWindow})
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
@@ -53,7 +61,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
-	opt := ops.RunListOptions{Since: 7 * 24 * time.Hour}
+	opt := ops.RunListOptions{Since: stateWindow}
 	if raw := r.URL.Query().Get("since"); raw != "" {
 		// The same parser the CLI uses, so `?since=2d` and `--since 2d` cannot
 		// disagree about what a day is — or about whether days exist.

@@ -23,9 +23,11 @@ import "net/http"
 //     width through the CSSOM (node.style.width), which CSP does not police,
 //     rather than through a style attribute, which would have forced
 //     'unsafe-inline' on every inline style in the page.
-//   - connect-src 'self' — app.js polls /api/state every five seconds and POSTs
-//     gate decisions. This is the one directive without which the page renders
-//     and then shows nothing.
+//   - connect-src 'self' — app.js POSTs gate decisions, reads /api/state, and
+//     opens the event stream at /api/events (stream.go): connect-src is the
+//     directive that governs EventSource too, which is why adding the stream
+//     needed no new directive and must not be allowed to grow one. This is the
+//     one line without which the page renders and then shows nothing.
 //   - base-uri 'none' — a single injected <base> repoints /assets/app.js at
 //     someone else's origin without ever violating script-src.
 //   - form-action 'none' — the page has no <form>, and a submit target is one of

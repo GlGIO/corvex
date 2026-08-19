@@ -47,6 +47,12 @@ type Options struct {
 	Binary string
 	// Now is injectable for tests.
 	Now func() time.Time
+	// StreamInterval is how often the event stream re-reads the state, and
+	// StreamHeartbeat how long it may stay silent before saying so anyway. Zero
+	// means the defaults in stream.go. They are options rather than constants
+	// only so a test does not have to wait a real second for a real change.
+	StreamInterval  time.Duration
+	StreamHeartbeat time.Duration
 }
 
 // Server is the assembled UI server.

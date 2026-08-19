@@ -141,4 +141,11 @@ func TestCSP_TheShippedPageNeedsNothingThePolicyForbids(t *testing.T) {
 	if !strings.Contains(script, "fetch(path") {
 		t.Error("app.js no longer calls the API — connect-src 'self' would be open for nothing")
 	}
+	// connect-src governs EventSource as well as fetch, which is why the event
+	// stream (stream.go) needed no new directive. The check is that it stays a
+	// relative path: an absolute one would be a second origin, and adding it to
+	// the policy is the shape in which a page like this grows a dependency.
+	if !strings.Contains(script, "new EventSource('/api/events')") {
+		t.Error("app.js does not open the stream at a same-origin path — connect-src covers EventSource, and any other origin would need the policy widened")
+	}
 }

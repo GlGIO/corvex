@@ -171,6 +171,57 @@ func TestUI_ServesTheAppAndRefusesTheUnauthorized(t *testing.T) {
 			t.Errorf("%s CSP:\n got  %q\n want %q", path, got, wantCSP)
 		}
 	}
+
+	// 6. The event stream, on the real socket. The unit suite proves that it
+	//    emits on a change and frees itself on a disconnect; what only the real
+	//    binary can show is that a streaming response reaches a client BEFORE the
+	//    handler returns — and this handler never returns. A forgotten flush
+	//    passes every httptest assertion and then hands a browser a connection
+	//    that says nothing for as long as the process lives.
+	resp, err = browser.Get(origin + "/api/events")
+	if err != nil {
+		t.Fatalf("GET /api/events with the session cookie: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("stream status %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Errorf("stream Content-Type = %q, want text/event-stream", got)
+	}
+	if got := resp.Header.Get("Content-Security-Policy"); got != wantCSP {
+		t.Errorf("stream CSP:\n got  %q\n want %q", got, wantCSP)
+	}
+	frames := bufio.NewReader(resp.Body)
+	firstEvent := ""
+	// A handful of lines is the whole preamble: `retry:`, a blank, then the
+	// event. Bounded so a stream that says nothing fails here rather than
+	// hanging on the client's timeout.
+	for i := 0; i < 8 && firstEvent == ""; i++ {
+		line, rerr := frames.ReadString('\n')
+		if rerr != nil {
+			break
+		}
+		if name, ok := strings.CutPrefix(strings.TrimSpace(line), "event: "); ok {
+			firstEvent = name
+		}
+	}
+	resp.Body.Close()
+	if firstEvent != "state" {
+		t.Errorf("the stream's first event was %q, want \"state\" — the page opens with nothing to react to", firstEvent)
+	}
+
+	// 7. And it is behind the same auth as the rest. An event endpoint anyone can
+	//    open is the cheapest leak there is, on the surface whose other routes
+	//    approve production migrations.
+	resp, err = client.Get(origin + "/api/events")
+	if err != nil {
+		t.Fatalf("GET /api/events without a token: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("stream without a token got %d, want 401", resp.StatusCode)
+	}
 }
 
 func first(s string, n int) string {
