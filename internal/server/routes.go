@@ -25,6 +25,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/kill", s.handleKillRun)
 	s.mux.HandleFunc("GET /api/gates", s.handleGates)
+	// Before the {id} pattern in intent, though not in effect: Go's mux prefers
+	// the literal segment, and no run id can ever be the word `audit` (`run_` +
+	// 4 hex), so the two cannot collide.
+	s.mux.HandleFunc("GET /api/gates/audit", s.handleGateAudit)
 	s.mux.HandleFunc("GET /api/gates/{id}", s.handleGate)
 	s.mux.HandleFunc("POST /api/gates/{id}/approve", s.handleApprove)
 	s.mux.HandleFunc("POST /api/gates/{id}/reject", s.handleReject)
@@ -107,6 +111,38 @@ func (s *Server) handleGates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, inbox)
+}
+
+// handleGateAudit is the sensor over the sensors on the wire — the same
+// ops.GateAudit the CLI prints with `gate audit --json`, verbatim.
+//
+// It carries no evidence, by construction rather than by filtering here: the
+// audit type never holds any (internal/ops/gate_audit.go). That is what makes it
+// safe to hand to a browser tab that anyone on the machine can open, while
+// `GET /api/gates/{id}` — which does embed the evidence — exists for the screen
+// where a person deliberately asked to read it.
+func (s *Server) handleGateAudit(w http.ResponseWriter, r *http.Request) {
+	// Written out rather than reusing stateWindow: this default tracks the CLI's
+	// `gate audit --since 7d`, while stateWindow tracks the set the event stream
+	// fingerprints. They happen to be equal today and answer different questions,
+	// so tying them together would make one move when the other was changed.
+	opt := ops.GateAuditOptions{Since: 7 * 24 * time.Hour}
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		// The same parser the CLI uses, so `?since=2d` and `--since 2d` cannot
+		// disagree about what a day is. `?since=0` is every gate on disk.
+		d, err := ops.ParseWindow(raw)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		opt.Since = d
+	}
+	audit, err := s.gates().LoadGateAudit(s.opts.WorkDir, opt)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, audit)
 }
 
 func (s *Server) handleGate(w http.ResponseWriter, r *http.Request) {
