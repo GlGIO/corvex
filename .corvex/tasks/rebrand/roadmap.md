@@ -217,7 +217,7 @@ que qualquer instrução de prompt — se houver conflito, a que está aqui ganh
 | F5 | ✅ autônoma | mecânica |
 | F6 | ✅ autônoma | reusa `internal/stack` da F0 |
 | F7 | ⚠️ **contrato primeiro** | fixe API + design system num único passo, **depois** paralelize as telas. Oito telas em paralelo sem contrato = oito estilos. |
-| F8 | ✅ autônoma | N tools independentes — é onde fan-out mais paga |
+| F8 | ✅ **concluída** | N tools independentes — feita fora deste repo (`f8-registro.md`) |
 | F9 | ⚠️ **gate ao fim** | segurança. Custódia de credencial e `DisallowedTools` não se aprovam sozinhos. |
 
 ### Condições de parada (PARE, não decida)
@@ -814,13 +814,27 @@ vai o verbo do CLI (`approve`) — linha que parecia paridade e não era execut�
 - **Aceite:** disparar run, aprovar gate e responder pergunta pela UI, com o log da 2h
   batendo com o que o `corvex runs` mostra.
 
-### F8 — Catálogo de tools (paralelizável desde já — não toca em Go)
+### F8 — Catálogo de tools — ✅ CONCLUÍDA (fora deste repo — `f8-registro.md`)
 - Operações da `az` como tools tipadas (84 regras em prosa → assinaturas).
 - **Funções puras hoje escritas em prosa** (achado da F0): `ship` branch→target,
   `ship` merge-por-nível (a regra de segurança mais importante do fluxo), `release`
   versão↔tag↔ambiente.
 - MCPs existentes; possivelmente AWS CLI.
 - Validar **na autopilot** antes de o corvex consumir.
+
+**Entregue em `~/projects/yandeh/smartcare`** (`bb7c03bf`, `62368efe`, `981169aa`, no `develop`):
+seis tools em `scripts/flow/` com rede de 56 casos offline, as cinco skills reescritas para
+**chamar** as tools em vez de repetir as tabelas, e `.corvex/recipes/ship.yaml` executando o
+fluxo pelo runner. **As 84 regras não viraram 84 tools, e não deviam** — o escopo real e o
+porquê estão no registro.
+
+O que a fase produziu além de código: **duas contradições decididas** (`feature/*` ia para
+develop em três skills e para `release/X.Y.0` na quarta; e o merge-por-nível era denylist, que
+com a primeira decisão autorizaria auto-merge dentro do trem de PRD). Ver `f8-registro.md`.
+
+⚠️ **Espera ratificação:** `ship-may-vote.sh` deixou de votar em nível de gate humano, porque um
+voto da automação satisfaz o `Required reviewers` da `main` e destrava o merge. É a única
+decisão da fase que é política, não leitura.
 
 ### F9 — Custódia de credencial — ⚠️ MECANISMO ENTREGUE, DEFAULT AGUARDA VOCÊ
 **`f9-custodia.md`.** Entregues com default idêntico ao de hoje (nada quebra):
@@ -873,8 +887,8 @@ Achado do segundo: **a evidência tinha uma âncora que anda.** `git show --stat
 mostra o checkpoint do step ANTERIOR, porque `auto_commit` commita a cada step — o aprovador
 era obrigado a reconhecer um diff que não continha a mudança. Consertado com `$CORVEX_RUN_BASE`.
 
-Aberto: `run list` mistura histórico e presente, então automatizar em cima dele exige filtrar
-por id.
+~~Aberto: `run list` mistura histórico e presente~~ ✅ **fechado** em `17f1b4c` — dois filtros,
+um por eixo (status e liveness).
 
 ## Riscos
 
