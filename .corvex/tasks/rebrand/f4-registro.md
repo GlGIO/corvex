@@ -116,7 +116,9 @@ Os 14 bugs congelados da `f-1-anomalias.md` não foram tocados.
   assimetria é deliberada (custa uma interrupção, nunca um reset silencioso), mas
   o conserto certo é hash da recipe na frontmatter do `tasks.md` — que muda bytes
   de arquivo compilado e por isso não entrou aqui.
-- **`run pause` continua fora** (D13). Falta arquivo de controle e ponto de
+- ~~**`run pause` continua fora**~~ (D13) — **pago no fechamento** (`5d03e80`, ver
+  `fechamento.md` e a dívida reescrita em `f7-registro.md`). O que estava escrito aqui, e que
+  continua sendo a razão de ter ficado para depois: falta arquivo de controle e ponto de
   leitura na barreira pós-`wg.Wait()`. F7.
 - **`run watch` é poll de 1s sobre disco**, sem inotify e sem stream. Suficiente
   para terminal, provavelmente insuficiente para a UI da F7, que vai querer SSE.

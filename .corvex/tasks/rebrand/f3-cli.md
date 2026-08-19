@@ -391,7 +391,9 @@ nada para chamar.
 
 ## 10. Dívidas que este desenho deixa registradas
 
-- **`run pause` sem mecanismo** (D13) — precisa de arquivo de controle + leitura na barreira de onda.
+- ~~**`run pause` sem mecanismo**~~ (D13) — **pago no fechamento** (`5d03e80`): arquivo de
+  controle em `RecordsDir` + leitura no topo de `walkDAG`, antes do `expandFanouts`. Foi
+  implementado exatamente como o desenho desta seção previa. Ver `fechamento.md`.
   Fase: F7 (ou F4b se a UI antecipar).
 - **`gate answer` é só um nome** — o eixo "agente pergunta" não tem evento em disco até a F5.
 - **Reciclagem de id continua** (dívida da F1, revisitada aqui): mitigada por `started_at` na saída,

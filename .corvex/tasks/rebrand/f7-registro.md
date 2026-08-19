@@ -74,8 +74,12 @@ varrendo o que é servido, e `strings` do binário em 0.
   deles (`Setsid` + `Release`, nunca `Wait`), então não existe evento em memória para
   transmitir. Quem observa o disco agora é o servidor, a cada 1s, e ele só escreve para o
   navegador quando a impressão digital do que leu **muda**. O que se ganhou é latência de tela
-  (de até 5s para até 1s) e requisição (de 12 por minuto para uma conexão aberta); o que se
-  pagou é 5x mais leitura de disco por página aberta. Não é arquitetura nova, e não é push:
+  (de até 5s para até 1s) e requisição (de 12 por minuto para uma conexão aberta **enquanto o
+  stream vive**); o que se pagou é 5x mais leitura de disco por página aberta — **e mais
+  requisição no modo degradado, que esta conta não tinha:** com o stream caído a página faz
+  ~42/min (24 tentativas de reconexão a 2s + 10 leituras de estado, medido em 50s com o socket
+  do `/api/events` sendo derrubado), contra as 12/min do poll que ela substituiu. A conta
+  original só descrevia o caso feliz, o que é a metade que faz a mudança parecer só ganho. Não é arquitetura nova, e não é push:
   vigiar o filesystem (fsnotify) nem resolveria, porque a mudança que mais importa — um run que
   morreu — não escreve nada em disco, é o `kill -0` que descobre. A UI degrada: o poll de 5s
   continua no `app.js` e volta a trabalhar assim que o stream para de provar que está vivo.
@@ -108,9 +112,37 @@ varrendo o que é servido, e `strings` do binário em 0.
   roadmap esboça `--choice C` e eu entreguei `--text`, porque uma escolha pressupõe um conjunto de
   opções declarado no gate, campo que não existe e que é decisão de schema; `--choice` continua
   expressível em cima disto depois, sem migração.
-- **`run pause` continua fora** (F3, D13): falta arquivo de controle e ponto de leitura na
-  barreira de onda.
+- ~~**`run pause` continua fora**~~ **Pago** (`5d03e80`). O desenho já estava escrito na D13
+  (`f3-cli.md`) e foi implementado como estava: **arquivo de controle** (um `.pause` por run em
+  `RecordsDir`, escrita atômica tmp+rename) e **leitura na barreira de onda** — no topo de
+  `walkDAG`, antes de `expandFanouts`, que é a única janela sem worker vivo. Pausar dentro do step
+  mataria chamada de provider já paga. Sem sinal, pelo motivo que a F1 já mediu: zumbi responde a
+  sinal 0. A extensão é `.pause` e não `.json` porque `ReadRecords` lê todo `*.json` da pasta, e um
+  segundo JSON com o mesmo `run_id` viraria linha duplicada em toda listagem da máquina.
+  **Visibilidade:** `StatusPaused` entra no eixo de **status**, não no de liveness — o processo
+  *está* de pé e batendo; o que mudou é o que o run reporta de si. `run list` mostra `paused alive`,
+  e `--status paused` filtra. Não virou `parked`: parked é "um humano precisa decidir", paused é
+  "poderia seguir e mandaram parar", e fundir os dois quebraria a caixa de entrada.
+  **Fica de fora:** o canal de pausa do TUI continua desacoplado do arquivo em disco. Unificar
+  exige o TUI escrever o arquivo — mudança de comportamento de caminho existente.
 - **Um repositório por servidor.** Listagens são cross-repo (índice global), mas dispatch e
-  escalation são do repositório em que o `corvex ui` subiu.
-- **Sem CSP.** A página é embutida e não carrega nada externo, mas um header explícito é
-  barato e não foi posto.
+  escalation são do repositório em que o `corvex ui` subiu. **Continua aberta** — é a única das
+  cinco dívidas da F7 que não foi atacada no fechamento, e não por acaso: as outras quatro são
+  mecanismo dentro de um processo, esta é escopo de produto.
+- ~~**Sem CSP.**~~ **Pago** (`3ea1ff7`), e sem nenhum `'unsafe-inline'`:
+  `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none';
+  form-action 'none'; frame-ancestors 'none'`. O header entra **por fora** do `Auth.Guard`, então
+  401 e 403 também o carregam — que são justamente as respostas que um ataque produz.
+  O trabalho de verdade não foi a política, foi a **página caber nela**: o `index.html` já estava
+  limpo, mas o `app.js` escrevia **atributo** `style` em três pontos (via o helper `el()`), e
+  atributo `style` é policiado por `style-src` — sob `'self'` a barra de custo por natureza (2f)
+  apagaria **em silêncio**. Consertamos a página, não a política: o helper passou a aplicar
+  `style` pelo CSSOM (`Object.assign(node.style, v)`), que o CSP não policia, e quem escrever
+  `style:` daqui pra frente nasce compatível.
+  Achado de tabela: o ponto de composição do handler estava **duplicado** (`New` e `Handler()`
+  montavam a cadeia cada um por si) — era o defeito latente clássico, o próximo handler nasceria
+  sem o header. Agora `Handler()` é o único lugar, o que também faz o teste via `httptest`
+  exercitar exatamente o que o navegador recebe.
+  **Ressalva registrada:** `frame-ancestors 'none'` proíbe qualquer enquadramento, inclusive
+  webview de IDE. Hoje ninguém enquadra, e o botão Aprovar vale a proteção — mas é a diretiva que
+  quebra primeiro se um dia o `corvex ui` for embutido num editor.
