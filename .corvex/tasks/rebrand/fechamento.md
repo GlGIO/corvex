@@ -4,11 +4,33 @@
 > e o domínio (`~/projects/yandeh/smartcare`), porque o invariante 4 não deixa os dois no mesmo
 > lugar.
 
-**A resposta desconfortável primeiro:** a fronteira do `az` **não fechou inteira**. O
-`security.disallowed_tools: ["Bash(az:*)"]` está ligado no smartcare, e ligar isso quebra um
-caminho real — **ler** o board a partir de uma task de worker. Está escrito em letras grandes no
-`config.yaml` de lá, com as saídas. É a diferença entre "verificado que fecha" e "verificado que
-quebra, e eu sei onde": o segundo é o que temos.
+**A resposta desconfortável primeiro, e ela é pior do que "faltou fechar":** onde a fronteira do
+`az` fechou, ela é **lombada, não muro**. Medido contra o provider real com
+`--disallowedTools "Bash(echo:*)"`:
+
+| tentativa | resultado |
+|---|---|
+| `echo alfa` | **bloqueado** |
+| `FOO=1 echo beta` | **bloqueado** — prefixo de env não escapa do matcher |
+| `./wrap.sh`, um script que chama `echo` | **permitido** |
+| o agente **escreve** `meu.sh` com `echo delta`, `chmod +x`, e roda | **permitido** |
+
+O padrão casa o **nome do comando invocado**, não o comportamento transitivo. A terceira linha é
+por desenho — é assim que a tool sancionada continua chamável. A quarta é o limite: o worker
+escreve o próprio wrapper, porque a única escrita que ele não pode fazer é em `.corvex/**`.
+
+Isso **reordena as duas peças da F9**: quem guarda a credencial é o `runner_only_env` (o segredo
+não está no ambiente, e nenhum wrapper inventa o que não foi herdado), não o `disallowed_tools`,
+que molda o caminho padrão e transforma "shellar" numa decisão visível em vez de um reflexo. Vale,
+e é diferente de garantir. **A metade que de fato protege é a que você adiou** — ligar o
+`disallowed_tools` sem virar o default do `runner_only_env` é fechar a porta e deixar a chave na
+mesa. Registrado em `f9-custodia.md`, corrigindo a frase daquele registro que dizia que sem
+`disallowed_tools` "o agente simplesmente shella": ele ainda shella, com um passo a mais.
+
+E, além disso, a fronteira **não fechou inteira**: ligar `Bash(az:*)` quebra um caminho real —
+**ler** o board a partir de uma task de worker. Está em letras grandes no `config.yaml` de lá, com
+as saídas. É a diferença entre "verificado que fecha" e "verificado que quebra, e eu sei onde": o
+segundo é o que temos.
 
 ---
 
@@ -295,7 +317,11 @@ O invariante 5 diz que bug se anota. Estes são os que ficaram anotados, com o m
     em `RunIdentity` — é um pedido legítimo do smartcare ao corvex.
 13. **Evidência inerte (sem `required_reading`) passa em silêncio.** Um aviso em `recipe validate`
     exigiria um canal de warning novo até o `cmd/`, que não existe.
-14. **O teste de navegador pula quando não há Chrome na máquina.** Se a CI não tiver navegador, a
+14. **`json_value` deduz o tipo JSON da forma do valor** (crítico aberto do PR #41998).
+    O conserto é um `type` por campo na tabela do `az-transition-plan.sh` com
+    `json_value` chaveado por ele — muda o schema de `plan --json`, que está em
+    produção. Está registrado no cabeçalho da função, com a medição.
+15. **O teste de navegador pula quando não há Chrome na máquina.** Se a CI não tiver navegador, a
     metade de browser da suíte não prova nada lá.
 
 ---
@@ -422,6 +448,56 @@ fonte. Reinstalar:
 ```
 cd ~/projects/corvex && go install .
 ```
+
+## O gate de review no PR #41998 — sete rodadas, e o que elas mediram
+
+O PR do smartcare (`chore/flow-tools → develop`, #41998) passou pelo próprio gate
+de review por IA sete vezes. Vale registrar a curva, porque ela diz mais que os
+consertos:
+
+| rodada | 🔴 | origem dos críticos |
+|---|---|---|
+| 1 | 2 | da leva original |
+| 2 | 3 | da leva original (1 era limitação do revisor, não defeito) |
+| 3 | 1 | da leva original — `User Story` montava URL que o `curl` recusa |
+| 4 | 2 | da leva original — a `ship.yaml` **mergeava PR bloqueado** |
+| 5 | 4 | **1 introduzido pelo conserto da rodada 4** |
+| 6 | 2 | **os 2 introduzidos pelo conserto da rodada 4** |
+| 7 | 2 | 1 quinto sítio de classe conhecida, 1 dívida de contrato |
+
+**A leitura desconfortável:** a partir da rodada 5, os consertos passaram a
+introduzir defeitos no ritmo em que o gate os achava. O pior exemplo é meu: na
+rodada 4 espalhei `set -euo pipefail` pelos sete stages da `ship.yaml` e escrevi
+que tinha conferido os pipelines. Conferi dois e não enumerei o resto — e o que
+passou foi `git diff --name-only | grep -q`, onde o `grep -q` fecha o pipe, o
+produtor morre de SIGPIPE, o status vira 141 e **o aviso de MIGRATION desaparece
+exatamente quando há migration**. Fail-open silencioso, num repo onde
+`npm run migrate` é manual.
+
+**O que sobrou de estrutural, e é o que paga:** a mesma classe — *"guarda escrita
+onde o revisor apontou, não onde ela se aplica"* — apareceu em **seis** sítios ao
+longo de cinco rodadas. Um caso por sítio não fecha isso. Agora há três regras
+que **enumeram**, sobre recipes *e* tools:
+
+1. todo `| tee` está sob `pipefail` (senão o exit do `tee`, que é 0, engole a recusa);
+2. nada canaliza para `grep -q`/`head` (consumidor que sai cedo + `pipefail` = 141);
+3. toda expansão sem quotes está sob `set -f` (senão *pathname expansion*).
+
+Cada uma com mutante vermelho. O sétimo sítio dessas classes reprova num teste,
+não numa rodada de review — e é a única coisa desta sequência que reduz o custo da
+próxima.
+
+**Onde eu parei, e por quê:** com dois críticos na mesa da rodada 7. Consertei o
+que era barato e seguro (o `set -f`) e **registrei** o que é mudança de contrato:
+`json_value` na `az-transition.sh` deduz o tipo JSON da forma do valor, e o plano
+não carrega tipo — `Custom.…=0` sai `"value":0` num campo booleano, e o 400 que
+volta vira `exit 3` ("re-rode") numa chamada que nunca vai passar. O conserto
+certo é um `type` por campo na tabela do `az-transition-plan.sh`, o que **muda o
+schema de saída** de uma tool em produção desde a F8. Não é conserto de passagem.
+
+O PR está materialmente melhor do que na rodada 0 — saiu de *"a recipe mergeia PR
+bloqueado"* para *"não mergeia"* — e continua com veredito `blocked`, que é o
+estado honesto: há um crítico conhecido, com nome, endereço e conserto escrito.
 
 ## O que eu faria a seguir, em ordem
 

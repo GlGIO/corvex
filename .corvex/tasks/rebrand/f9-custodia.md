@@ -36,6 +36,34 @@ uma porta, e nenhum valor de config abre uma que o corvex decidiu manter fechada
 É o que separa catálogo de sugestão: se o caminho cru continua aberto, o agente que achar a
 tool tipada inconveniente simplesmente shella, e o catálogo vira documentação.
 
+> **CORREÇÃO PÓS-FECHO (medição, 2026-08-19).** A frase acima está **incompleta na direção que
+> importa**, e a medição é barata o bastante para ninguém ter desculpa de não a ter feito antes.
+> Com `--disallowedTools "Bash(echo:*)"`, contra o provider real:
+>
+> | tentativa | resultado |
+> |---|---|
+> | `echo alfa` | **bloqueado** |
+> | `FOO=1 echo beta` | **bloqueado** — prefixo de env não escapa do matcher |
+> | `./wrap.sh`, um script que chama `echo` | **permitido** |
+> | o agente **escreve** `meu.sh` com `echo delta`, `chmod +x`, e roda | **permitido** |
+>
+> O padrão casa o **nome do comando invocado**, não o comportamento transitivo. As duas primeiras
+> linhas são boa notícia: a fronteira não é contornável por truque de sintaxe. As duas últimas
+> dizem o que ela é de verdade: **lombada, não muro.** A terceira é por desenho — é exatamente
+> assim que uma tool sancionada continua chamável depois de o comando cru ser fechado. A quarta é
+> o limite: o worker pode escrever o próprio wrapper, porque a única escrita que ele não pode
+> fazer é em `.corvex/**`.
+>
+> Isso reordena as duas peças desta fase. **Quem guarda a credencial é o `runner_only_env`, não o
+> `disallowed_tools`.** O primeiro é muro: o segredo não está no ambiente do processo, e nenhum
+> wrapper inventa o que não foi herdado. O segundo molda o caminho padrão — torna a tool tipada o
+> jeito mais fácil e transforma "shellar" numa decisão visível em vez de um reflexo. Vale, e é
+> diferente de garantir.
+>
+> Ou seja: a metade que de fato protege é a que o §4 deixou como decisão do dono. Ligar
+> `disallowed_tools` sem virar o default do `runner_only_env` é fechar a porta e deixar a chave
+> na mesa.
+
 ### 3. `requires:` na recipe — preflight antes do primeiro token
 ```yaml
 requires:
