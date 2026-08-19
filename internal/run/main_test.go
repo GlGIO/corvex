@@ -35,6 +35,7 @@ const (
 	helperBase  = "CORVEX_RUN_TEST_HELPER_BASE"
 	helperUntil = "CORVEX_RUN_TEST_HELPER_UNTIL"
 	helperStop  = "CORVEX_RUN_TEST_HELPER_STOP"
+	helperRunID = "CORVEX_RUN_TEST_HELPER_RUNID"
 )
 
 func TestMain(m *testing.M) {
@@ -146,6 +147,11 @@ func helperMain(mode string) int {
 			return 2
 		}
 		time.Sleep(30 * time.Second) // upper bound; the parent kills it long before
+	case "pause": // write another run's pause control file, as `run pause` does
+		if err := run.RequestPause(os.Getenv(helperRepo), os.Getenv(helperRunID), time.Now()); err != nil {
+			fmt.Fprintln(os.Stderr, "helper pause:", err)
+			return 2
+		}
 	case "sleep": // a real process the parent can probe and kill
 		time.Sleep(30 * time.Second)
 	case "list": // read the global index as a foreign process

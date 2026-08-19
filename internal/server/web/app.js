@@ -126,6 +126,11 @@ function runCard(r) {
       el('span', { class: 'grow', text: r.recipe || r.project || '' }),
       el('span', { class: 'dim', text: `${human(r.age_ns)} ago` }),
       el('button', { onclick: () => openRun(r.run_id) }, 'Open'),
+      // Two controls, and they are not the same control: pause holds the run at
+      // its next wave and keeps the work, stop signals it and loses whatever is
+      // in flight. A run reporting `paused` offers the way back instead.
+      r.status === 'paused' ? el('button', { onclick: () => resumeRun(r.run_id) }, 'Resume')
+        : r.liveness === 'alive' ? el('button', { onclick: () => pauseRun(r.run_id) }, 'Pause') : null,
       r.liveness === 'alive' ? el('button', { class: 'danger', onclick: () => killRun(r.run_id) }, 'Stop') : null,
     ),
     el('div', { class: 'dim', text: r.repo }),
@@ -227,6 +232,22 @@ async function killRun(id) {
   try {
     const res = await api.post(`/api/runs/${encodeURIComponent(id)}/kill`);
     status(`stopped — ${res.action.command}`, 'ok');
+  } catch (e) { status(e.message, 'bad'); }
+  refresh();
+}
+
+async function pauseRun(id) {
+  try {
+    const res = await api.post(`/api/runs/${encodeURIComponent(id)}/pause`);
+    status(`paused — ${res.action.command}; steps already running finish first`, 'ok');
+  } catch (e) { status(e.message, 'bad'); }
+  refresh();
+}
+
+async function resumeRun(id) {
+  try {
+    const res = await api.post(`/api/runs/${encodeURIComponent(id)}/resume`);
+    status(`resumed — ${res.action.command}`, 'ok');
   } catch (e) { status(e.message, 'bad'); }
   refresh();
 }

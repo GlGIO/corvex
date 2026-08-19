@@ -62,6 +62,10 @@ type Options struct {
 	SetRunStatus func(run.Status) error
 	// GatePoll overrides how often a parked run re-reads its gate file.
 	GatePoll time.Duration
+	// PausePoll overrides how often a paused run re-reads its pause control
+	// file; 0 uses DefaultPausePoll. Tests set it so a cross-process pause does
+	// not cost a second of wall clock per barrier.
+	PausePoll time.Duration
 	// Identity is the run these events belong to. It is stamped onto every
 	// ledger line, which is what keeps a project's ledger attributable once it
 	// holds more than one run. The orchestrator never mints it: ops.NewRunner

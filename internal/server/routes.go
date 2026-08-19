@@ -24,6 +24,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/runs/{id}", s.handleRun)
 	s.mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/kill", s.handleKillRun)
+	s.mux.HandleFunc("POST /api/runs/{id}/pause", s.handlePauseRun)
+	s.mux.HandleFunc("POST /api/runs/{id}/resume", s.handleResumeRun)
 	s.mux.HandleFunc("GET /api/gates", s.handleGates)
 	// Before the {id} pattern in intent, though not in effect: Go's mux prefers
 	// the literal segment, and no run id can ever be the word `audit` (`run_` +

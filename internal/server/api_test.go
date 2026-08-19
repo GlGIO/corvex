@@ -403,3 +403,30 @@ func TestGateAudit_IsTheOpsTypeVerbatimAndCarriesNoEvidence(t *testing.T) {
 		t.Errorf("a bad window = %d, want 400", rec.Code)
 	}
 }
+
+// The parity rule applied to the run controls: `run pause` and `run resume`
+// exist in the terminal, so they exist here, on the same shapes and with the
+// same refusals. A path that lived on only one surface is the failure this rule
+// was written against.
+func TestRunControls_PauseAndResumeExistWithTheSameShapeAsKill(t *testing.T) {
+	srv, h := newTestServer(t)
+
+	for _, verb := range []string{"kill", "pause", "resume"} {
+		rec, body := post(t, h, srv, "/api/runs/run_beef/"+verb, "")
+		if rec.Code == http.StatusNotFound {
+			t.Fatalf("POST /api/runs/{id}/%s is not routed: the UI cannot do what the CLI can", verb)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Errorf("%s on an unknown run: status = %d, want 409 (the run is not in a state for this)", verb, rec.Code)
+		}
+		if msg, _ := body["error"].(string); !strings.Contains(msg, "run_beef") {
+			t.Errorf("%s: the error does not name the run: %v", verb, body)
+		}
+		// Recorded even on refusal, exactly as kill is: the action log is what
+		// makes a UI button auditable.
+		action, _ := body["action"].(map[string]any)
+		if cmd, _ := action["command"].(string); cmd != "corvex run "+verb+" run_beef" {
+			t.Errorf("%s recorded command %q, want the CLI equivalent", verb, cmd)
+		}
+	}
+}

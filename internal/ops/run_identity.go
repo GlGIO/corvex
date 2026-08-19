@@ -153,6 +153,13 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 		if !recorded {
 			_ = r.handle.SetStatus(run.StatusFailed)
 		}
+		// The pause control file is scratch that outlives its run if nobody
+		// removes it, and a run id is recyclable — so a run that ended while
+		// paused would hand the next run wearing that id a stop order written
+		// for somebody else. Cleared on every path, panic included, for the same
+		// reason the environment is. claimID clears it again on the way in,
+		// because this path is not reached at all under SIGKILL.
+		r.clearPauseControl()
 	}()
 
 	// The environment is brought up here rather than in NewRunner because
@@ -236,6 +243,16 @@ func (r *Runner) recordCancellation(ctx context.Context) func() error {
 		<-done
 		return cancelErr
 	}
+}
+
+// clearPauseControl removes this run's pause control file, quietly: by the time
+// it runs the run is over, and a failure to unlink scratch is not something the
+// caller can act on. claimID is the second guard.
+func (r *Runner) clearPauseControl() {
+	if r == nil || r.Repo == "" || r.RunID == "" {
+		return
+	}
+	_ = run.ClearPause(r.Repo, r.RunID)
 }
 
 // Record returns this run's current on-disk snapshot. Zero Record when the run

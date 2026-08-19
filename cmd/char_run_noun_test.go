@@ -1,6 +1,7 @@
 package cmd
 
-// The `run` noun (F4, wave 1): list, show, watch, retry, kill.
+// The `run` noun (F4, wave 1): list, show, watch, retry, kill — and the F7
+// pause/resume pair that closes D13.
 //
 // Two kinds of test live here, on purpose:
 //
@@ -13,9 +14,11 @@ package cmd
 //     retry actually resets a step before running it.
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/run"
@@ -429,4 +432,121 @@ func TestCharacterizeRunShowSeparatesTheHumanClock(t *testing.T) {
 	if !strings.Contains(stdout, "waiting on a person") {
 		t.Errorf("the human clock is not on the screen:\n%s", stdout)
 	}
+}
+
+// `run pause` on an id nobody knows: the same refusal `run kill` gives, because
+// both verbs address a run through the same index. A golden holds the wording.
+func TestCharacterizeRunPauseUnknownID(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t)
+	args := []string{"run", "pause", "run_beef"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "runnoun_pause_unknown", scrub(transcript(args, stdout, stderr, err)))
+}
+
+func TestCharacterizeRunResumeUnknownID(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t)
+	args := []string{"run", "resume", "run_beef"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "runnoun_resume_unknown", scrub(transcript(args, stdout, stderr, err)))
+}
+
+// Pausing a run that already ended is refused, and — the part that matters more
+// than the message — it leaves no control file behind. Run ids are recycled, so
+// an orphan here is a stop order waiting for whoever draws that id next.
+func TestCharacterizeRunPauseRefusesAFinishedRunAndLeavesNoOrphan(t *testing.T) {
+	privateIndex(t)
+	stubClaude(t, runStubPass)
+	f := newFixture(t).AddProject("alpha", fixtureSpecMD, runTasksOnePendingMD).GitInit()
+	runSeedAnchor(f, "alpha", fixtureSpecMD)
+	if _, _, err := runCLIIn(t, f.Dir, "run", "alpha", "--plain", "--yes"); err != nil {
+		t.Fatalf("seeding run: %v", err)
+	}
+	id := onlyRunID(t, f.Dir)
+
+	_, _, err := runCLIIn(t, f.Dir, "run", "pause", id)
+	if err == nil {
+		t.Fatal("pause of a finished run returned nil; it must refuse")
+	}
+	if !strings.Contains(err.Error(), "finished") {
+		t.Errorf("error does not say why: %v", err)
+	}
+	if _, paused, _ := run.PauseRequested(f.Dir, id); paused {
+		t.Error("a refused pause left a control file for the next run wearing this id")
+	}
+}
+
+// The round trip a human actually types, over a run that is not this process:
+// pause writes the file, `run list --status paused` is not fooled by it (the run
+// itself reports its status — a control file is a request, not a state), and
+// resume takes it away.
+func TestCharacterizeRunPauseAndResumeRoundTrip(t *testing.T) {
+	privateIndex(t)
+	f := newFixture(t).GitInit()
+	id := seedLiveRun(t, f.Dir)
+
+	if _, _, err := runCLIIn(t, f.Dir, "run", "pause", id); err != nil {
+		t.Fatalf("run pause: %v", err)
+	}
+	if _, paused, _ := run.PauseRequested(f.Dir, id); !paused {
+		t.Fatal("`run pause` printed success without writing the control file")
+	}
+
+	// Negative control: pausing twice is not an error, and does not double
+	// anything — the file is the state, and writing it again is writing it again.
+	if _, _, err := runCLIIn(t, f.Dir, "run", "pause", id); err != nil {
+		t.Fatalf("second run pause: %v", err)
+	}
+
+	stdout, _, err := runCLIIn(t, f.Dir, "run", "resume", id)
+	if err != nil {
+		t.Fatalf("run resume: %v", err)
+	}
+	if !strings.Contains(stdout, id) {
+		t.Errorf("resume did not name the run:\n%s", stdout)
+	}
+	if _, paused, _ := run.PauseRequested(f.Dir, id); paused {
+		t.Error("the control file survived `run resume`")
+	}
+
+	// And resuming again says so rather than reporting a success that changed
+	// nothing.
+	if _, _, err := runCLIIn(t, f.Dir, "run", "resume", id); err == nil {
+		t.Error("`run resume` on a run nobody paused returned nil")
+	}
+}
+
+// seedLiveRun writes the record and index line of a run that looks alive to a
+// reader: this process's own pid, beating now. Registry.Start would do the same
+// thing, but a run started here would also have to be finished here, and a
+// finished run is exactly what `pause` refuses.
+func seedLiveRun(t *testing.T, repo string) string {
+	t.Helper()
+	const id = "run_1a2b"
+	now := time.Now().UTC()
+	rec := run.Record{
+		RunID: id, Repo: repo, Project: "alpha", PID: os.Getpid(),
+		Host: mustHostname(t), Status: run.StatusRunning, StartedAt: now, UpdatedAt: now,
+	}
+	if err := run.WriteRecord(rec); err != nil {
+		t.Fatalf("WriteRecord: %v", err)
+	}
+	home, err := run.Home()
+	if err != nil {
+		t.Fatalf("run.Home: %v", err)
+	}
+	if err := run.AppendIndex(home, rec, now); err != nil {
+		t.Fatalf("AppendIndex: %v", err)
+	}
+	return id
+}
+
+func mustHostname(t *testing.T) string {
+	t.Helper()
+	h, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("os.Hostname: %v", err)
+	}
+	return h
 }

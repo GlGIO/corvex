@@ -71,6 +71,13 @@ func (r Registry) claimID(home string, now time.Time) (string, error) {
 		}
 		return "", err
 	}
+	// Housekeeping on the way in, not only on the way out: a run SIGKILLed while
+	// paused leaves its control file behind, and an id is recyclable (see
+	// retention.go). Without this, the next run to draw that id would read a
+	// pause request written for a run that died weeks ago and stop at its first
+	// wave for no reason anybody could see. The id is ours at this point, so the
+	// file cannot belong to a live run.
+	_ = ClearPause(r.Repo, id)
 	return id, nil
 }
 

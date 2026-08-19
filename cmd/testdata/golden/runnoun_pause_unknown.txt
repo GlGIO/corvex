@@ -1,0 +1,10 @@
+$ corvex run pause <RUN_ID>
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+no such run in the index: <RUN_ID> (ids are recycled once their run ages out — `corvex run list` shows what is addressable)

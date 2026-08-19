@@ -82,6 +82,9 @@ type RunRequest struct {
 	// gate file; 0 uses step.DefaultGatePoll. Tests set it so a cross-process
 	// approval does not cost two seconds of wall clock.
 	GatePoll time.Duration
+	// PausePoll overrides how often a paused run re-reads its pause control
+	// file; 0 uses orchestrator.DefaultPausePoll. Same reason as GatePoll.
+	PausePoll time.Duration
 
 	// Environment is the run environment by name ("", "simple" or "stack").
 	// Empty is `simple`; anything unknown is refused (see ParseEnvironment).
@@ -169,6 +172,7 @@ func NewRunner(req RunRequest) (*Runner, error) {
 		// executor gets the one verb it needs and no access to identity.
 		SetRunStatus: handle.SetStatus,
 		GatePoll:     req.GatePoll,
+		PausePoll:    req.PausePoll,
 	})
 	return r, nil
 }

@@ -61,6 +61,14 @@ func (o *Orchestrator) walkDAG(ctx context.Context, s *schedule) error {
 		// Between waves, and only between waves: this is the one point in the
 		// loop where no worker goroutine is alive, so the task list and the DAG
 		// can be swapped without racing every step that reads them.
+		//
+		// The cross-process pause is read in the same window and for a second
+		// reason on top of that one: pausing inside a step would kill a provider
+		// call already paid for (see waitWhilePausedOnDisk). It comes first so a
+		// paused run does not expand a fan-out it may never walk.
+		if err := o.waitWhilePausedOnDisk(ctx); err != nil {
+			return err
+		}
 		if err := o.expandFanouts(s); err != nil {
 			return err
 		}

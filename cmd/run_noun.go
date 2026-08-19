@@ -64,6 +64,26 @@ var (
 		RunE:              runRunRetry,
 	}
 
+	runPauseCmd = &cobra.Command{
+		Use:   "pause <run-id>",
+		Short: "Hold a live run at its next wave barrier",
+		Long: "Write the pause control file a live run reads between waves. Steps already running " +
+			"finish first — pause never interrupts work that has been paid for. The run reports " +
+			"`paused` until `corvex run resume`.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeRunArg,
+		RunE:              runRunPause,
+	}
+
+	runResumeCmd = &cobra.Command{
+		Use:               "resume <run-id>",
+		Short:             "Let a paused run continue",
+		Long:              "Clear the pause control file. The run picks its next wave up within a poll interval.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeRunArg,
+		RunE:              runRunResume,
+	}
+
 	runKillCmd = &cobra.Command{
 		Use:               "kill <run-id>",
 		Short:             "Signal a live run to stop",
@@ -94,7 +114,7 @@ func init() {
 
 	runListCmd.Flags().StringVar(&runListSince, "since", "7d", "only runs started within this window — 90m, 36h, 7d (0 for all)")
 	runListCmd.Flags().StringVar(&runListRepo, "repo", "", "only runs of one repository (`--repo .` for the current one)")
-	runListCmd.Flags().StringVar(&runListStatus, "status", "", "only runs reporting this status: running, parked, canceling, done, failed, canceled")
+	runListCmd.Flags().StringVar(&runListStatus, "status", "", "only runs reporting this status: running, parked, paused, canceling, done, failed, canceled")
 	runListCmd.Flags().BoolVar(&runListLive, "live", false, "only runs with a process behind them (the other axis: what a run REPORTS is --status)")
 	runListCmd.Flags().BoolVar(&runListProjects, "projects", false, "list projects of this repository instead of runs")
 	runListJSON = addJSONFlag(runListCmd)
@@ -115,9 +135,9 @@ func init() {
 	runKillCmd.Flags().BoolVarP(&runYes, "yes", "y", false, "skip the confirmation prompt")
 
 	// Every verb of the noun warns when it shadows a project of the same name.
-	for _, verb := range []*cobra.Command{runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd} {
+	for _, verb := range []*cobra.Command{runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd, runPauseCmd, runResumeCmd} {
 		verb.PreRun = noticeVerbShadow
 	}
 
-	runCmd.AddCommand(runStartCmd, runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd)
+	runCmd.AddCommand(runStartCmd, runListCmd, runShowCmd, runWatchCmd, runRetryCmd, runKillCmd, runPauseCmd, runResumeCmd)
 }

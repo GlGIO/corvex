@@ -221,11 +221,11 @@ func ParseRunStatus(raw string) (run.Status, error) {
 	switch s {
 	case "":
 		return "", nil
-	case run.StatusRunning, run.StatusParked, run.StatusCanceling,
+	case run.StatusRunning, run.StatusParked, run.StatusPaused, run.StatusCanceling,
 		run.StatusDone, run.StatusFailed, run.StatusCanceled:
 		return s, nil
 	default:
-		return "", fmt.Errorf("unknown status %q: use running, parked, canceling, done, failed or canceled "+
+		return "", fmt.Errorf("unknown status %q: use running, parked, paused, canceling, done, failed or canceled "+
 			"(for \"is a process behind it\", that is --live)", raw)
 	}
 }

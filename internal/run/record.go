@@ -19,6 +19,24 @@ const (
 	StatusRunning Status = "running"
 	StatusParked  Status = "parked" // blocked on a human gate; the process is still up
 
+	// StatusPaused: somebody asked this run to stop between waves and it did.
+	//
+	// This is the visibility half of `run pause`. The two axes stay what they
+	// are: the process is up and beating, so liveness is honestly `alive` — but
+	// a run showing `alive` and NOTHING else while it is deliberately doing no
+	// work is a lie of surface, because a reader counting capacity or waiting
+	// for progress would draw the wrong conclusion from it. What changed is what
+	// the run REPORTS about itself, which is exactly what the status axis is
+	// for, so `run list --status paused` finds it and the listing says it out
+	// loud.
+	//
+	// It is NOT StatusParked. Parked means a human gate is holding a step and
+	// the run cannot proceed until somebody decides; paused means the run could
+	// proceed and has been told not to. Merging them would make "waiting on a
+	// decision" indistinguishable from "waiting on a person's permission to
+	// continue", and the inbox is built on the first.
+	StatusPaused Status = "paused"
+
 	// StatusCanceling: a stop has been requested and the run has not closed yet.
 	//
 	// This state exists because the gap between the two is real and can be long. A

@@ -10,6 +10,8 @@ Usage:
 Available Commands:
   kill        Signal a live run to stop
   list        List runs across every repository
+  pause       Hold a live run at its next wave barrier
+  resume      Let a paused run continue
   retry       Re-execute one step without redoing the rest
   show        Show one run: steps, gates, retries and cost
   start       Execute pending steps of a recipe or project

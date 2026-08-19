@@ -141,6 +141,36 @@ func (s *Server) handleKillRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"killed": res, "action": action})
 }
 
+// handlePauseRun and handleResumeRun are the non-destructive half of the run
+// controls, and they exist here because of the parity rule: `run pause` is a
+// command a user can type, so it is a button a user can press. No path may exist
+// on only one surface.
+//
+// Three lines each, and the shape on the wire is ops.PauseResult verbatim.
+func (s *Server) handlePauseRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	res, err := s.lister().PauseRun(id)
+	s.writeRunControl(w, "corvex run pause "+id, "paused", res, err)
+}
+
+func (s *Server) handleResumeRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	res, err := s.lister().ResumeRun(id)
+	s.writeRunControl(w, "corvex run resume "+id, "resumed", res, err)
+}
+
+// writeRunControl records the action and answers, in the shape handleKillRun
+// established: 409 with the error text when ops refused, because every refusal
+// here is "the run is not in a state for this", not a malformed request.
+func (s *Server) writeRunControl(w http.ResponseWriter, command, key string, res ops.PauseResult, err error) {
+	action := s.actions.Record(command, err)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{key: res, "action": action})
+}
+
 // binary is the corvex executable to spawn. Explicit override first so a test
 // can point at a stub; os.Executable() otherwise, which is the only answer that
 // keeps a spawned run on the same version as the server that spawned it.
