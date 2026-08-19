@@ -487,6 +487,50 @@ Cada uma com mutante vermelho. O sétimo sítio dessas classes reprova num teste
 não numa rodada de review — e é a única coisa desta sequência que reduz o custo da
 próxima.
 
+### Rodadas 8 e 9 — o que elas mudaram na leitura
+
+Depois de a decisão do `type` ser autorizada, o loop seguiu, e vale registrar as
+duas últimas porque elas mudam a conclusão, não só a contagem:
+
+- **Rodada 8** — `Spike` não existe na org (`VS402323`); a tool aceitava o tipo e
+  produziria 404 → `exit 3` = "re-rode". A skill documentava um tipo fantasma e o
+  teste **pinava o comportamento errado como certo**. E uma afirmação minha no
+  README era falsa **na direção confortável**: dois runs concorrentes não dão
+  "duplicata do mesmo item", dão um run PATCHando a work item do outro — e a
+  decisão de não usar id de run se apoiava nessa frase.
+- **Rodada 9** — **fail-open na única função que decide.** `_says` era
+  `printf | grep -qE`; com review acima de ~395 KB o `printf` morre de SIGPIPE, o
+  pipeline vira 141, o `if` fica falso e o **🔴 desaparece** — o veredito sai
+  `approved-with-suggestions` e o S05 da `ship.yaml` **vota** com a identidade do
+  dev. O gatilho é o caso normal: diff grande → review grande.
+  Eu havia varrido essa classe em quatro sítios e deixei de fora a função que
+  decide, porque **minha própria regra de completude** procurava `| grep -q`
+  literal e o consumidor estava embrulhado numa função.
+
+**E quatro dos meus testes desta rodada estavam errados**, incluindo um controle
+negativo que eu **declarei ter rodado e não rodou** (usei `python3 -c "…"` com
+`$2` em aspas duplas; o shell interpolou, o replace não casou nada, e a suíte
+ficou verde por vacuidade). Os quatro estão corrigidos com o porquê escrito. O
+padrão que eles têm em comum — casar **prosa** em vez de código, ou medir a coisa
+errada — apareceu quatro vezes nesta leva e é o defeito mais recorrente do meu
+próprio trabalho aqui.
+
+**A conclusão honesta, e ela não é sobre o PR:** a taxa de descoberta de defeitos
+não caiu ao longo de nove rodadas, e a última encontrou fail-open no juiz. Isso é
+evidência de que a superfície está **sub-testada em relação à sua intricação** —
+não de que convergiu. O que reduz o custo daqui pra frente são as **seis regras de
+completude**, que pegam classes mecanicamente (o `| tee` sem `pipefail`; o pipe
+para consumidor que sai cedo, inclusive embrulhado em função; a expansão sem
+`set -f`; a opcional passada como vazia; o argumento que escapa do
+`require_ref_name`; e as duas tools concordando sobre a lista de tipos).
+
+**Atenuante que importa para a decisão de mergear:** o diff são **46 arquivos, e
+nenhum é código de produto** — 38 em `scripts/`, 5 em `.claude/`, 3 em `.corvex/`,
+**zero** em `backend/`, `frontend/`, `infra/` ou `lambdas/`. O raio de explosão é
+o fluxo de dev, e a falha é **alta e imediata**, não corrupção silenciosa de dado.
+As duas exceções — as tools que decidem voto e merge — são justamente as mais
+testadas agora.
+
 **Onde eu parei, e por quê:** com dois críticos na mesa da rodada 7. Consertei o
 que era barato e seguro (o `set -f`) e **registrei** o que é mudança de contrato:
 `json_value` na `az-transition.sh` deduz o tipo JSON da forma do valor, e o plano
