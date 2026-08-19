@@ -49,6 +49,9 @@ func (r *Recipe) validateStage(s Stage) error {
 			return err
 		}
 	}
+	if err := validateEvidenceHasAReader(fmt.Sprintf("recipe %q: stage %q", r.Name, s.ID), s.Kind, s.Gates, s.Evidence); err != nil {
+		return err
+	}
 	return r.validateFanout(s)
 }
 
@@ -176,6 +179,84 @@ func (r *Recipe) validateEvidence(s Stage, i int, e types.Evidence) error {
 	return nil
 }
 
+// validateEvidenceHasAReader refuses `evidence:` declared where nothing will
+// ever read it.
+//
+// Measured, not assumed. The only code that turns a declared item into evidence
+// with content is Executor.resolveDeclared, and its only callers are humanGate
+// and questionGate (internal/step/human_gate.go): both park the run and write a
+// gate file. The accumulated set has exactly one consumer, openGate, which fills
+// that file. So on a stage whose gates never stop for a person, a declared item
+// is inert — the `from:` command never runs, the `content:` never surfaces, and
+// no screen ever prints either.
+//
+// # Why the whole block, and not only `required_reading: true`
+//
+// required_reading is the graver half: it announces the approval lock that
+// `gate approve` enforces by label, and a lock that is never armed is the most
+// expensive kind of false comfort — the reader believes a barrier exists where
+// there is none. But plain evidence on such a stage lies in the same family,
+// because `recipe show` lists every declared item straight from the YAML
+// (internal/ops/recipe_catalog.go), so a person reading the recipe concludes
+// this material will be put in front of somebody. It will not. The alternative
+// reading — "declare it anyway, it shows up in the run report" — was checked
+// against the code and there is no such report: nothing outside openGate reads
+// the evidence set. If one is ever built, this rule loosens in the same commit
+// that gives the evidence its reader, not before.
+//
+// # Why not the other fix — teach the computational gate to collect evidence
+//
+// Collecting is the cheap half and it is not the half that matters. A
+// computational gate has no screen and no person: running every `from:` command
+// on every gate would move `required_reading` from "declared and never
+// collected" to "collected and never read", which is the same false comfort at a
+// higher bill. The lock means "a person acknowledged this item by label", and
+// only a gate that parks a run on a person can produce that acknowledgement.
+func validateEvidenceHasAReader(where, kind string, gates []types.Gate, evidence []types.Evidence) error {
+	if len(evidence) == 0 || readsEvidence(kind, gates) {
+		return nil
+	}
+	msg := fmt.Sprintf("%s declares `evidence:` but has no gate that reads it: declared evidence is collected "+
+		"only when a gate parks the run on a person (`nature: human` or `nature: question`), so here the `from:` "+
+		"commands never run and nobody is ever shown anything. "+
+		"Add the human or question gate this evidence is for, move the evidence to the stage whose gate a person "+
+		"answers, or drop the block", where)
+	if label, ok := firstRequiredReading(evidence); ok {
+		msg += fmt.Sprintf(". Worse here: %q is marked `required_reading: true`, which announces the approval lock "+
+			"of `gate approve` — a lock armed by the gate file this stage never opens, so the recipe promises a "+
+			"barrier that the runner does not build", label)
+	}
+	return fmt.Errorf("%s", msg)
+}
+
+// readsEvidence reports whether any gate on a stage will look at its evidence.
+//
+// It mirrors step.effectiveGates on purpose, including the one implied gate that
+// exists there: the legacy `human-gate` kind always meant "a node that is
+// nothing but a person deciding", so such a stage reads evidence even with no
+// `gates:` block of its own. Missing that would refuse every pre-F2 recipe.
+func readsEvidence(kind string, gates []types.Gate) bool {
+	if kind == types.LegacyKindHumanGate {
+		return true
+	}
+	for _, g := range gates {
+		if g.Nature == types.GateHuman || g.Nature == types.GateQuestion {
+			return true
+		}
+	}
+	return false
+}
+
+// firstRequiredReading names the first item that arms the approval lock.
+func firstRequiredReading(evidence []types.Evidence) (string, bool) {
+	for _, e := range evidence {
+		if e.RequiredReading {
+			return e.Label, true
+		}
+	}
+	return "", false
+}
+
 // validateFanout checks a fan-out declaration in isolation. `over` is resolved
 // later, in validateStageLinks, once every stage id is known.
 func (r *Recipe) validateFanout(s Stage) error {
@@ -212,6 +293,12 @@ func (r *Recipe) validateFanout(s Stage) error {
 		}
 		if !knownKinds[ts.Kind] {
 			return fmt.Errorf("%s: template step %q has unknown kind %q (known: %s)", where, ts.ID, ts.Kind, knownKindList)
+		}
+		// A template step becomes a real task (internal/orchestrator/fanout.go
+		// copies Gates and Evidence verbatim onto every item), so the same lie
+		// is available here and is refused the same way.
+		if err := validateEvidenceHasAReader(fmt.Sprintf("%s: template step %q", where, ts.ID), ts.Kind, ts.Gates, ts.Evidence); err != nil {
+			return err
 		}
 		tmplIDs[ts.ID] = true
 	}

@@ -267,3 +267,87 @@ stages:
 		t.Errorf("gate positions resolved wrong: %v / %v", tasks[3].Gates[0].EffectiveWhen(), tasks[3].Gates[1].EffectiveWhen())
 	}
 }
+
+// evidenceStage builds a one-stage recipe whose gate block is the variable: the
+// evidence is always the same required-reading declaration, so what the cases
+// below measure is only whether anything on the stage would ever read it.
+func evidenceStage(gates string) string {
+	return "name: x\nstages:\n  - id: S01\n    kind: tool\n    command: \"true\"\n" + gates +
+		"    evidence:\n      - kind: diff\n        label: \"Diff\"\n        required_reading: true\n        from: \"git diff --stat\"\n"
+}
+
+// TestValidate_EvidenceNeedsAReader is the fail-closed half of the
+// required_reading contract. The lock is armed by the gate file that humanGate
+// and questionGate write; every other nature runs, records its own verdict, and
+// never calls resolveDeclared. A recipe that declares the lock under one of
+// those natures announces a barrier the runner does not build — the exact
+// failure mode `required_reading` exists to prevent — so validation refuses it
+// rather than letting `recipe show` print a star nobody has to earn.
+func TestValidate_EvidenceNeedsAReader(t *testing.T) {
+	readers := map[string]string{
+		"human gate":    "    gates:\n      - nature: human\n        label: \"Aprovar\"\n",
+		"question gate": "    gates:\n      - nature: question\n        prompt: \"Qual ambiente?\"\n",
+		"human gate after a computational one": "    gates:\n      - nature: computational\n        command: \"true\"\n" +
+			"      - nature: human\n        label: \"Aprovar\"\n",
+	}
+	for name, gates := range readers {
+		t.Run("valid/"+name, func(t *testing.T) {
+			if err := mustParse(t, evidenceStage(gates)).Validate(); err != nil {
+				t.Fatalf("Validate() = %v, want nil: this stage does park on a person", err)
+			}
+		})
+	}
+
+	nonReaders := map[string]string{
+		"computational only": "    gates:\n      - nature: computational\n        command: \"./check.sh\"\n",
+		"inferential only":   "    gates:\n      - nature: inferential\n        reviewer: dba\n",
+		"policy only":        "    gates:\n      - nature: policy\n        branch_not: [main]\n",
+		"no gate at all":     "",
+	}
+	for name, gates := range nonReaders {
+		t.Run("refused/"+name, func(t *testing.T) {
+			err := mustParse(t, evidenceStage(gates)).Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want a refusal: nothing on this stage collects the evidence")
+			}
+			for _, want := range []string{
+				`recipe "x": stage "S01" declares ` + "`evidence:`" + ` but has no gate that reads it`,
+				"`nature: human` or `nature: question`",
+				"move the evidence to the stage whose gate a person answers",
+				`Worse here: "Diff" is marked ` + "`required_reading: true`",
+				"promises a barrier that the runner does not build",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal does not say %q; it says: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
+// The legacy `human-gate` kind carries an implied human gate (step.effectiveGates
+// synthesises it), so a stage of that kind reads its evidence with no `gates:`
+// block of its own. Refusing it would break every recipe written before F2.
+func TestValidate_LegacyHumanGateKindReadsItsEvidence(t *testing.T) {
+	y := "name: x\nstages:\n  - id: S01\n    kind: human-gate\n    title: Aprovar\n" +
+		"    evidence:\n      - kind: diff\n        label: \"Diff\"\n        required_reading: true\n        from: \"git diff --stat\"\n"
+	if err := mustParse(t, y).Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil: a human-gate stage IS the person", err)
+	}
+}
+
+// A template step becomes a real task, so it can tell the same lie and is
+// refused in the same words.
+func TestValidate_FanoutTemplateEvidenceNeedsAReader(t *testing.T) {
+	src := "name: x\nstages:\n  - id: S01\n    kind: tool\n    command: \"ls\"\n    produces: items\n" +
+		"  - id: S02\n    fanout:\n      over: S01\n      template:\n        - id: check\n          kind: tool\n          command: \"true\"\n" +
+		"          gates:\n            - nature: computational\n              command: \"./check.sh\"\n" +
+		"          evidence:\n            - kind: diff\n              label: \"Diff\"\n              required_reading: true\n              from: \"git diff --stat\"\n"
+	err := mustParse(t, src).Validate()
+	if err == nil {
+		t.Fatalf("Validate() = nil, want a refusal for the template step")
+	}
+	if !strings.Contains(err.Error(), `template step "check" declares `+"`evidence:`") {
+		t.Errorf("the refusal does not name the template step: %v", err)
+	}
+}

@@ -271,6 +271,11 @@ every such item has been acknowledged by label (`gate ack ... --ack "<label>"`):
         required_reading: true
 ```
 
+Evidence is collected only by a gate that parks the run on a person — `nature:
+human` or `nature: question`. Declaring it under a computational, inferential or
+policy gate would promise a lock nobody arms, so `recipe validate` refuses that
+recipe instead of letting it run.
+
 `from:` runs when the gate opens, with `$CORVEX_RUN_BASE` set to the commit the
 run started from. Anchor diffs to it rather than to `HEAD`: with `auto_commit`
 on, every step checkpoints, so by the time a later step's gate opens `HEAD` is a

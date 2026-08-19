@@ -1,0 +1,10 @@
+$ corvex recipe validate liar
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe "liar": stage "S01" declares `evidence:` but has no gate that reads it: declared evidence is collected only when a gate parks the run on a person (`nature: human` or `nature: question`), so here the `from:` commands never run and nobody is ever shown anything. Add the human or question gate this evidence is for, move the evidence to the stage whose gate a person answers, or drop the block. Worse here: "O que este run mudou" is marked `required_reading: true`, which announces the approval lock of `gate approve` — a lock armed by the gate file this stage never opens, so the recipe promises a barrier that the runner does not build

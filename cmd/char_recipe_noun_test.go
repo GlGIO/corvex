@@ -107,6 +107,42 @@ func TestCharacterizeRecipeValidateRejectsABadRecipe(t *testing.T) {
 	goldenAssert(t, "recipenoun_validate_bad", scrub(transcript(args, stdout, stderr, err)))
 }
 
+// recipeLyingAboutTheLockYAML is the shape found in the wild: a stage whose only
+// gate is computational, declaring required-reading evidence under it. It
+// validated, it printed a star in `recipe show`, and it collected nothing —
+// declared evidence is only ever resolved by the two gates that park a run on a
+// person. The recipe announced an approval lock the runner never armed, which is
+// the failure `required_reading` exists to prevent.
+const recipeLyingAboutTheLockYAML = `name: liar
+description: promises a lock nobody arms
+stages:
+  - id: S01
+    title: Merge
+    kind: tool
+    command: "git merge --ff-only"
+    gates:
+      - nature: computational
+        when: before
+        label: "mayComplete"
+        command: "./may-complete.sh"
+    evidence:
+      - kind: diff
+        label: "O que este run mudou"
+        required_reading: true
+        from: "git diff --stat"
+`
+
+// The refusal is the product here: it has to tell the recipe author what is
+// broken and what to do about it, at the terminal, before a run is ever started.
+func TestCharacterizeRecipeValidateRejectsEvidenceNobodyReads(t *testing.T) {
+	f := newFixture(t)
+	writeRecipe(t, f, "liar", recipeLyingAboutTheLockYAML)
+
+	args := []string{"recipe", "validate", "liar"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "recipenoun_validate_evidence_no_reader", scrub(transcript(args, stdout, stderr, err)))
+}
+
 func TestCharacterizeRecipeCompileVerb(t *testing.T) {
 	f := newFixture(t)
 	writeRecipe(t, f, "demo", statuslogsRecipeYAML)
