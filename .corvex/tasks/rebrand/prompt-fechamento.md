@@ -78,9 +78,13 @@ automatiza ou deleta"*. A F5 já grava os dados; falta a leitura. Provavelmente 
 `corvex` ou uma coluna no `inspect --json`.
 
 ### 6. Achados menores
-- **Preflight**: `exec.LookPath` resolve contra o **CWD do processo**, não contra o `workDir`
-  que `PreflightRequirements` recebe (`internal/ops/preflight.go`). Num run com worktree
-  isolado ele checaria a cópia errada. Não testado — confirme e conserte ou registre.
+- **Preflight** (~~pendente~~ consertado): `exec.LookPath` não usava o `workDir` que
+  `PreflightRequirements` recebe — um `bin:` com barra era resolvido contra o **CWD do
+  processo**. O gatilho não era worktree isolado (hoje toda rota de produção chega com
+  `workDir == CWD`, então acertava por coincidência) e sim um caller in-process com
+  `workDir != CWD` — ver a ressalva reescrita em `f8-registro.md`. Sobra como registro o
+  `LookPath` de `internal/ops/doctor_config.go`, que é o binário do provider e não depende do
+  workDir.
 - **`DisallowedTools` não alcança MCP** (`f9-custodia.md`, fora de escopo): um servidor MCP
   declarado no `config.yaml` é outro caminho e não é filtrado. É um buraco no nível 3 de
   fronteira.

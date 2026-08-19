@@ -36,7 +36,10 @@ type Recipe struct {
 
 // Requirement is one declared dependency. Exactly one field is set.
 type Requirement struct {
-	// Bin is an executable that must be on PATH ("az", "docker", "psql").
+	// Bin is an executable the run needs: either a name on PATH ("az",
+	// "docker", "psql") or a path relative to the run's workDir
+	// ("scripts/deploy.sh"), which is the directory a stage's command runs in.
+	// An absolute path is taken as given.
 	Bin string `yaml:"bin"`
 	// Env is a variable that must be set and non-empty in the RUNNER's
 	// environment. Only the name is ever read, never the value — and the value

@@ -293,14 +293,22 @@ expanded into N instances, up to a cap:
 ```
 
 `requires:` declares what the run needs on the machine *before* spending a
-token — a missing `bin:` (a CLI on PATH) or `env:` (a variable set on the
-runner) fails the run up front instead of mid-pipeline:
+token — a missing `bin:` (a name on PATH, or a path relative to the run's
+workDir) or `env:` (a variable set on the runner) fails the run up front
+instead of mid-pipeline:
 
 ```yaml
 requires:
-  - bin: az
+  - bin: az                      # a CLI, looked up on PATH
     why: "az is how the ship stage opens the PR"
+  - bin: scripts/deploy.sh       # a repo script, resolved against the workDir
+    why: "renaming it should fail here, not in the last stage"
 ```
+
+A `bin:` with a separator is checked as a file — the same file the stage's
+command will resolve, since stages run with the workDir as their working
+directory — and the check also distinguishes "not there" from "there but not
+executable", because one of those is fixed with `chmod`.
 
 `timeout:` on a stage overrides `execution.task_timeout_minutes` for that one
 step (`"45m"`, `"2h"`) — use it for a stage that's known to run long or short.

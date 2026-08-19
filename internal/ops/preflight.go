@@ -1,9 +1,12 @@
 package ops
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/recipe"
@@ -43,17 +46,30 @@ func PreflightRequirements(workDir, project string) ([]RequirementCheck, error) 
 		// to report: the compile step reports it with a better message.
 		return nil, nil
 	}
-	return checkRequirements(r.Requires), nil
+	return checkRequirements(workDir, r.Requires), nil
 }
 
-func checkRequirements(reqs []recipe.Requirement) []RequirementCheck {
+func checkRequirements(workDir string, reqs []recipe.Requirement) []RequirementCheck {
 	out := make([]RequirementCheck, 0, len(reqs))
 	for _, req := range reqs {
 		switch {
 		case strings.TrimSpace(req.Bin) != "":
 			c := RequirementCheck{Kind: "bin", Name: req.Bin, Why: req.Why, Detail: "not on PATH"}
-			if path, err := exec.LookPath(req.Bin); err == nil {
+			target := resolveBin(workDir, req.Bin)
+			if strings.ContainsRune(req.Bin, '/') {
+				// A path that is not there is not a PATH problem, and saying so
+				// sends the reader to look at the wrong thing.
+				c.Detail = "not found: " + target
+			}
+			path, err := exec.LookPath(target)
+			switch {
+			case err == nil:
 				c.OK, c.Detail = true, path
+			case errors.Is(err, fs.ErrPermission):
+				// LookPath reports the file it found but could not execute as an
+				// error like any other. Reporting that as "not on PATH" is a lie
+				// that costs an install attempt: the fix is chmod, not apt.
+				c.Detail = "found but not executable: " + target
 			}
 			out = append(out, c)
 		case strings.TrimSpace(req.Env) != "":
@@ -65,6 +81,33 @@ func checkRequirements(reqs []recipe.Requirement) []RequirementCheck {
 		}
 	}
 	return out
+}
+
+// resolveBin says which file the preflight has to stat for a declared `bin:`.
+//
+// A bare name ("az", "docker") is a PATH lookup and stays one. A name with a
+// separator ("scripts/deploy.sh") is not: exec.LookPath skips PATH entirely for
+// it and stats the path against the PROCESS working directory. But a relative
+// `bin:` exists to be invoked by a stage's command, and the stage runs it with
+// `sh -c` and cmd.Dir = the run's workDir (internal/step.Executor.runShell), so
+// the check has to resolve against the same directory the executor will. Today
+// every production route reaches the preflight with workDir == CWD, which means
+// the old code was right by coincidence; an in-process caller that knows its
+// workspace (ops.LoadConfigAt exists for exactly that) breaks the coincidence
+// in both directions — refusing a script that is there, or approving one that
+// is only in the caller's CWD.
+//
+// The result is absolute so what lands in the ledger still means something read
+// from another directory.
+func resolveBin(workDir, bin string) string {
+	if !strings.ContainsRune(bin, '/') || filepath.IsAbs(bin) {
+		return bin
+	}
+	abs, err := filepath.Abs(filepath.Join(workDir, bin))
+	if err != nil {
+		return filepath.Join(workDir, bin)
+	}
+	return abs
 }
 
 // MissingRequirements formats the failures into one actionable error, or nil.

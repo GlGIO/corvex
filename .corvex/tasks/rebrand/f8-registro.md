@@ -108,9 +108,29 @@ O que dá para fazer é **declarar**: `requires: bin:` aceita caminho, não só 
 tools declaradas, renomear um script falha no **preflight**, antes do primeiro token, em vez de
 no S06 depois de um review de 40 minutos já pago. É a cicatriz #1 do roadmap.
 
-*Ressalva:* `LookPath` resolve contra o **CWD do processo**, não contra o `workDir` que
-`PreflightRequirements` recebe. Do raiz do repo funciona; num run com worktree isolado ele
-checaria a cópia errada. Não testado — é dívida do corvex, não da recipe.
+*Ressalva (corrigida depois — o mecanismo escrito aqui antes estava errado):* `exec.LookPath`
+não busca no PATH quando o nome tem barra: ele faz `stat` do caminho contra o **CWD do
+processo**, e o `workDir` que `PreflightRequirements` recebia servia só para achar a recipe.
+Os dois lados quebravam: falso-negativo (o script está em `workDir/scripts/deploy.sh`, o check
+diz "not on PATH" e recusa um run pronto) e falso-positivo (não está no workDir, está no CWD,
+o check libera e grava no ledger um caminho relativo que não significa nada fora daquele CWD).
+
+O cenário de "worktree isolado" que estava escrito aqui **não era o gatilho**. Em toda rota de
+produção hoje `workDir == CWD` no instante do preflight: `cmd/run.go` tira o workDir de
+`ops.LoadConfig()` (= `os.Getwd()`), o único `os.Chdir` de produção (`cmd/start_worktree.go`)
+acontece **antes** do `LoadConfig`, o servidor spawna `corvex run` com `cmd.Dir = WorkDir`, e
+rodar `corvex run` de fora do worktree é barrado por `checkWorktreeMismatch`. Ou seja: acertava
+por **coincidência**. Os gatilhos reais eram um caller in-process com `workDir != CWD`
+(`ops.LoadConfigAt` existe exatamente para isso — "a server handling a request for a repo") ou
+qualquer refactor que movesse o preflight para depois de um `Chdir`.
+
+**Consertado** em `internal/ops/preflight.go`: nome sem separador continua PATH, nome relativo
+resolve contra o `workDir` — o mesmo diretório que o executor usa (`sh -c` com
+`cmd.Dir = workDir`) —, o `Detail` passou a ser caminho absoluto, e arquivo que existe sem bit
+de execução passou a dizer "found but not executable" em vez de mentir "not on PATH". Par
+controle-positivo/controle-negativo em `preflight_test.go`. Fica de dívida um caso irmão que
+**não** é o mesmo bug: `internal/ops/doctor_config.go` usa o mesmo `LookPath` para o binário do
+provider, onde workDir não entra na conta.
 
 ## Escopo: o que ficou de fora, e por quê
 
