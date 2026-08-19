@@ -90,8 +90,10 @@ func TestValidate_GateRules(t *testing.T) {
 		{"human refuses command", "nature: human\n        command: \"true\"\n", "decides by consent"},
 		{"empty policy", "nature: policy\n", "policy gate with no rule"},
 		{"policy knob on wrong nature", "nature: human\n        max_attempts: 2\n", "but its nature is"},
-		{"expires_after on wrong nature", "nature: policy\n        max_attempts: 2\n        expires_after: 1h\n", "only a human gate waits on"},
+		{"expires_after on wrong nature", "nature: policy\n        max_attempts: 2\n        expires_after: 1h\n", "only a gate that waits on a person"},
 		{"unparseable expires_after", "nature: human\n        expires_after: soon\n", "unparseable `expires_after`"},
+		{"question with nothing to ask", "nature: question\n", "must set a non-empty `prompt`"},
+		{"question refuses command", "nature: question\n        prompt: qual base?\n        command: \"true\"\n", "answered in words"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -100,6 +102,29 @@ func TestValidate_GateRules(t *testing.T) {
 				t.Fatalf("Validate() = %v, want error containing %q", err, c.want)
 			}
 		})
+	}
+}
+
+// TestValidate_QuestionIsAGateARecipeCanDeclare is the positive control for the
+// table above: a question with a prompt validates, and it may bound its wait the
+// same way a human gate does — the only two natures that park a run on a person.
+func TestValidate_QuestionIsAGateARecipeCanDeclare(t *testing.T) {
+	r := mustParse(t, "name: x\nstages:\n  - id: S01\n    kind: tool\n    command: \"true\"\n"+
+		"    gates:\n      - nature: question\n        prompt: contra qual base?\n        expires_after: 4h\n")
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	tasks, _, err := r.Compile()
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if len(tasks[0].Gates) != 1 || tasks[0].Gates[0].Nature != types.GateQuestion {
+		t.Fatalf("the question did not survive compilation: %+v", tasks[0].Gates)
+	}
+	// A question guards the action: it asks for something the step needs in
+	// order to do the work, and asking afterwards would be a survey.
+	if tasks[0].Gates[0].EffectiveWhen() != types.GateBefore {
+		t.Errorf("EffectiveWhen = %q, want before", tasks[0].Gates[0].EffectiveWhen())
 	}
 }
 

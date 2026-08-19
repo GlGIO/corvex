@@ -236,6 +236,25 @@ func gateCommand(verdict gate.Verdict, id string, req decideRequest) string {
 	return b.String()
 }
 
+// answerCommand renders the CLI equivalent of answering a question.
+//
+// `answer` is a verb the CLI really has, which is the guard the action log
+// learned the hard way (see gateCommand): a line in this file that is not
+// runnable looks like parity and is not. The text is quoted the way a shell
+// needs it, so a reply containing a space or a quote pastes back intact.
+func answerCommand(id string, req answerRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "corvex gate answer %s", id)
+	if req.Step != "" {
+		fmt.Fprintf(&b, " --step %s", req.Step)
+	}
+	for _, ack := range req.Ack {
+		fmt.Fprintf(&b, " --ack %q", ack)
+	}
+	fmt.Fprintf(&b, " --text %q", req.Text)
+	return b.String()
+}
+
 // gateVerb maps a verdict to the CLI verb that produces it.
 func gateVerb(v gate.Verdict) string {
 	switch v {

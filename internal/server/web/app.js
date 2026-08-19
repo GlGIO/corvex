@@ -283,6 +283,36 @@ async function renderGateDetail(root, id, step) {
     root.append(el('div', { class: 'evidence' }, head, body));
   }
 
+  // 2g: the gate that asked. It gets the verb that answers it and NOT the one
+  // that approves — the server refuses an approval here, and offering a button
+  // that is always refused is worse than offering none. Rejecting stays, because
+  // declining to answer is a real answer and already fails the step.
+  if (g.nature === 'question') {
+    const text = el('textarea', { rows: 3, placeholder: 'your answer' });
+    const send = el('button', { class: 'primary' }, 'Answer');
+    const decline = el('button', { class: 'danger' }, 'Decline');
+    send.addEventListener('click', async () => {
+      try {
+        const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/answer`, { step: g.step_id, ack: [...read], text: text.value });
+        status(`answered — ${res.action.command}`, 'ok');
+        state.detail = null; refresh();
+      } catch (e) { status(e.message, 'bad'); }
+    });
+    decline.addEventListener('click', async () => {
+      try {
+        const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/reject`, { step: g.step_id, reason: '' });
+        status(`declined — ${res.action.command}`, 'ok');
+        state.detail = null; refresh();
+      } catch (e) { status(e.message, 'bad'); }
+    });
+    root.append(el('div', { class: 'card' },
+      text,
+      el('div', { class: 'row' }, el('span', { class: 'grow' }), decline, send),
+      el('div', { class: 'dim', text: 'The same reply from a terminal: corvex gate answer <id> --step <step> --text "…"' }),
+    ));
+    return;
+  }
+
   const reason = el('input', { placeholder: 'why (optional)', class: 'grow' });
   approve.addEventListener('click', async () => {
     try {

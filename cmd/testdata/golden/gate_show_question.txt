@@ -1,0 +1,18 @@
+$ corvex gate show <RUN_ID> --step S02
+
+--- stdout ---
+<RUN_ID>  ·  step S02  ·  question: Qual base
+Rodar a carga
+
+Contra qual base o passo deve rodar?
+
+run is alive · waiting <DUR>
+
+To answer:
+  corvex gate answer <RUN_ID> --step S02 --text "…"
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

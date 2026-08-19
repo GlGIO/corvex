@@ -144,6 +144,44 @@ func (g GateLister) FindGate(runID, stepID string) (GateView, error) {
 // mode that window produces here is benign — the worst case is refusing an
 // answer that was valid, which the user simply repeats.
 func (g GateLister) DecideGate(runID, stepID string, verdict gate.Verdict, acked []string, reason string) (gate.Pending, error) {
+	return g.write(runID, stepID, gate.Decision{
+		Verdict: verdict,
+		Acked:   acked,
+		Reason:  reason,
+	})
+}
+
+// AnswerGate records what a person wrote back to a gate that asked.
+//
+// It is the same act as DecideGate with the same guards — a dead run cannot read
+// an answer any more than it can read an approval — and deliberately NOT a
+// second path to disk: both go through gate.Decide, which is where the rule that
+// a question needs words and an approval does not lives. What is different here
+// is only the shape of what is written, which is why the verdict is not a
+// parameter: `answer` means "continue, with this", and declining to answer is
+// `gate reject`, the verb that already means "this step does not proceed".
+//
+// Empty text is refused by gate.Decide rather than here, so the same refusal
+// reaches somebody typing it in a terminal and somebody posting an empty
+// textarea from the UI.
+//
+// acked is carried for the same reason approve carries it: a recipe may declare
+// required_reading evidence on the step that asks, and a lock the answering verb
+// could not satisfy would be a dead end rather than a control — the person would
+// be told to read something with no command that records having read it.
+func (g GateLister) AnswerGate(runID, stepID string, acked []string, text string) (gate.Pending, error) {
+	return g.write(runID, stepID, gate.Decision{
+		Verdict: gate.Approved,
+		Acked:   acked,
+		Answer:  strings.TrimSpace(text),
+	})
+}
+
+// write resolves the gate, refuses a run that is no longer up, and stamps the
+// decision. Shared so the liveness rule cannot come to differ between deciding
+// and answering — the two surfaces would then disagree about which gates are
+// still addressable.
+func (g GateLister) write(runID, stepID string, d gate.Decision) (gate.Pending, error) {
 	view, err := g.FindGate(runID, stepID)
 	if err != nil {
 		return gate.Pending{}, err
@@ -152,10 +190,6 @@ func (g GateLister) DecideGate(runID, stepID string, verdict gate.Verdict, acked
 		return gate.Pending{}, fmt.Errorf("run %s is %s, so nothing is waiting to read this decision "+
 			"(the gate file stays on disk; re-run to reach the gate again)", runID, view.Liveness)
 	}
-	return gate.Decide(view.Gate.Repo, view.Gate.RunID, view.Gate.StepID, gate.Decision{
-		Verdict:   verdict,
-		DecidedAt: g.now(),
-		Acked:     acked,
-		Reason:    reason,
-	})
+	d.DecidedAt = g.now()
+	return gate.Decide(view.Gate.Repo, view.Gate.RunID, view.Gate.StepID, d)
 }

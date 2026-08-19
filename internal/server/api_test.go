@@ -169,6 +169,7 @@ func TestActionLog_RecordsExecutableVerbs(t *testing.T) {
 	for path, verb := range map[string]string{
 		"/api/gates/run_8f21/approve": "approve",
 		"/api/gates/run_8f21/reject":  "reject",
+		"/api/gates/run_8f21/answer":  "answer",
 	} {
 		_, body := post(t, h, srv, path, `{"step":"S03"}`)
 		action, _ := body["action"].(map[string]any)
@@ -176,6 +177,32 @@ func TestActionLog_RecordsExecutableVerbs(t *testing.T) {
 		if !strings.HasPrefix(command, "corvex gate "+verb+" ") {
 			t.Errorf("%s recorded %q, which is not a runnable command", path, command)
 		}
+	}
+}
+
+// TestAnswer_RecordsTheCLIEquivalent: the question axis on the wire, held to the
+// same parity rule as approve. The reply is quoted the way a shell needs it, so
+// the recorded line pastes back intact — a line in this log that is not runnable
+// looks like parity and is not.
+func TestAnswer_RecordsTheCLIEquivalent(t *testing.T) {
+	srv, h := newTestServer(t)
+	rec, body := post(t, h, srv, "/api/gates/run_8f21/answer", `{"step":"S03","text":"a replica de leitura"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (no such gate): %s", rec.Code, rec.Body)
+	}
+	action, _ := body["action"].(map[string]any)
+	command, _ := action["command"].(string)
+	want := `corvex gate answer run_8f21 --step S03 --text "a replica de leitura"`
+	if command != want {
+		t.Errorf("recorded command = %q, want %q", command, want)
+	}
+
+	// The two verbs do not accept each other's body. A `text` posted at
+	// /approve has to fail rather than be dropped: silently ignoring it would
+	// mean somebody watched their answer disappear into an approval.
+	strayText, _ := post(t, h, srv, "/api/gates/run_8f21/approve", `{"step":"S03","text":"x"}`)
+	if strayText.Code != http.StatusBadRequest {
+		t.Errorf("POST /approve with a text = %d, want 400", strayText.Code)
 	}
 }
 

@@ -73,6 +73,36 @@ type Decision struct {
 	Acked []string `json:"acked,omitempty"`
 	// Reason is free text from a rejection, or the expiry note.
 	Reason string `json:"reason,omitempty"`
+	// Answer is what a person wrote back to a `question` gate — the axis
+	// inverted, the run asking and the human replying in words.
+	//
+	// # Why a field here and not a sibling type
+	//
+	// A question could have been a second file format with its own store, its
+	// own list and its own inbox field. The test that decided it is what such a
+	// type would cost the two readers that already exist: gate.List (and through
+	// it ops.LoadGateAudit) would need a second walk of the same directory, and
+	// ops.Inbox would need a third slice that every caller has to remember to
+	// render. Both would then have to be taught which of the two files a given
+	// run id belongs to. As a field, the audit sees the row through the nature
+	// it already carries and the inbox lists it without knowing it exists —
+	// neither reader gains a special case, which was the criterion.
+	//
+	// # Why the verdict is not a fourth value
+	//
+	// An answered question is `approved`: the run may continue. Minting
+	// `answered` as a fourth Verdict would break the invariant the audit is
+	// built on (Decided == Approved+Rejected+Expired, guarded by
+	// TestGateVerdict_ThreeBucketsAndNoMore) and would make every consumer of
+	// verdictStatus decide again what "continue" means. Refusing to answer is a
+	// rejection, and a question nobody answered expires — both already mean the
+	// step fails. So the verdict axis is untouched and the words ride beside it.
+	//
+	// Optional on disk, like every field added after the format shipped: gates
+	// written before this existed have no key, and unmarshalling gives the zero
+	// value. The refusal of an empty answer lives in Decide, where the writer
+	// is, not in the reader — otherwise old files would stop being readable.
+	Answer string `json:"answer,omitempty"`
 }
 
 // Pending is one gate as it exists on disk: what is being asked, what the person
@@ -107,6 +137,10 @@ type Pending struct {
 
 // Decided reports whether an answer has been written.
 func (p Pending) Decided() bool { return p.Decision != nil }
+
+// Asks reports whether this gate is the run asking a person for words rather
+// than for a verdict.
+func (p Pending) Asks() bool { return p.Nature == types.GateQuestion }
 
 // Describe is the one-line label this gate contributes to the ledger: nature
 // plus the user's own words, and nothing that describes the machine.

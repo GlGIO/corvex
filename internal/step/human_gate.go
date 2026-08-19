@@ -111,6 +111,82 @@ func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types
 	return e.gateRefused(t, g, reason)
 }
 
+// questionGate parks the run until a person answers it in words — the human
+// gate's axis inverted, the run asking instead of proposing.
+//
+// The barrier is the human gate's, unchanged: the same file under
+// `.corvex/runs/gates`, the same O_EXCL claim, the same awaitDecision poll with
+// the heartbeat still beating so the run reads `alive` rather than `stale`.
+// Nothing new was built to wait, which is the practical half of the argument for
+// making the answer a field on gate.Decision instead of a second protocol —
+// a sibling type would have needed a second poll loop here too.
+//
+// # Why --approve-gates does not auto-answer
+//
+// The CI switch means "consent is granted by policy", and consent is a verdict.
+// There is no answer a runner can invent to a question whose domain it does not
+// know, and inventing one would feed a fabricated value into a step that asked
+// for a real one — worse than blocking, because the run would look like it
+// worked. So under --approve-gates a question still waits, and a recipe meant to
+// run unattended must not ask one.
+//
+// # What the answer reaches
+//
+// The step's evidence, which is what every later gate on the same step renders
+// and what `corvex gate show` prints. It does NOT reach the worker's prompt: see
+// the debt recorded in .corvex/tasks/rebrand/f7-registro.md, which names the
+// file and line where that would have to change.
+func (e *Executor) questionGate(ctx context.Context, r *Run, t *types.Task, g types.Gate, acc *evidenceSet) error {
+	// The same event the human gate emits, because it means the same thing to
+	// every reader: the run is parked on a person. Its NAME predates this axis,
+	// so the plain renderer prints "human-gate" for a question too
+	// (cmd/plain_renderer.go:108). Minting a second event type would widen the
+	// ledger's vocabulary — activity.jsonl is committed and internal/activity
+	// buckets by type — which is a change to the user's git history, not a
+	// rendering fix. Recorded rather than done.
+	e.emit(event.Event{Type: event.HumanGate, TaskID: t.ID, Phase: event.PhaseGate, Message: gateLabel(g, t.Title)})
+
+	if r.Identity.Repo == "" || r.Identity.RunID == "" {
+		return Fatal(fmt.Errorf("task %s: question %s cannot be opened — this run has no identity on disk", t.ID, g.Describe()))
+	}
+
+	e.resolveDeclared(ctx, t, acc)
+	pending, err := e.openGate(r, t, g, acc)
+	if err != nil {
+		return Fatal(fmt.Errorf("task %s: opening question: %w", t.ID, err))
+	}
+
+	e.emit(event.Event{Type: event.GatePending, TaskID: t.ID, Phase: event.PhaseGate, Message: g.Describe()})
+	leaveGate := e.enterGate()
+	defer leaveGate()
+
+	decided, err := e.awaitDecision(ctx, r, t, pending)
+	if err != nil {
+		return err
+	}
+
+	e.emit(event.Event{
+		Type:   event.GateDecided,
+		TaskID: t.ID,
+		Status: verdictStatus(decided.Verdict),
+		Phase:  event.PhaseGate,
+		// The label, never the answer. activity.jsonl is committed by
+		// auto_commit, and an answer is free text a person typed about their own
+		// systems — the same reason evidence content has never been in there.
+		Message:    g.Describe(),
+		DurationMs: humanWaitMs(pending.OpenedAt, decided, e.now()),
+	})
+	if decided.Verdict != gate.Approved {
+		reason := decided.Reason
+		if reason == "" {
+			reason = string(decided.Verdict)
+		}
+		return e.gateRefused(t, g, reason)
+	}
+	acc.add(gate.Note(gateLabel(g, "question"), decided.Answer))
+	return nil
+}
+
 func verdictStatus(v gate.Verdict) types.TaskStatus {
 	if v == gate.Approved {
 		return types.StatusPassed
@@ -121,12 +197,16 @@ func verdictStatus(v gate.Verdict) types.TaskStatus {
 // openGate writes the pending gate, evidence and all.
 func (e *Executor) openGate(r *Run, t *types.Task, g types.Gate, acc *evidenceSet) (gate.Pending, error) {
 	p := gate.Pending{
-		RunID:    r.Identity.RunID,
-		StepID:   t.ID,
-		Repo:     r.Identity.Repo,
-		Project:  r.Identity.Project,
-		Recipe:   r.Identity.Recipe,
-		Nature:   types.GateHuman,
+		RunID:   r.Identity.RunID,
+		StepID:  t.ID,
+		Repo:    r.Identity.Repo,
+		Project: r.Identity.Project,
+		Recipe:  r.Identity.Recipe,
+		// The gate's own nature, not a constant: openGate serves both the human
+		// gate and the question, and the nature is what tells every reader
+		// downstream — the inbox, `gate show`, the audit — which of the two it
+		// is looking at.
+		Nature:   g.Nature,
 		Label:    gateLabel(g, t.Title),
 		Prompt:   g.Prompt,
 		Title:    t.Title,

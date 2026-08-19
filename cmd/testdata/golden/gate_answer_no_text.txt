@@ -1,0 +1,10 @@
+$ corvex gate answer <RUN_ID> --step S02
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+nothing to answer with: write the reply in --text (the question is printed by `corvex gate show`)

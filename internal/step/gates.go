@@ -105,6 +105,8 @@ func (e *Executor) runGate(ctx context.Context, r *Run, t *types.Task, g types.G
 		return e.policyGate(ctx, t, g)
 	case types.GateHuman:
 		return e.humanGate(ctx, r, t, g, acc)
+	case types.GateQuestion:
+		return e.questionGate(ctx, r, t, g, acc)
 	default:
 		// Unreachable through a validated recipe; refusing beats guessing.
 		return e.gateRefused(t, g, fmt.Sprintf("unknown gate nature %q", g.Nature))

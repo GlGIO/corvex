@@ -90,6 +90,20 @@ func renderGateDetail(g ops.GateView) {
 		}
 	}
 
+	// A gate that asked a question ends on the verb that answers it. Printing
+	// `gate approve` here would name a command this gate refuses — the screen
+	// where somebody meets the gate is exactly where a wrong verb becomes a
+	// habit.
+	if g.Gate.Asks() {
+		if answered := g.Gate.Decided(); answered {
+			fmt.Printf("\nAnswered: %s\n", g.Gate.Decision.Answer)
+			return
+		}
+		fmt.Printf("\nTo answer:\n  corvex gate answer %s --step %s --text \"…\"\n",
+			g.Gate.RunID, g.Gate.StepID)
+		return
+	}
+
 	// What is still owed, not what was ever required: naming an item somebody
 	// already read would train them to retype acknowledgements, which is the
 	// habit that makes the lock a formality.

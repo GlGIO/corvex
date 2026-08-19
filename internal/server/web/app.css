@@ -58,7 +58,8 @@ footer{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--line);b
 #palette-list{list-style:none;margin:0 0 10px;padding:0;max-height:50vh;overflow:auto}
 #palette-list li{padding:6px 8px;border-bottom:1px solid #1e2430;display:flex;gap:10px}
 #palette-list li:last-child{border-bottom:0}
-input,select{font:inherit;background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px}
+input,select,textarea{font:inherit;background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px}
+textarea{width:100%;resize:vertical}
 .empty{color:var(--dim);padding:24px 0}
 /* The cost bar is deliberately one colour: the question it answers is
    proportion, and colouring each phase differently would invite reading the

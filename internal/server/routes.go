@@ -32,6 +32,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/gates/{id}", s.handleGate)
 	s.mux.HandleFunc("POST /api/gates/{id}/approve", s.handleApprove)
 	s.mux.HandleFunc("POST /api/gates/{id}/reject", s.handleReject)
+	s.mux.HandleFunc("POST /api/gates/{id}/answer", s.handleAnswer)
 	s.mux.HandleFunc("GET /api/actions", s.handleActions)
 	s.mux.HandleFunc("GET /api/recipes", s.handleRecipes)
 	s.mux.HandleFunc("GET /assets/", s.handleAsset)
@@ -188,6 +189,39 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request, verdict gate.Ver
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"gate": decided, "action": action})
+}
+
+// answerRequest is the body of answer. A type of its own rather than a field on
+// decideRequest: the decoder rejects unknown fields, so a `text` posted at
+// /approve has to fail rather than be quietly dropped — which is the same reason
+// the two verbs are separate routes at all.
+type answerRequest struct {
+	Step string   `json:"step"`
+	Ack  []string `json:"ack,omitempty"`
+	Text string   `json:"text"`
+}
+
+// handleAnswer is the question axis on the wire, and the same three lines as
+// every other mutating handler: decode, call ops, encode. The rule that an empty
+// answer is not an answer is not repeated here — it is in gate.Decide, which
+// this call reaches through ops, so the browser and the terminal are refused by
+// the same sentence.
+func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req answerRequest
+	if err := decodeBody(r, &req); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	command := answerCommand(id, req)
+
+	answered, err := s.gates().AnswerGate(id, req.Step, req.Ack, req.Text)
+	action := s.actions.Record(command, err)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "action": action})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"gate": answered, "action": action})
 }
 
 func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {

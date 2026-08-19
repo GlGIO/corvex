@@ -71,6 +71,16 @@ func (k StepKind) IsComputational() bool {
 // not two: policy (a runner rule: a counter, a ceiling, a branch level) is as
 // real as the other three and is today scattered across `if`s, which is why no
 // accounting can answer "which gate rejects most".
+//
+// A fifth, `question`, is not from that catalogue: it is the same axis read
+// backwards. The four above ask a decider for a VERDICT about work the run
+// already proposed; a question asks a person for a VALUE the run does not have.
+// It is a nature rather than a flag on the human gate because the nature is the
+// discriminator that already travels on the gate file, on the audit row and on
+// the audit's Nature filter — without it, "how long somebody took to type an
+// answer" would land in the same distribution as "how long somebody took to
+// approve a migration", and the sensor over the sensors would be measuring two
+// different acts as one.
 type GateNature string
 
 const (
@@ -89,12 +99,16 @@ const (
 	// GatePolicy is decided by a runner rule: attempt counter, cost ceiling,
 	// protected branch. Deterministic, zero tokens.
 	GatePolicy GateNature = "policy"
+	// GateQuestion parks the run until a person answers it in words. The
+	// verdict stays a verdict — approved means "continue, and here is the
+	// answer" — and the words themselves ride on gate.Decision.Answer.
+	GateQuestion GateNature = "question"
 )
 
 // IsValid reports whether the nature is one of the four.
 func (n GateNature) IsValid() bool {
 	switch n {
-	case GateComputational, GateInferential, GateHuman, GatePolicy:
+	case GateComputational, GateInferential, GateHuman, GatePolicy, GateQuestion:
 		return true
 	}
 	return false
@@ -145,12 +159,14 @@ type Gate struct {
 }
 
 // EffectiveWhen resolves the gate's position, applying the per-nature default:
-// a human gate guards the action, everything else judges the result.
+// the two natures that park on a person guard the action, everything else judges
+// the result. A question defaults to `before` because the run asks for something
+// it needs in order to do the work — asking after it is done is a survey.
 func (g Gate) EffectiveWhen() GateWhen {
 	if g.When == GateBefore || g.When == GateAfter {
 		return g.When
 	}
-	if g.Nature == GateHuman {
+	if g.Nature == GateHuman || g.Nature == GateQuestion {
 		return GateBefore
 	}
 	return GateAfter

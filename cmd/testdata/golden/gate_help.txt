@@ -1,13 +1,14 @@
 $ corvex gate --help
 
 --- stdout ---
-A human gate parks its run until somebody decides. These commands are that somebody: list what is waiting across every repository, read the evidence, and approve or reject.
+A human gate parks its run until somebody decides. These commands are that somebody: list what is waiting across every repository, read the evidence, and approve or reject — or, when the run is the one asking, answer it.
 
 Usage:
   corvex gate [command]
 
 Available Commands:
   ack         Mark required-reading evidence as read, without deciding the gate
+  answer      Answer a gate that asked you a question, in words
   approve     Approve a gate, or close an escalation and let its step run again
   audit       Measure the gates themselves: approval latency, rejection rate, and the read→decide gap
   list        List every gate and escalation waiting for a decision, across repositories

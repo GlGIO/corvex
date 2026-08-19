@@ -1,0 +1,10 @@
+$ corvex gate approve <RUN_ID> --step S02
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+gate <RUN_ID>/S02 asks a question, so approving it says nothing: answer it with `corvex gate answer <RUN_ID> --step S02 --text "…"`, or reject it to say you will not

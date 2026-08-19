@@ -79,8 +79,35 @@ varrendo o que é servido, e `strings` do binário em 0.
   vigiar o filesystem (fsnotify) nem resolveria, porque a mudança que mais importa — um run que
   morreu — não escreve nada em disco, é o `kill -0` que descobre. A UI degrada: o poll de 5s
   continua no `app.js` e volta a trabalhar assim que o stream para de provar que está vivo.
-- **`gate answer` (2g) continua só um nome.** O eixo "o agente pergunta" não tem evento em
-  disco.
+- ~~**`gate answer` (2g) continua só um nome.**~~ **Pago em parte, e o resto está escrito.**
+  O eixo agora tem substrato: uma quinta natureza de gate (`question`, `internal/types/step.go`)
+  escrita no **mesmo arquivo, mesmo diretório e mesma escrita atômica** dos gates humanos, com a
+  resposta num campo novo e opcional — `gate.Decision.Answer`. A forma foi escolhida pelo critério
+  "o `gate audit` e a caixa de entrada continuam corretos **sem caso especial**": como campo, o
+  audit vê a linha pela natureza que já viajava com ela e a caixa lista a pergunta sem saber que
+  ela existe; como tipo irmão, `gate.List` precisaria de uma segunda varredura do mesmo diretório e
+  `ops.Inbox` de uma terceira fatia. E o veredito **não** ganhou um quarto valor: responder é
+  `approved`, recusar é `reject`, não responder é `expired` — o invariante em que o audit se apoia
+  (`Decided == Approved+Rejected+Expired`) fica intacto.
+  Superfícies: `corvex gate answer <id> --step S --text "…"`, `POST /api/gates/{id}/answer`
+  (handler de três linhas, comando gravado no log de ação começando por um **verbo que existe**),
+  e a tela 2g na UI — a pergunta ganha caixa de texto e perde o botão Aprovar, porque o servidor
+  recusa aprovar uma pergunta e botão sempre recusado é pior que botão nenhum.
+  **O que falta, exatamente.** Quem produz a pergunta hoje é a *receita* (um gate `nature:
+  question` num step), não o agente. Para o **worker** perguntar no meio da execução falta mudar o
+  protocolo do provider, que é um request/response de um tiro só: `Provider.Execute`
+  (`internal/provider/provider.go:10`) devolve `types.ExecuteResult`
+  (`internal/types/types.go:189`), que não tem como dizer "parei, preciso saber X" — e
+  `Worker.Execute` (`internal/step/worker.go:126`) não tem ponto de retomada depois de uma
+  resposta. Ou isso, ou uma ferramenta que o agente chame. Não mexi: é mudança de protocolo.
+  Menor, junto: o renderer imprime `human-gate` também para uma pergunta
+  (`cmd/plain_renderer.go:108`), porque o tipo de evento `HumanGate` significa "parado esperando
+  uma pessoa" e renomeá-lo mexeria no vocabulário do ledger, que é commitado.
+  **Decisões que continuam do dono** (roadmap, "Decisões em aberto — NÃO invente"): (i) `gate
+  answer` × `answer` no topo — implementei sob o nome que já estava fixado, sem alias; (ii) o
+  roadmap esboça `--choice C` e eu entreguei `--text`, porque uma escolha pressupõe um conjunto de
+  opções declarado no gate, campo que não existe e que é decisão de schema; `--choice` continua
+  expressível em cima disto depois, sem migração.
 - **`run pause` continua fora** (F3, D13): falta arquivo de controle e ponto de leitura na
   barreira de onda.
 - **Um repositório por servidor.** Listagens são cross-repo (índice global), mas dispatch e

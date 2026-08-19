@@ -1,0 +1,10 @@
+$ corvex gate answer <RUN_ID> --step S01 --text sim
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+gate <RUN_ID>/S01 is a human gate, which asks for a verdict and not for words (only a `question` gate carries an answer)

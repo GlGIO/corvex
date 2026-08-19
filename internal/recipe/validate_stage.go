@@ -91,7 +91,7 @@ func (r *Recipe) validateStageCommand(s Stage) error {
 func (r *Recipe) validateGate(s Stage, i int, g types.Gate) error {
 	where := fmt.Sprintf("recipe %q: stage %q gate #%d", r.Name, s.ID, i+1)
 	if !g.Nature.IsValid() {
-		return fmt.Errorf("%s has unknown nature %q (known: computational, inferential, human, policy)", where, g.Nature)
+		return fmt.Errorf("%s has unknown nature %q (known: computational, inferential, human, policy, question)", where, g.Nature)
 	}
 	if g.When != "" && g.When != types.GateBefore && g.When != types.GateAfter {
 		return fmt.Errorf("%s has unknown `when` %q (known: before, after)", where, g.When)
@@ -110,10 +110,15 @@ func (r *Recipe) validateGate(s Stage, i int, g types.Gate) error {
 		if strings.TrimSpace(g.Command) != "" {
 			return fmt.Errorf("%s is human; it decides by consent, not by `command`", where)
 		}
-		if g.ExpiresAfter != "" {
-			if _, err := time.ParseDuration(g.ExpiresAfter); err != nil {
-				return fmt.Errorf("%s has an unparseable `expires_after` %q: %w", where, g.ExpiresAfter, err)
-			}
+	case types.GateQuestion:
+		// A question with nothing written in it parks a run in front of a blank
+		// screen: the prompt IS the gate here, where on a human gate it is an
+		// optional note beside the evidence.
+		if strings.TrimSpace(g.Prompt) == "" {
+			return fmt.Errorf("%s is a question and must set a non-empty `prompt`", where)
+		}
+		if strings.TrimSpace(g.Command) != "" {
+			return fmt.Errorf("%s is a question for a person; it is answered in words, not by `command`", where)
 		}
 	case types.GatePolicy:
 		if g.MaxAttempts < 0 {
@@ -127,8 +132,17 @@ func (r *Recipe) validateGate(s Stage, i int, g types.Gate) error {
 		}
 	}
 
-	if g.Nature != types.GateHuman && g.ExpiresAfter != "" {
-		return fmt.Errorf("%s sets `expires_after`, which only a human gate waits on", where)
+	// Both natures that park a run on a person may bound the wait, and only
+	// those two: nothing else waits, so `expires_after` elsewhere is a value no
+	// reader ever consults.
+	if g.Nature == types.GateHuman || g.Nature == types.GateQuestion {
+		if g.ExpiresAfter != "" {
+			if _, err := time.ParseDuration(g.ExpiresAfter); err != nil {
+				return fmt.Errorf("%s has an unparseable `expires_after` %q: %w", where, g.ExpiresAfter, err)
+			}
+		}
+	} else if g.ExpiresAfter != "" {
+		return fmt.Errorf("%s sets `expires_after`, which only a gate that waits on a person reads", where)
 	}
 	if g.Nature != types.GatePolicy && (g.MaxAttempts != 0 || g.MaxCostUSD != 0 || len(g.BranchNot) > 0) {
 		return fmt.Errorf("%s sets a policy knob (max_attempts / max_cost_usd / branch_not) but its nature is %q", where, g.Nature)

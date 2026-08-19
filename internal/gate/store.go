@@ -91,6 +91,9 @@ func Decide(repo, runID, stepID string, d Decision) (Pending, error) {
 	if !d.Verdict.IsValid() {
 		return p, fmt.Errorf("gate %s/%s: unknown verdict %q", runID, stepID, d.Verdict)
 	}
+	if err := checkAnswer(p, d); err != nil {
+		return p, err
+	}
 	if d.Verdict == Approved {
 		// The lock asks the gate, not the argv: a label acknowledged yesterday
 		// by `gate ack` counts exactly as much as one typed now. What it will
@@ -114,6 +117,44 @@ func Decide(repo, runID, stepID string, d Decision) (Pending, error) {
 		return p, err
 	}
 	return p, nil
+}
+
+// checkAnswer is the rule that keeps `answer` and `approve` from becoming two
+// spellings of one act.
+//
+// Both directions are refused, and the second is the one that matters. Letting a
+// question through on a bare `approve` would mean the run resumes with an empty
+// answer, which is the failure this whole axis exists to prevent: the step asked
+// for a value and got consent instead. And letting words ride on a gate that
+// never asked anything would put free text on disk under a key no reader of that
+// gate consults — a rejection's words already have a home in Reason.
+//
+// The check lives here rather than in ops because this file is the contract:
+// the CLI, the HTTP handler and the expiry path in the executor all write
+// through Decide, and a rule enforced in one caller is a rule the other two can
+// skip.
+func checkAnswer(p Pending, d Decision) error {
+	answered := strings.TrimSpace(d.Answer) != ""
+	if !p.Asks() {
+		if answered {
+			return fmt.Errorf("gate %s/%s is a %s gate, which asks for a verdict and not for words "+
+				"(only a `question` gate carries an answer)", p.RunID, p.StepID, p.Nature)
+		}
+		return nil
+	}
+	if d.Verdict == Approved && !answered {
+		return fmt.Errorf("gate %s/%s asks a question, so approving it says nothing: "+
+			"answer it with `corvex gate answer %s --step %s --text \"…\"`, "+
+			"or reject it to say you will not",
+			p.RunID, p.StepID, p.RunID, p.StepID)
+	}
+	if d.Verdict != Approved && answered {
+		// Declining to answer is a rejection, and its words belong in Reason —
+		// where every other refusal in this file already puts them.
+		return fmt.Errorf("gate %s/%s: a %s decision carries no answer; put the words in the reason",
+			p.RunID, p.StepID, d.Verdict)
+	}
+	return nil
 }
 
 // writeGate replaces a gate file with the whole struct, atomically. Both writers

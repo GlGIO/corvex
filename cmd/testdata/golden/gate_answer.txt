@@ -1,0 +1,11 @@
+$ corvex gate answer <RUN_ID> --step S02 --text a replica de leitura
+
+--- stdout ---
+Answered <RUN_ID> --step S02 — question: Qual base
+  a replica de leitura
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,25 @@
+$ corvex gate answer --help
+
+--- stdout ---
+Reply to a `question` gate: the step parked because it needs something only you know, and the words you write here are what unparks it.
+
+This is not `approve` under another name, and neither verb accepts the other's gate. Approving a question would resume the run with an empty answer — consent where a value was asked for — so it is refused. To decline, use `corvex gate reject`, which already means the step does not proceed.
+
+Usage:
+  corvex gate answer <run-id> [flags]
+
+Flags:
+      --ack stringArray   acknowledge one piece of required-reading evidence, by label (repeatable)
+  -h, --help              help for answer
+      --step string       step id, when more than one gate is waiting on the run
+      --text string       the answer, in your own words
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
