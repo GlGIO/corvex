@@ -348,3 +348,31 @@ func TestUI_ReadingLockSeedsFromThePersistedMarks(t *testing.T) {
 		}
 	}
 }
+
+// TestGateAudit_IsTheOpsTypeVerbatimAndCarriesNoEvidence: the audit reaches the
+// wire as the same shape `corvex gate audit --json` prints, and — unlike
+// /api/gates/{id}, which embeds gate.Pending whole — it carries no evidence for
+// a browser tab to leak.
+func TestGateAudit_IsTheOpsTypeVerbatimAndCarriesNoEvidence(t *testing.T) {
+	srv, h := newTestServer(t)
+	rec, body := get(t, h, srv, "/api/gates/audit?since=7d")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	for _, key := range []string{"groups", "rows", "repos"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("the audit is missing %q: %v", key, body)
+		}
+	}
+	if strings.Contains(rec.Body.String(), "\"evidence\"") {
+		t.Error("the audit endpoint published evidence — that belongs to /api/gates/{id}, where a person asked for it")
+	}
+	// `audit` is a literal segment and no run id can spell it, so the gate
+	// lookup on the same prefix is untouched.
+	if rec, _ := get(t, h, srv, "/api/gates/run_beef"); rec.Code != http.StatusNotFound {
+		t.Errorf("GET /api/gates/run_beef = %d, want 404 — the new literal route must not shadow the id route", rec.Code)
+	}
+	if rec, _ := get(t, h, srv, "/api/gates/audit?since=nonsense"); rec.Code != http.StatusBadRequest {
+		t.Errorf("a bad window = %d, want 400", rec.Code)
+	}
+}

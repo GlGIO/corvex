@@ -54,20 +54,8 @@ func (g GateLister) LoadInbox(localRepo string) (Inbox, error) {
 	}
 	inbox := Inbox{Gates: gates}
 
-	repos := map[string]bool{}
-	if localRepo != "" {
-		repos[canonicalRepo(localRepo)] = true
-	}
-	if views, verr := g.Resolver.List(); verr == nil {
-		for _, v := range views {
-			if v.Record.Repo != "" {
-				repos[canonicalRepo(v.Record.Repo)] = true
-			}
-		}
-	}
-
 	now := g.now()
-	for repo := range repos {
+	for _, repo := range g.reposInScope(localRepo) {
 		list, lerr := ListEscalations(repo, "")
 		if lerr != nil || !list.Exists {
 			continue
@@ -88,6 +76,38 @@ func (g GateLister) LoadInbox(localRepo string) (Inbox, error) {
 		return inbox.Escalations[i].Waiting > inbox.Escalations[j].Waiting
 	})
 	return inbox, nil
+}
+
+// reposInScope lists every repository a per-repository read has to open: the one
+// the caller is standing in, plus the ones the global index knows.
+//
+// Shared by LoadInbox and LoadGateAudit on purpose. Both answer "what is on this
+// machine" from files that have no index of their own, and two copies of this
+// walk would drift — one of them would learn about a repository the other never
+// looks at, and the difference would surface as an audit that cannot see a gate
+// the inbox lists.
+//
+// An index that cannot be read yields just the local repository rather than an
+// error: a broken $CORVEX_HOME must not make the repository under the cursor
+// unreadable too. Sorted, so the reads happen in a stable order.
+func (g GateLister) reposInScope(localRepo string) []string {
+	seen := map[string]bool{}
+	if localRepo != "" {
+		seen[canonicalRepo(localRepo)] = true
+	}
+	if views, err := g.Resolver.List(); err == nil {
+		for _, v := range views {
+			if v.Record.Repo != "" {
+				seen[canonicalRepo(v.Record.Repo)] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for repo := range seen {
+		out = append(out, repo)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // FindEscalation resolves one escalation in a repository.

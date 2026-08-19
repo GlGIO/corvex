@@ -1,0 +1,111 @@
+$ corvex gate audit --json
+
+--- stdout ---
+{
+  "groups": [
+    {
+      "key": "gate-demo/S01",
+      "recipe": "gate-demo",
+      "step_id": "S01",
+      "open": 0,
+      "decided": 3,
+      "approved": 1,
+      "rejected": 1,
+      "expired": 1,
+      "judged": 2,
+      "rejection_rate": 0.5,
+      "latency_ms_min": 4000,
+      "latency_ms_median": 4000,
+      "latency_ms_max": 540000,
+      "read_gap_ms_median": 0,
+      "read_gap_measured": 2,
+      "read_gap_zero": 1
+    },
+    {
+      "key": "gate-demo/S02",
+      "recipe": "gate-demo",
+      "step_id": "S02",
+      "open": 1,
+      "decided": 0,
+      "approved": 0,
+      "rejected": 0,
+      "expired": 0,
+      "judged": 0,
+      "read_gap_measured": 0,
+      "read_gap_zero": 0
+    }
+  ],
+  "rows": [
+    {
+      "key": "gate-demo/S01",
+      "run_id": "<RUN_ID>",
+      "step_id": "S01",
+      "repo": "<TMP>",
+      "project": "alpha",
+      "recipe": "gate-demo",
+      "nature": "human",
+      "label": "Aprovacao de STG",
+      "verdict": "approved",
+      "opened_at": "<TS>",
+      "decided_at": "<TS>",
+      "latency_ms": 4000,
+      "read_gap_ms": 0,
+      "required_reading": 1,
+      "read_marks": 1
+    },
+    {
+      "key": "gate-demo/S01",
+      "run_id": "<RUN_ID>",
+      "step_id": "S01",
+      "repo": "<TMP>",
+      "project": "alpha",
+      "recipe": "gate-demo",
+      "nature": "human",
+      "label": "Aprovacao de STG",
+      "verdict": "rejected",
+      "opened_at": "<TS>",
+      "decided_at": "<TS>",
+      "latency_ms": 540000,
+      "read_gap_ms": 420000,
+      "required_reading": 1,
+      "read_marks": 1
+    },
+    {
+      "key": "gate-demo/S01",
+      "run_id": "<RUN_ID>",
+      "step_id": "S01",
+      "repo": "<TMP>",
+      "project": "alpha",
+      "recipe": "gate-demo",
+      "nature": "human",
+      "label": "Aprovacao de STG",
+      "verdict": "expired",
+      "opened_at": "<TS>",
+      "decided_at": "<TS>",
+      "latency_ms": 3600000,
+      "required_reading": 1,
+      "read_marks": 0
+    },
+    {
+      "key": "gate-demo/S02",
+      "run_id": "<RUN_ID>",
+      "step_id": "S02",
+      "repo": "<TMP>",
+      "project": "alpha",
+      "recipe": "gate-demo",
+      "nature": "human",
+      "label": "Deploy em producao",
+      "opened_at": "<TS>",
+      "required_reading": 1,
+      "read_marks": 0
+    }
+  ],
+  "repos": 1,
+  "since_ns": 604800000000000
+}
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

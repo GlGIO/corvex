@@ -1,0 +1,10 @@
+$ corvex gate audit
+
+--- stdout ---
+No gates opened in 1 repository, last 7d (--all for every gate ever recorded).
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

@@ -1,0 +1,32 @@
+$ corvex gate audit
+
+--- stdout ---
+4 gate(s) in 1 repository, last 7d  ·  3 decided, 1 open
+
+  gate-demo/S01
+      decided 3   approved 1 · rejected 1 · expired 1   open 0
+      rejection rate 50%  (2 judged; 1 expired, outside the rate)
+      latency    min 4s · median 4s · max 9m  (n=2)
+      latency    p95 withheld — 2 judged, 20 needed for a percentile to mean anything
+      read gap   median 0ms  (measured on 2 of 2; 1 decided in the same breath)
+
+  gate-demo/S02
+      nothing decided yet   open 1
+
+  every gate, smallest read gap first:
+      <RUN_ID>  gate-demo/S01          approved latency 4s      read gap 0ms     Aprovacao de STG
+      <RUN_ID>  gate-demo/S01          rejected latency 9m      read gap 7m      Aprovacao de STG
+      <RUN_ID>  gate-demo/S01          expired  latency 1h      read gap —       Aprovacao de STG
+      <RUN_ID>  gate-demo/S02          open     latency —       read gap —       Deploy em producao
+
+  1 judged in under 10s (--suspect-under).
+  1 read and decided in the same command: a zero gap is one keystroke,
+  because an inline --ack is dated at the decision itself.
+  A gate that always reads this way is not a control. Automate it, or delete it —
+  a stamp costs a person's attention and buys nothing.
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)

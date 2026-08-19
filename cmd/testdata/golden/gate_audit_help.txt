@@ -1,0 +1,31 @@
+$ corvex gate audit --help
+
+--- stdout ---
+Audit the gates instead of what they guard.
+
+Three numbers per gate: how long it waited for an answer, how often the answer was no, and — the sharp one — how long passed between acknowledging the required reading and deciding. A gap of exactly zero means both happened in one command, which is a keystroke rather than a review.
+
+It reads the gate files under .corvex/runs/gates/, not the activity ledger: the ledger cannot tell a rejection from an expiry, records no duration for --approve-gates, and has no reading marks at all. Gates auto-approved by --approve-gates never appear here, because no gate file is written for them — policy approval is a declared choice, not a fast human.
+
+Expiry is reported beside the rejection rate and never inside it: nobody showed up is not the same answer as no.
+
+Usage:
+  corvex gate audit [flags]
+
+Flags:
+      --since string             only gates opened within this window — 90m, 36h, 7d (0 for all) (default "7d")
+      --repo --repo .            only gates of one repository (--repo . for the current one)
+      --all                      every gate ever recorded, ignoring --since (the window a small population needs)
+      --suspect-under duration   call out decisions faster than this in the printed hint (policy, never in --json) (default 10s)
+      --json                     print machine-readable JSON instead of formatted output
+  -h, --help                     help for audit
+
+Global Flags:
+      --no-color   Disable color output
+  -q, --quiet      Suppress per-task progress; print only failures/errors and the final summary
+
+--- stderr ---
+(empty)
+
+--- error ---
+(nil)
