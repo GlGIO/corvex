@@ -1,0 +1,10 @@
+$ corvex recipe validate twodoors
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+(empty)
+
+--- error ---
+recipe "twodoors": stage "S01" has 2 gates that park the run on a person ("Aplicar em STG?" (`human`, `when: before`), "Ficou de pe?" (`human`, `when: after`)), and a stage may only have one: the gate a person answers is one file per (run id, step id) — `.corvex/runs/gates/<run id>-<step id>.json`, claimed with O_EXCL — so the second gate to open finds the file the first one wrote, fails with `gate open ...: file exists`, and kills the whole run after somebody had already answered the first. `when: before` and `when: after` do not separate them, because both positions run against the same step. Split them into two stages, the second `depends_on` the first, so each gate gets a file of its own

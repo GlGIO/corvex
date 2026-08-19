@@ -44,6 +44,9 @@ func (r *Recipe) validateStage(s Stage) error {
 			return err
 		}
 	}
+	if err := validateOnePersonGate(fmt.Sprintf("recipe %q: stage %q", r.Name, s.ID), s.Kind, s.Gates); err != nil {
+		return err
+	}
 	for i, e := range s.Evidence {
 		if err := r.validateEvidence(s, i, e); err != nil {
 			return err
@@ -239,6 +242,102 @@ func validateEvidenceHasAReader(where, kind string, gates []types.Gate, evidence
 	return fmt.Errorf("%s", msg)
 }
 
+// validateOnePersonGate refuses a stage that would park the run on a person
+// twice.
+//
+// This is a physical limit, not a taste rule. The gate a person answers is a
+// file, and there is exactly one per (run id, step id): gate.Path builds
+// `.corvex/runs/gates/<run id>-<step id>.json`, and gate.Open claims it with
+// O_EXCL on purpose, so that a resumed run cannot silently overwrite a decision
+// somebody already made. Both natures that wait on a person go through that one
+// door — humanGate and questionGate call the same openGate. So the second such
+// gate on a step opens the path the first one already wrote and gets back
+// `file exists`, which humanGate wraps in step.Fatal: the whole run dies, and it
+// dies AFTER a person approved the first gate, with the step's work already
+// done. Measured on the real Execute path — see
+// TestTwoGatesOnAPersonCollideOnOneFile in internal/step.
+//
+// The `when` axis does not save it: `before` and `after` are two calls of
+// runGates over the same task, so the file is the same one either way, and two
+// `before` gates collide just as hard.
+//
+// # Why the validator and not a wider gate.Path
+//
+// The obvious alternative is to give the file a second key — `<run>-<step>-2.json`,
+// or the gate's label — and let a step hold as many gates as it likes. That is
+// the better feature and it is NOT this fix, because it changes an on-disk
+// format: gate files already written on a user's machine are found by today's
+// name, `corvex gate list` walks that directory, and a run parked right now
+// would have its pending gate become unreachable by the very command that exists
+// to answer it. Widening the path is the owner's call, with a migration, not a
+// side effect of closing a hole. Recorded here rather than taken.
+//
+// The narrower alternative — refuse at run time, in step.runGates — was rejected
+// for the same reason every other rule here lives in the validator: the author
+// finds out at `recipe validate`, before a run exists, instead of finding out
+// from a dead run after a colleague already approved something.
+func validateOnePersonGate(where, kind string, gates []types.Gate) error {
+	declared, implied := personGates(kind, gates)
+	total := len(declared)
+	if implied {
+		total++
+	}
+	if total < 2 {
+		return nil
+	}
+	names := make([]string, 0, total)
+	if implied {
+		names = append(names, "the human gate implied by `kind: human-gate`")
+	}
+	for _, g := range declared {
+		names = append(names, describePersonGate(g))
+	}
+	return fmt.Errorf("%s has %d gates that park the run on a person (%s), and a stage may only have one: "+
+		"the gate a person answers is one file per (run id, step id) — `.corvex/runs/gates/<run id>-<step id>.json`, "+
+		"claimed with O_EXCL — so the second gate to open finds the file the first one wrote, fails with "+
+		"`gate open ...: file exists`, and kills the whole run after somebody had already answered the first. "+
+		"`when: before` and `when: after` do not separate them, because both positions run against the same step. "+
+		"Split them into two stages, the second `depends_on` the first, so each gate gets a file of its own",
+		where, total, strings.Join(names, ", "))
+}
+
+// personGates lists the gates on a stage that stop the run in front of a person,
+// separating the one the legacy kind implies from the ones the author wrote.
+//
+// It mirrors step.effectiveGates exactly, including the dedup: `kind:
+// human-gate` implies a human gate only when the stage has not declared one, so
+// the legacy kind plus an explicit human gate is one gate, not two — the same
+// recipe the runner has always accepted. The legacy kind plus a `question`,
+// though, really is two doors on one file, and it is refused.
+func personGates(kind string, gates []types.Gate) (declared []types.Gate, implied bool) {
+	for _, g := range gates {
+		if g.Nature == types.GateHuman || g.Nature == types.GateQuestion {
+			declared = append(declared, g)
+		}
+	}
+	if kind != types.LegacyKindHumanGate {
+		return declared, false
+	}
+	for _, g := range declared {
+		if g.Nature == types.GateHuman {
+			return declared, false
+		}
+	}
+	return declared, true
+}
+
+// describePersonGate names a gate the way its author would recognise it.
+func describePersonGate(g types.Gate) string {
+	name := strings.TrimSpace(g.Label)
+	if name == "" {
+		name = strings.TrimSpace(g.Prompt)
+	}
+	if name == "" {
+		return fmt.Sprintf("a `%s` gate at `when: %s`", g.Nature, g.EffectiveWhen())
+	}
+	return fmt.Sprintf("%q (`%s`, `when: %s`)", name, g.Nature, g.EffectiveWhen())
+}
+
 // readsEvidence reports whether any gate on a stage will look at its evidence.
 //
 // It mirrors step.effectiveGates on purpose, including the one implied gate that
@@ -308,6 +407,12 @@ func (r *Recipe) validateFanout(s Stage) error {
 		// copies Gates and Evidence verbatim onto every item), so the same lie
 		// is available here and is refused the same way.
 		if err := validateEvidenceHasAReader(fmt.Sprintf("%s: template step %q", where, ts.ID), ts.Kind, ts.Gates, ts.Evidence); err != nil {
+			return err
+		}
+		// Same for the gate file: a template step becomes a real task with a
+		// real step id, so two person-gates on the template collide once per
+		// item — the same one-file-per-(run, step) limit, N times over.
+		if err := validateOnePersonGate(fmt.Sprintf("%s: template step %q", where, ts.ID), ts.Kind, ts.Gates); err != nil {
 			return err
 		}
 		tmplIDs[ts.ID] = true

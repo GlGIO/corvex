@@ -351,3 +351,125 @@ func TestValidate_FanoutTemplateEvidenceNeedsAReader(t *testing.T) {
 		t.Errorf("the refusal does not name the template step: %v", err)
 	}
 }
+
+// personGateStage builds a one-stage recipe whose only variable is the gate
+// block, so the cases below measure nothing but how many doors the stage puts
+// in front of a person.
+func personGateStage(kind, command, gates string) string {
+	s := "name: x\nstages:\n  - id: S01\n    kind: " + kind + "\n"
+	if command != "" {
+		s += "    command: \"" + command + "\"\n"
+	}
+	return s + gates
+}
+
+// TestValidate_OneGateOnAPersonPerStage is the fail-closed half of a physical
+// limit. The gate a person answers is one file per (run id, step id), claimed
+// with O_EXCL; both natures that wait on a person go through the same openGate.
+// So a second one on the same step opens a path that already exists and kills
+// the run — after somebody approved the first and the work ran. Measured on the
+// real Execute path in step.TestTwoGatesOnAPersonCollideOnOneFile; refused here
+// so no run ever gets that far.
+func TestValidate_OneGateOnAPersonPerStage(t *testing.T) {
+	valid := map[string]string{
+		// The canonical shape: consent plus as many machine checks as you like.
+		"one human gate and one computational": "    gates:\n      - nature: human\n        when: before\n        label: \"Aprovar\"\n" +
+			"      - nature: computational\n        when: after\n        command: \"go test ./...\"\n",
+		"one human gate and one inferential": "    gates:\n      - nature: human\n        label: \"Aprovar\"\n" +
+			"      - nature: inferential\n        when: after\n        reviewer: dba\n",
+		"one question and one policy": "    gates:\n      - nature: question\n        prompt: \"contra qual base?\"\n" +
+			"      - nature: policy\n        max_attempts: 2\n",
+		"a lone human gate":   "    gates:\n      - nature: human\n        label: \"Aprovar\"\n",
+		"no gate on a person": "    gates:\n      - nature: computational\n        command: \"true\"\n",
+	}
+	for name, gates := range valid {
+		t.Run("valid/"+name, func(t *testing.T) {
+			if err := mustParse(t, personGateStage("tool", "true", gates)).Validate(); err != nil {
+				t.Fatalf("Validate() = %v, want nil: this stage opens exactly one gate file", err)
+			}
+		})
+	}
+
+	// Two human gates on DIFFERENT stages is the fix the message tells authors
+	// to apply, so it has to keep validating.
+	t.Run("valid/two human gates on two stages", func(t *testing.T) {
+		y := "name: x\nstages:\n" +
+			"  - id: S01\n    kind: tool\n    command: \"true\"\n    gates:\n      - nature: human\n        label: \"Aprovar o plano\"\n" +
+			"  - id: S02\n    kind: tool\n    command: \"true\"\n    depends_on: [S01]\n    gates:\n      - nature: human\n        label: \"Aprovar o resultado\"\n"
+		if err := mustParse(t, y).Validate(); err != nil {
+			t.Fatalf("Validate() = %v, want nil: two stages are two step ids, so two files", err)
+		}
+	})
+
+	// The legacy kind implies a human gate, and step.effectiveGates skips the
+	// implied one when the author declared their own. The validator mirrors
+	// that dedup, or every pre-F2 recipe would start failing.
+	t.Run("valid/legacy human-gate kind with its own human gate", func(t *testing.T) {
+		y := personGateStage("human-gate", "", "    gates:\n      - nature: human\n        label: \"Aprovar\"\n")
+		if err := mustParse(t, y).Validate(); err != nil {
+			t.Fatalf("Validate() = %v, want nil: the implied gate and the declared one are the same gate", err)
+		}
+	})
+
+	refused := map[string]struct{ yaml, wants string }{
+		"two human gates, before and after": {
+			personGateStage("tool", "true", "    gates:\n      - nature: human\n        when: before\n        label: \"Aprovar\"\n"+
+				"      - nature: human\n        when: after\n        label: \"Conferir\"\n"),
+			`"Conferir" (` + "`human`, `when: after`)",
+		},
+		"two human gates at the same position": {
+			personGateStage("tool", "true", "    gates:\n      - nature: human\n        label: \"Aprovar\"\n"+
+				"      - nature: human\n        label: \"Conferir\"\n"),
+			`"Conferir" (` + "`human`, `when: before`)",
+		},
+		"a human gate and a question": {
+			personGateStage("tool", "true", "    gates:\n      - nature: human\n        label: \"Aprovar\"\n"+
+				"      - nature: question\n        when: after\n        prompt: \"contra qual base?\"\n"),
+			`"contra qual base?" (` + "`question`, `when: after`)",
+		},
+		"the legacy kind plus a question": {
+			personGateStage("human-gate", "", "    gates:\n      - nature: question\n        prompt: \"contra qual base?\"\n"),
+			"the human gate implied by `kind: human-gate`",
+		},
+	}
+	for name, c := range refused {
+		t.Run("refused/"+name, func(t *testing.T) {
+			err := mustParse(t, c.yaml).Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want a refusal: the second gate would fail with `file exists` and kill the run")
+			}
+			for _, want := range []string{
+				`recipe "x": stage "S01" has 2 gates that park the run on a person`,
+				"one file per (run id, step id)",
+				"`gate open ...: file exists`",
+				"kills the whole run after somebody had already answered the first",
+				"`when: before` and `when: after` do not separate them",
+				"Split them into two stages, the second `depends_on` the first",
+				c.wants,
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal does not say %q; it says: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
+// A fan-out template step becomes a real task per item, so the same two doors
+// would collide once per item. orchestrator/fanout.go copies Gates verbatim,
+// which is why the rule has to run over the template too.
+func TestValidate_OneGateOnAPersonPerFanoutTemplateStep(t *testing.T) {
+	y := "name: x\nstages:\n" +
+		"  - id: S01\n    kind: tool\n    command: \"ls\"\n    produces: items\n" +
+		"  - id: S02\n    kind: tool\n    fanout:\n      over: S01\n      template:\n" +
+		"        - id: apply\n          kind: tool\n          command: \"true\"\n          gates:\n" +
+		"            - nature: human\n              label: \"Aprovar\"\n" +
+		"            - nature: question\n              when: after\n              prompt: \"deu certo?\"\n"
+	err := mustParse(t, y).Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want a refusal: every item would open the same two doors on one file")
+	}
+	if !strings.Contains(err.Error(), `template step "apply" has 2 gates that park the run on a person`) {
+		t.Errorf("the refusal does not name the template step: %v", err)
+	}
+}

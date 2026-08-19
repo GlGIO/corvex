@@ -243,6 +243,13 @@ corvex gate approve <run-id> --step S03 --ack "Deploy"  # unblocks the run
 `corvex run <name> --approve-gates` auto-approves every human gate instead —
 the CI path, for pipelines that must not stop for a person.
 
+A stage may hold **one** gate that waits on a person — one `human` or one
+`question`, never two. That gate is a file, one per (run id, step id), so a
+second one on the same stage opens a path that already exists and kills the run
+*after* somebody has already approved the first; `recipe validate` refuses such
+a recipe rather than letting it die halfway. Two decisions means two stages, the
+second `depends_on` the first.
+
 Gates come in four natures — `computational` (a shell command's exit code),
 `inferential` (an independent agent call, never the stage's own worker),
 `human` (above), and `policy` (a runner rule: attempt cap, cost ceiling,

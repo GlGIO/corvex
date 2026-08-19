@@ -143,6 +143,38 @@ func TestCharacterizeRecipeValidateRejectsEvidenceNobodyReads(t *testing.T) {
 	goldenAssert(t, "recipenoun_validate_evidence_no_reader", scrub(transcript(args, stdout, stderr, err)))
 }
 
+// recipeWithTwoDoorsYAML is the shape that used to validate and then kill a run
+// halfway: one stage asking a person twice, once to authorise the migration and
+// once to confirm it landed. It reads perfectly and it cannot run — the gate a
+// person answers is one file per (run id, step id), so the second gate opens a
+// path that already exists. The run dies AFTER the approval and AFTER the work.
+const recipeWithTwoDoorsYAML = `name: twodoors
+description: asks the same person twice on one stage
+stages:
+  - id: S01
+    title: Migrar STG
+    kind: tool
+    command: "./migrate.sh"
+    gates:
+      - nature: human
+        when: before
+        label: "Aplicar em STG?"
+      - nature: human
+        when: after
+        label: "Ficou de pe?"
+`
+
+// What the author has to be told at the terminal: why the second gate cannot
+// exist, and that the fix is a second stage.
+func TestCharacterizeRecipeValidateRejectsTwoGatesOnOnePerson(t *testing.T) {
+	f := newFixture(t)
+	writeRecipe(t, f, "twodoors", recipeWithTwoDoorsYAML)
+
+	args := []string{"recipe", "validate", "twodoors"}
+	stdout, stderr, err := runCLIIn(t, f.Dir, args...)
+	goldenAssert(t, "recipenoun_validate_two_human_gates", scrub(transcript(args, stdout, stderr, err)))
+}
+
 func TestCharacterizeRecipeCompileVerb(t *testing.T) {
 	f := newFixture(t)
 	writeRecipe(t, f, "demo", statuslogsRecipeYAML)
