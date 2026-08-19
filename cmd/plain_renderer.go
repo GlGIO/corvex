@@ -72,8 +72,7 @@ func (r *PlainRenderer) render(ev orchestrator.Event) {
 			msg = strings.TrimPrefix(msg, "skipped ")
 			fmt.Fprintf(r.w, "%s %s  skipped (%s)\n", g, ev.TaskID, msg)
 		default:
-			g := r.coloured("✗", "!", tui.StatusFailed)
-			fmt.Fprintf(r.w, "%s %s  failed %s %s\n", g, ev.TaskID, r.dot(), ev.Message)
+			r.writeFailure(ev)
 		}
 
 	case orchestrator.EventRetry:

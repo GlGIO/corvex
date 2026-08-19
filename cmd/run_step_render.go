@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/ops"
@@ -37,6 +38,15 @@ func renderRunStep(s ops.RunStepDetail) {
 	}
 	for _, d := range s.Decisions {
 		fmt.Printf("  • %s\n", d)
+	}
+	// Before the events, not after: the events are a timeline the reader scans,
+	// and what the command said is the answer they came for. A step that failed
+	// on a missing flag should not have to be scrolled past to find it.
+	if strings.TrimSpace(s.Output) != "" {
+		fmt.Println("\nOutput:")
+		for _, line := range strings.Split(strings.TrimRight(s.Output, "\n"), "\n") {
+			fmt.Printf("  %s\n", line)
+		}
 	}
 	if len(s.Events) == 0 {
 		fmt.Println("\nNo events recorded for this step.")

@@ -6,6 +6,7 @@ import (
 
 	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/run"
+	"github.com/giovannialves/corvex/internal/stepout"
 	"github.com/giovannialves/corvex/internal/types"
 )
 
@@ -51,6 +52,21 @@ type RunStepDetail struct {
 	Summary     string           `json:"summary,omitempty"`
 	Decisions   []string         `json:"decisions,omitempty"`
 	Events      []activity.Entry `json:"events"`
+
+	// Output is what this step's command printed when it failed — the tail of
+	// its own stdout+stderr, read from `.corvex/runs/output/`.
+	//
+	// It is not in the ledger and cannot be: activity.jsonl is committed by
+	// corvex's own auto_commit, and command output is the same class of content
+	// as a command input, which is why activity.Entry carries a tool's NAME and
+	// never its arguments. So this screen joins two stores — the committed
+	// timeline for what happened, and machine-local scratch for what was said.
+	//
+	// Empty for every step that passed, for every step whose command printed
+	// nothing, and for every run that predates the store. This is the canonical
+	// detail surface, which is why it is the one that must not need the terminal
+	// scrollback of the person who started the run.
+	Output string `json:"output,omitempty"`
 }
 
 // RunReport is the single screen F3's D3 replaces three commands with.
@@ -180,7 +196,7 @@ func (l RunLister) LoadRunReport(workDir, arg, stepID string) (RunReport, error)
 	rep.Total = len(rep.Tasks)
 
 	if stepID != "" {
-		detail, derr := buildStepDetail(view, entries, rep.Tasks, stepID)
+		detail, derr := buildStepDetail(view, entries, rep.Tasks, stepID, rep.Repo, rep.RunID)
 		if derr != nil {
 			return RunReport{}, derr
 		}
@@ -270,7 +286,14 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 	return rows
 }
 
-func buildStepDetail(view *ProjectView, entries []activity.Entry, rows []RunTaskRow, stepID string) (*RunStepDetail, error) {
+// buildStepDetail assembles one step's screen.
+//
+// repo and runID are taken rather than derived because the step's output lives
+// outside the ledger, keyed by (repo, run id, step id) — the same tuple the gate
+// store uses, and for the same reason: it is per-machine scratch that must not
+// reach a commit. On a project-scoped screen runID is the project's last run,
+// which is also the run whose status tasks.md is showing.
+func buildStepDetail(view *ProjectView, entries []activity.Entry, rows []RunTaskRow, stepID, repo, runID string) (*RunStepDetail, error) {
 	t, err := FindTask(view.Tasks, stepID)
 	if err != nil {
 		return nil, err
@@ -281,6 +304,7 @@ func buildStepDetail(view *ProjectView, entries []activity.Entry, rows []RunTask
 		Create:      t.Files.Create,
 		Modify:      t.Files.Modify,
 		Events:      FilterActivityByTask(entries, t.ID),
+		Output:      stepout.Read(repo, runID, t.ID),
 	}
 	detail.RunTaskRow = RunTaskRow{ID: t.ID, Title: t.Title, Status: t.Status, DependsOn: t.DependsOn}
 	for _, row := range rows {

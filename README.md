@@ -639,13 +639,32 @@ Pause, skip, and retry travel from the TUI to the orchestrator over a `Commands`
 │   └── my-feature-S03.md
 ├── worktrees/               # Ephemeral git worktrees for A/B runs (auto-cleaned)
 │   └── S03-a/
+├── runs/                    # Per-machine run scratch — gitignored with `*` on first write
+│   ├── .gitignore           # Holds `*`: nothing under runs/ is ever committed
+│   ├── run_8f21.json        # One run's record: pid, absolute repo path, status
+│   ├── gates/               # Pending/decided human gates, keyed by run + step
+│   └── output/              # What a FAILED command stage printed (mode 0600)
 └── tasks/                   # Task manifests per project
     └── my-feature/
         ├── spec.md          # Specification (Planner input)
         ├── decisions.md     # Answers produced by `corvex grill` (optional)
         ├── tasks.md         # Task DAG (Planner output)
-        └── anchor.yaml      # Accumulated context (auto-generated)
+        ├── anchor.yaml      # Accumulated context (auto-generated)
+        └── activity.jsonl   # Event timeline — COMMITTED, so it holds no machine facts
 ```
+
+The split between the last two entries is deliberate and load-bearing. `activity.jsonl`
+is committed by corvex's own `auto_commit`, so it carries only what is safe to put in
+your git history: state transitions, timings, costs, and the *name* of a tool — never a
+tool's input. Everything that describes the machine or quotes arbitrary output lives
+under `runs/`, which is gitignored on first write.
+
+A `kind: tool` / `kind: test` stage that fails is where the two meet: the ledger line
+records that it failed and after how many iterations, and the last 20 lines (or 4 KiB) of
+what the command printed go to `runs/output/`, where `corvex run show <id> --step <id>`
+reads them back. The same tail is printed under the `✗ S03 failed` line during the run,
+so the usual case needs no second command. Nothing redacts that output — treat the file
+as you would the terminal it came from.
 
 ## Prerequisites
 

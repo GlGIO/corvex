@@ -85,6 +85,28 @@ type Event struct {
 	// Tool is the name of the tool a worker invoked, for the tool_use and
 	// tool_result lines. Never its input: see activity.Entry.Tool.
 	Tool string
+
+	// Output is what a FAILED computational stage printed — the tail of its own
+	// stdout+stderr, already truncated by internal/stepout.
+	//
+	// It exists because a stage that failed used to say only "command exit did
+	// not pass after 1 iteration(s)": the output was captured and then dropped,
+	// and the operator had to re-run the command by hand to read the sentence
+	// the tool had already written. This field is how the failure line and its
+	// cause reach the same screen.
+	//
+	// It is deliberately NOT part of the ledger. activity.Entry has no field
+	// for it and ledgerEntryFromEvent copies field by field, so this one stops
+	// at the renderers by construction rather than by anyone remembering —
+	// which is what it needs, because activity.jsonl is committed and command
+	// output is the same class of content as a command input. The persisted
+	// copy goes to `.corvex/runs/output/`, gitignored and 0600; see
+	// internal/stepout.
+	//
+	// Empty on every other event, including a stage that passed: a passing
+	// step's output is already gate evidence, and putting it here would change
+	// what a green run prints.
+	Output string
 }
 
 // Phase names. Values are on-disk (the ledger's `phase` column), so they are a

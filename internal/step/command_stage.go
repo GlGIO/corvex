@@ -11,6 +11,7 @@ import (
 	"github.com/giovannialves/corvex/internal/anchor"
 	"github.com/giovannialves/corvex/internal/event"
 	"github.com/giovannialves/corvex/internal/gate"
+	"github.com/giovannialves/corvex/internal/stepout"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -76,6 +77,12 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 
 	start := time.Now()
 	var lastErr error
+	// lastOut is the output of whatever produced lastErr — the command, or the
+	// until-condition when the loop has one. The two are assigned in the same
+	// pair of branches on purpose: a diagnostic that showed the command's output
+	// while the condition was what failed would name the wrong culprit, and the
+	// operator would go read a command that worked.
+	var lastOut string
 	for iter := 1; iter <= maxIter; iter++ {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -97,11 +104,11 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		if strings.TrimSpace(t.LoopUntil) != "" {
 			// The until-condition governs; the command is the work that may
 			// make it pass over successive iterations.
-			_, untilErr := e.runShell(cmdCtx, r, t.LoopUntil)
+			untilOut, untilErr := e.runShell(cmdCtx, r, t.LoopUntil)
 			ok = untilErr == nil
-			lastErr = untilErr
+			lastErr, lastOut = untilErr, untilOut
 		} else {
-			lastErr = runErr
+			lastErr, lastOut = runErr, out
 		}
 		if t.ExpectFail {
 			ok = !ok
@@ -136,22 +143,60 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 	if strings.TrimSpace(t.LoopUntil) != "" {
 		cond = fmt.Sprintf("loop condition %q", t.LoopUntil)
 	}
+	tail := e.recordStageOutput(r, t, lastOut)
 	if t.ExpectFail {
 		// The honest message for the most valuable repro verdict: the bug is
-		// not there, so there is nothing to fix.
+		// not there, so there is nothing to fix. The output still travels: what
+		// the command printed while exiting 0 is how the operator learns whether
+		// the bug is really gone or the repro stopped exercising it.
 		msg := fmt.Sprintf("the repro command did not reproduce (it exited 0); nothing to fix at %s", t.ID)
-		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg})
+		e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: msg, Output: tail})
 		return fmt.Errorf("task %s: %s", t.ID, msg)
 	}
-	// Two messages on purpose: the returned error carries what the command
-	// actually said (the operator needs it, and it goes to the terminal and the
-	// run log), while the emitted one stops at the count — the emitted one is
-	// the one that lands in activity.jsonl, which is committed, and a failing
-	// command's stderr is where paths and exported credentials live.
+	// Three places, on purpose, and the split is about what each one is allowed
+	// to hold.
+	//
+	// Message stops at the count, because it is the field that lands in
+	// activity.jsonl — committed by corvex's own auto_commit — and a failing
+	// command's output is where paths and exported credentials live. Output
+	// carries the command's own last words to the renderers and nowhere else:
+	// activity.Entry has no field for it, so it cannot reach the commit. And the
+	// returned error keeps the exit status for the run's own failure summary.
+	//
+	// Before this, the two published surfaces held the count and nothing else,
+	// and the sentence the tool had already written — the one naming the missing
+	// flag — was captured by runShell and then discarded. That is the bug: the
+	// diagnosis existed and was thrown away.
 	charmbraceletlog.Warn("command stage failed", "task", t.ID, "err", lastErr)
 	published := fmt.Sprintf("%s did not pass after %d iteration(s)", cond, maxIter)
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: published})
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseValidate, Status: types.StatusFailed, Message: published, Output: tail})
 	return fmt.Errorf("task %s: %s: %v", t.ID, published, lastErr)
+}
+
+// recordStageOutput truncates a failed stage's own output once and puts it where
+// the two surfaces a person uses can find it: the returned tail rides the failed
+// task_complete event to the terminal, and the same bytes are stored under
+// `.corvex/runs/output/` for `run show --step`.
+//
+// One truncation, not two, so the screen and the file can never disagree about
+// what the command said.
+//
+// The store is skipped when the run has no identity: an unregistered run has no
+// addressable place to put it, and a step must degrade to less information
+// rather than to a refused step (the same rule runID and runBase follow). The
+// event still carries the tail, so the terminal loses nothing.
+func (e *Executor) recordStageOutput(r *Run, t *types.Task, out string) string {
+	tail := stepout.Tail(out)
+	if tail == "" {
+		return ""
+	}
+	if r == nil || r.Identity.RunID == "" || r.Identity.Repo == "" {
+		return tail
+	}
+	if err := stepout.Write(r.Identity.Repo, r.Identity.RunID, t.ID, tail); err != nil {
+		charmbraceletlog.Warn("recording failed stage output", "task", t.ID, "err", err)
+	}
+	return tail
 }
 
 // markStagePassed records a non-AI stage (command, approved human-gate) as
