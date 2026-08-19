@@ -214,7 +214,7 @@ func TestResolveDeclaredEvidence(t *testing.T) {
 		{Kind: types.EvidenceLink, Label: "PR", Content: "https://example.test/pr/1"},
 		{Kind: types.EvidenceDiff, Label: "Plano", From: "exit 7"},
 	}}
-	e.resolveDeclared(context.Background(), tk, acc)
+	e.resolveDeclared(context.Background(), &Run{}, tk, acc)
 	items := acc.all()
 	if len(items) != 3 {
 		t.Fatalf("resolved %d items, want 3", len(items))

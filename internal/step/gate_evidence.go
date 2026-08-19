@@ -50,8 +50,8 @@ func (s *evidenceSet) all() []types.Evidence {
 //
 // A git failure is silent here — the step succeeded, and "we could not summarise
 // the diff" is not worth failing a task that passed review.
-func (e *Executor) addDiffEvidence(ctx context.Context, t *types.Task, acc *evidenceSet) {
-	out, err := e.runShell(ctx, "git diff --stat HEAD")
+func (e *Executor) addDiffEvidence(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) {
+	out, err := e.runShell(ctx, r, "git diff --stat HEAD")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return
 	}
@@ -66,13 +66,13 @@ func (e *Executor) addDiffEvidence(ctx context.Context, t *types.Task, acc *evid
 // to show you the query plan did not run" is information the decider needs, not
 // a reason to refuse work that has not been judged yet. The gate itself is what
 // refuses.
-func (e *Executor) resolveDeclared(ctx context.Context, t *types.Task, acc *evidenceSet) {
+func (e *Executor) resolveDeclared(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) {
 	for _, decl := range t.Evidence {
 		if decl.From == "" {
 			acc.add(decl)
 			continue
 		}
-		out, err := e.runShell(ctx, decl.From)
+		out, err := e.runShell(ctx, r, decl.From)
 		item := decl
 		item.From = ""
 		item.Content = out

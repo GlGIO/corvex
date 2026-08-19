@@ -291,6 +291,21 @@ run started from. Anchor diffs to it rather than to `HEAD`: with `auto_commit`
 on, every step checkpoints, so by the time a later step's gate opens `HEAD` is a
 bookkeeping commit and a `HEAD`-anchored diff shows the approver nothing.
 
+Every shell a recipe reaches — a stage's `command:`, its `until:`, a gate's
+`command:`, an evidence `from:` — gets two variables and no others:
+
+| variable | value |
+| --- | --- |
+| `$CORVEX_RUN_BASE` | the commit the run started from |
+| `$CORVEX_RUN_ID` | this run's id, the same one `run list` prints and `run show` takes |
+
+Use `$CORVEX_RUN_ID` for anything a recipe has to carry from one step to the
+next — a scratch directory, a file holding the id of something S02 created and
+S03 reads. Deriving that name from the run's *inputs* instead looks equivalent
+and is not: two runs started with the same inputs share it, and one overwrites
+the other's state. The id is unique per run, and a stage and its gates see the
+same value, so both sides of a step can name the same place.
+
 A stage can also **fan out** over items discovered at run time — one template
 expanded into N instances, up to a cap:
 

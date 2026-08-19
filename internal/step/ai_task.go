@@ -203,7 +203,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		reviewResult.Category, reviewResult.Summary, reviewResult.Verdict == VerdictPass))
 
 	if reviewResult.Verdict == VerdictPass {
-		e.addDiffEvidence(ctx, t, acc)
+		e.addDiffEvidence(ctx, r, t, acc)
 		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, workerCost)
 	}
 

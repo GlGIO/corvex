@@ -215,12 +215,71 @@ func (e *Executor) markGateFailure(r *Run, t *types.Task) {
 }
 
 // runShell runs a shell command in the workDir and returns combined output.
-func (e *Executor) runShell(ctx context.Context, command string) (string, error) {
+//
+// Every shell a recipe can reach goes through here — a stage's `command:`, a
+// loop's `until:`, a computational gate's check, an evidence item's `from:` —
+// which is why the run's environment is assembled in one place: a variable a
+// stage could read and its gate could not would be worse than no variable,
+// because the recipe would look correct and derive two different answers.
+func (e *Executor) runShell(ctx context.Context, r *Run, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = e.workDir
-	cmd.Env = append(os.Environ(), "CORVEX_RUN_BASE="+e.runBase(ctx))
+	cmd.Env = append(os.Environ(),
+		"CORVEX_RUN_BASE="+e.runBase(ctx),
+		"CORVEX_RUN_ID="+r.runID(),
+	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// runID is this run's own name, exported to every shell as $CORVEX_RUN_ID.
+//
+// It exists because $CORVEX_RUN_BASE — a commit — is not an identity. A recipe
+// that has to carry state from one step to the next (the id of a work item
+// created in S02 and read in S03) has nowhere to put it, so it derives a
+// directory from the run's INPUTS instead, and two concurrent runs with the
+// same inputs then share it: one run's S02 overwrites the other's state and its
+// S03 walks the wrong item to the end. Derived-from-inputs is not a bad habit,
+// it is the only thing a recipe author could do, because the runner knew the id
+// and never said it.
+//
+// # The name
+//
+// `CORVEX_RUN_ID`, because the CLI already calls it that: `corvex run list`
+// prints these ids, `corvex run show <id>` and `corvex gate approve <id>` take
+// one. A recipe author who has used the CLI needs no second vocabulary, and the
+// CORVEX_RUN_* prefix pairs it with CORVEX_RUN_BASE — both answer "what run is
+// this", one by name and one by anchor.
+//
+// The prefix is shared with two knobs corvex READS from the operator
+// ($CORVEX_RUN_RETENTION, $CORVEX_RUN_INDEX_MAX_BYTES), which is a wrinkle and
+// not a collision: measured, this name has no reader anywhere in the tree, so a
+// stage that invokes corvex recursively inherits it and nothing acts on it.
+//
+// # What is NOT exported
+//
+// Only the id. Not the repository path, not the project, not the recipe name:
+// the id is already unique per run, so each extra variable would be a fact
+// about the machine leaking into whatever the recipe writes with it — paths,
+// logs, commit messages, a comment on someone's tracker. Nothing here needs
+// them; when something does, it can argue for itself.
+//
+// # Same value on both sides
+//
+// The id is read off Run.Identity, the same field the gate file is keyed by, so
+// a stage and its gate cannot disagree — they are one read of one struct, not
+// two derivations. That is load-bearing for the pattern this exists to fix,
+// where the gate re-runs the stage's own call in dry-run mode and has to land
+// on the same state directory.
+//
+// A run with no identity yields the empty string rather than an error, matching
+// runBase: a step must degrade to less information, never to a refused step.
+// Real runs always have one — ops refuses to start a run it cannot register.
+func (r *Run) runID() string {
+	if r == nil {
+		return ""
+	}
+	return r.Identity.RunID
 }
 
 // runBase is the commit this run started from, memoised for its lifetime.

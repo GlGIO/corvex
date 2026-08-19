@@ -98,7 +98,7 @@ func (e *Executor) runGates(ctx context.Context, r *Run, t *types.Task, when typ
 func (e *Executor) runGate(ctx context.Context, r *Run, t *types.Task, g types.Gate, acc *evidenceSet) error {
 	switch g.Nature {
 	case types.GateComputational:
-		return e.computationalGate(ctx, t, g, acc)
+		return e.computationalGate(ctx, r, t, g, acc)
 	case types.GateInferential:
 		return e.inferentialGate(ctx, r, t, g, acc)
 	case types.GatePolicy:
@@ -114,8 +114,8 @@ func (e *Executor) runGate(ctx context.Context, r *Run, t *types.Task, g types.G
 }
 
 // computationalGate runs a shell check and turns its output into evidence.
-func (e *Executor) computationalGate(ctx context.Context, t *types.Task, g types.Gate, acc *evidenceSet) error {
-	out, err := e.runShell(ctx, g.Command)
+func (e *Executor) computationalGate(ctx context.Context, r *Run, t *types.Task, g types.Gate, acc *evidenceSet) error {
+	out, err := e.runShell(ctx, r, g.Command)
 	acc.add(gate.FromCommandOutput(gateLabel(g, "check"), out, err == nil))
 	if err != nil {
 		return e.gateRefused(t, g, fmt.Sprintf("`%s` exited non-zero: %v", g.Command, err))

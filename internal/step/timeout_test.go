@@ -60,7 +60,8 @@ func TestRunShell_ExposesTheRunBaseToEvidenceCommands(t *testing.T) {
 	head := gitHead(t, repo)
 
 	e := &Executor{workDir: repo, cfg: &config.Config{}}
-	out, err := e.runShell(context.Background(), "echo $CORVEX_RUN_BASE")
+	r := &Run{Identity: RunIdentity{RunID: "run_base01"}}
+	out, err := e.runShell(context.Background(), r, "echo $CORVEX_RUN_BASE")
 	if err != nil {
 		t.Fatalf("runShell: %v", err)
 	}
@@ -79,7 +80,7 @@ func TestRunShell_ExposesTheRunBaseToEvidenceCommands(t *testing.T) {
 		t.Fatal("the fixture did not actually move HEAD")
 	}
 
-	out, err = e.runShell(context.Background(), "echo $CORVEX_RUN_BASE")
+	out, err = e.runShell(context.Background(), r, "echo $CORVEX_RUN_BASE")
 	if err != nil {
 		t.Fatalf("runShell: %v", err)
 	}

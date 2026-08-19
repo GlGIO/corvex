@@ -86,7 +86,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		}
 		e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
 
-		out, runErr := e.runShell(cmdCtx, t.Command)
+		out, runErr := e.runShell(cmdCtx, r, t.Command)
 		if trimmed := strings.TrimSpace(out); trimmed != "" {
 			ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
 			e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &ev})
@@ -97,7 +97,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		if strings.TrimSpace(t.LoopUntil) != "" {
 			// The until-condition governs; the command is the work that may
 			// make it pass over successive iterations.
-			_, untilErr := e.runShell(cmdCtx, t.LoopUntil)
+			_, untilErr := e.runShell(cmdCtx, r, t.LoopUntil)
 			ok = untilErr == nil
 			lastErr = untilErr
 		} else {

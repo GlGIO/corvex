@@ -73,7 +73,7 @@ func (e *Executor) humanGate(ctx context.Context, r *Run, t *types.Task, g types
 		return Fatal(fmt.Errorf("task %s: human gate %s cannot be opened — this run has no identity on disk", t.ID, g.Describe()))
 	}
 
-	e.resolveDeclared(ctx, t, acc)
+	e.resolveDeclared(ctx, r, t, acc)
 	pending, err := e.openGate(r, t, g, acc)
 	if err != nil {
 		return Fatal(fmt.Errorf("task %s: opening human gate: %w", t.ID, err))
@@ -150,7 +150,7 @@ func (e *Executor) questionGate(ctx context.Context, r *Run, t *types.Task, g ty
 		return Fatal(fmt.Errorf("task %s: question %s cannot be opened — this run has no identity on disk", t.ID, g.Describe()))
 	}
 
-	e.resolveDeclared(ctx, t, acc)
+	e.resolveDeclared(ctx, r, t, acc)
 	pending, err := e.openGate(r, t, g, acc)
 	if err != nil {
 		return Fatal(fmt.Errorf("task %s: opening question: %w", t.ID, err))
