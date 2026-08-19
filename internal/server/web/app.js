@@ -15,6 +15,12 @@ const el = (tag, attrs = {}, ...kids) => {
     if (k === 'class') node.className = v;
     else if (k === 'text') node.textContent = v;
     else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+    // `style` takes an object and goes through the CSSOM, never through a style
+    // ATTRIBUTE: the server sends `style-src 'self'` (csp.go), and an inline
+    // style attribute would need 'unsafe-inline' — which also re-opens the
+    // injection hole the policy exists to close. A property assignment is not
+    // an inline style, so this is the shape every caller has to use.
+    else if (k === 'style') Object.assign(node.style, v);
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
   for (const kid of kids.flat()) if (kid) node.append(kid.nodeType ? kid : document.createTextNode(kid));
@@ -193,9 +199,9 @@ async function renderRunDetail(root, id) {
     for (const p of r.per_phase) {
       const share = r.cost_usd > 0 ? Math.max(2, Math.round((p.cost_usd / r.cost_usd) * 100)) : 0;
       bars.append(el('div', { class: 'row' },
-        el('span', { class: 'id', text: p.phase, style: 'width:12ch' }),
-        el('span', { class: 'dim', text: money(p.cost_usd), style: 'width:8ch' }),
-        el('span', { class: 'bar', style: `width:${share}%` }),
+        el('span', { class: 'id', text: p.phase, style: { width: '12ch' } }),
+        el('span', { class: 'dim', text: money(p.cost_usd), style: { width: '8ch' } }),
+        el('span', { class: 'bar', style: { width: `${share}%` } }),
       ));
     }
     root.append(bars);

@@ -31,6 +31,9 @@ import (
 //     survives check 1 only if the attacker also stole the token.
 //  3. SameSite=Strict on the cookie. Stops the browser from attaching the
 //     cookie to a cross-site request at all.
+//
+// A fourth layer lives in csp.go: those three decide who gets in, the Content
+// Security Policy decides what the page they got is allowed to do.
 type Auth struct {
 	token string
 }

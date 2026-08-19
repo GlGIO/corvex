@@ -76,7 +76,7 @@ func New(opts Options) (*Server, error) {
 	}
 	s.routes()
 	s.http = &http.Server{
-		Handler: s.auth.Guard(s.mux),
+		Handler: s.Handler(),
 		// A UI that hangs on a slow read is a UI that stops answering the gate
 		// inbox, which is the one screen that has to work.
 		ReadHeaderTimeout: 5 * time.Second,
@@ -133,9 +133,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 }
 
-// Handler exposes the guarded handler so a test can drive the server through
-// httptest without binding a port.
-func (s *Server) Handler() http.Handler { return s.auth.Guard(s.mux) }
+// Handler is the single place the mux gets wrapped, and it is what the listener
+// serves — so a test driving it through httptest gets exactly what a browser
+// gets. Two call sites for two different compositions is how a layer ends up on
+// one of them only.
+func (s *Server) Handler() http.Handler { return withCSP(s.auth.Guard(s.mux)) }
 
 func (s *Server) now() time.Time {
 	if s.opts.Now != nil {

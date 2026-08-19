@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -20,6 +21,19 @@ import (
 )
 
 var uiURL = regexp.MustCompile(`http://127\.0\.0\.1:\d+/\?token=[0-9a-f]+`)
+
+// wantCSP is the header a browser must actually receive from the real binary.
+// The exact same string is pinned in internal/server/csp_test.go, and the
+// duplication is the point: a policy that got weakened for one caller's
+// convenience then fails in two places instead of being quietly renegotiated in
+// the package that ships it.
+const wantCSP = "default-src 'none'; " +
+	"script-src 'self'; " +
+	"style-src 'self'; " +
+	"connect-src 'self'; " +
+	"base-uri 'none'; " +
+	"form-action 'none'; " +
+	"frame-ancestors 'none'"
 
 func startUI(t *testing.T, dir string) string {
 	t.Helper()
@@ -77,6 +91,9 @@ func TestUI_ServesTheAppAndRefusesTheUnauthorized(t *testing.T) {
 	if len(resp.Cookies()) == 0 {
 		t.Error("no session cookie was set on the first load")
 	}
+	if got := resp.Header.Get("Content-Security-Policy"); got != wantCSP {
+		t.Errorf("index CSP:\n got  %q\n want %q", got, wantCSP)
+	}
 
 	// 2. The API answers with the same shapes the CLI prints.
 	resp, err = client.Get(origin + "/api/state?token=" + token)
@@ -119,6 +136,40 @@ func TestUI_ServesTheAppAndRefusesTheUnauthorized(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("foreign Host got %d, want 403", resp.StatusCode)
+	}
+
+	// 5. The page under the policy, driven the way a browser drives it: the first
+	//    load takes the token, everything after it carries nothing but the
+	//    cookie. Under `default-src 'none'` these three requests are the ENTIRE
+	//    network surface of the UI — the stylesheet, the script and the API — so
+	//    if one of them fails the screen is blank, and a CSP that blanks the
+	//    screen is worse than no CSP: the failure looks like the tool being
+	//    broken, not like a header being wrong.
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser := &http.Client{Timeout: 5 * time.Second, Jar: jar}
+	first, err := browser.Get(url)
+	if err != nil {
+		t.Fatalf("browser first load: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, first.Body)
+	first.Body.Close()
+
+	for _, path := range []string{"/assets/app.css", "/assets/app.js", "/api/state"} {
+		resp, err := browser.Get(origin + path)
+		if err != nil {
+			t.Fatalf("GET %s with only the session cookie: %v", path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || len(body) == 0 {
+			t.Errorf("%s: status %d, %d bytes — the page cannot render", path, resp.StatusCode, len(body))
+		}
+		if got := resp.Header.Get("Content-Security-Policy"); got != wantCSP {
+			t.Errorf("%s CSP:\n got  %q\n want %q", path, got, wantCSP)
+		}
 	}
 }
 
