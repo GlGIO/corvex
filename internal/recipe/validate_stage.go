@@ -204,6 +204,16 @@ func (r *Recipe) validateEvidence(s Stage, i int, e types.Evidence) error {
 // the evidence set. If one is ever built, this rule loosens in the same commit
 // that gives the evidence its reader, not before.
 //
+// The strongest counter-argument found in the wild is a recipe that keeps the
+// block on purpose, without required_reading, as a placeholder: "the day a human
+// gate lands on this stage the evidence starts working, and nobody has to
+// rediscover what to show." It loses to the rule validateGate already applies a
+// few lines up: `expires_after` on a gate that does not wait is refused because
+// it is a value no reader ever consults. A placeholder `expires_after` would be
+// exactly as well-intentioned and is already illegal here. Intent belongs in a
+// YAML comment, which nobody mistakes for behaviour; a declared block is
+// mistakable, and `recipe show` prints it.
+//
 // # Why not the other fix — teach the computational gate to collect evidence
 //
 // Collecting is the cheap half and it is not the half that matters. A
