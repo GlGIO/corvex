@@ -174,6 +174,27 @@ async function dispatchForm() {
   view.prepend(box);
 }
 
+// ── leaving a detail screen ─────────────────────────────────────────────────
+// Every way out of a detail goes through here, and every one of them re-reads.
+// Not "re-reads if we noticed a change": while a detail is open this page is
+// DEAF by design — the stream event is dropped so the evidence under the
+// reader's eyes does not move, and the fallback poll skips its tick for the same
+// reason. So there is no observer left to set a flag, and a stream that was down
+// for the whole visit would never have delivered one anyway.
+//
+// The rule this enforces is the one the screen is for: no sequence of (open a
+// detail, the state moves, come back) may leave the old screen up. An approved
+// gate showing as waiting is not a stale pixel, it is the inbox asking someone
+// to decide something that is already decided.
+//
+// The cost is one GET /api/state per back button, against a server on this
+// machine. That is the whole price of making it true by construction instead of
+// by bookkeeping.
+function leaveDetail() {
+  state.detail = null;
+  return refresh();
+}
+
 // ── run detail (2d/2f) ──────────────────────────────────────────────────────
 async function openRun(id) {
   state.detail = { kind: 'run', id };
@@ -183,7 +204,7 @@ async function openRun(id) {
 async function renderRunDetail(root, id) {
   const r = await api.get(`/api/runs/${encodeURIComponent(id)}`);
   root.append(el('div', { class: 'row' },
-    el('button', { class: 'ghost', onclick: () => { state.detail = null; render(); } }, '← back'),
+    el('button', { class: 'ghost', onclick: leaveDetail }, '← back'),
     el('span', { class: 'mono-id', text: r.run_id || r.project }),
     el('span', { class: 'pill', text: r.status || 'never run' }),
     r.environment && r.environment !== 'simple' ? el('span', { class: 'pill warn', text: r.environment }) : null,
@@ -274,7 +295,7 @@ async function renderGateDetail(root, id, step) {
   const relock = () => { approve.toggleAttribute('disabled', read.size < required.length); };
 
   root.append(el('div', { class: 'row' },
-    el('button', { class: 'ghost', onclick: () => { state.detail = null; render(); } }, '← back'),
+    el('button', { class: 'ghost', onclick: leaveDetail }, '← back'),
     el('span', { class: 'mono-id', text: g.run_id }),
     kindPill(g.nature),
     el('span', { class: 'grow', text: g.label || g.title }),
@@ -316,14 +337,14 @@ async function renderGateDetail(root, id, step) {
       try {
         const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/answer`, { step: g.step_id, ack: [...read], text: text.value });
         status(`answered — ${res.action.command}`, 'ok');
-        state.detail = null; refresh();
+        leaveDetail();
       } catch (e) { status(e.message, 'bad'); }
     });
     decline.addEventListener('click', async () => {
       try {
         const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/reject`, { step: g.step_id, reason: '' });
         status(`declined — ${res.action.command}`, 'ok');
-        state.detail = null; refresh();
+        leaveDetail();
       } catch (e) { status(e.message, 'bad'); }
     });
     root.append(el('div', { class: 'card' },
@@ -339,7 +360,7 @@ async function renderGateDetail(root, id, step) {
     try {
       const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/approve`, { step: g.step_id, ack: [...read] });
       status(`approved — ${res.action.command}`, 'ok');
-      state.detail = null; refresh();
+      leaveDetail();
     } catch (e) { status(e.message, 'bad'); }
   });
   root.append(el('div', { class: 'card' },
@@ -351,7 +372,7 @@ async function renderGateDetail(root, id, step) {
           try {
             const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/reject`, { step: g.step_id, reason: reason.value });
             status(`rejected — ${res.action.command}`, 'ok');
-            state.detail = null; refresh();
+            leaveDetail();
           } catch (e) { status(e.message, 'bad'); }
         },
       }, 'Reject'),
@@ -423,16 +444,23 @@ function startStream() {
   es.addEventListener('ping', alive);
   es.addEventListener('state', (ev) => {
     alive();
-    // The fingerprint is why the payload carries anything at all. The stream
-    // sends its current one on every connect, so a stream that flapped and came
-    // back would otherwise trigger a full re-read for nothing; and it is only
-    // remembered once it has been acted on, so a change that arrived while a
-    // detail screen was open is not forgotten when that screen closes.
+    // The fingerprint is why the payload carries anything at all, and it buys
+    // exactly one thing: the stream states its current position on every
+    // connect, so a stream that flapped and came back would otherwise trigger a
+    // full re-read for nothing. It is a change detector for the CONNECTION, so
+    // it is consumed the moment it is seen — never held back, because a
+    // fingerprint kept for later is a fingerprint that has to be reconciled
+    // later, and nothing here reconciles it.
     let fp = '';
     try { fp = JSON.parse(ev.data).fingerprint || ''; } catch (_) { fp = ''; }
     if (fp && fp === state.fingerprint) return;
-    if (state.detail) return;
     state.fingerprint = fp;
+    // A detail screen is not redrawn under the reader's hands: 2b is the screen
+    // someone reads BEFORE approving, and swapping evidence mid-read is how a
+    // person approves something they did not read. So the event is dropped —
+    // and dropping it is only safe because leaveDetail() re-reads on the way
+    // out, unconditionally. See the comment there.
+    if (state.detail) return;
     refresh();
   });
   // EventSource reconnects on its own, so there is nothing to retry here. What
@@ -478,9 +506,12 @@ function boot() {
   for (const tab of document.querySelectorAll('.tab')) {
     tab.addEventListener('click', () => {
       state.view = tab.dataset.view;
-      state.detail = null;
       for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t === tab);
-      render();
+      // A tab is the other way out of a detail, so it takes the same exit. It
+      // re-reads even when no detail was open: the tab bar is where someone goes
+      // to ask "what is there now", and answering that from a cached payload is
+      // the same lie in a cheaper wrapper.
+      leaveDetail();
     });
   }
   document.querySelector('.tab').classList.add('active');
