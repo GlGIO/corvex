@@ -20,7 +20,28 @@ const el = (tag, attrs = {}, ...kids) => {
     // style attribute would need 'unsafe-inline' — which also re-opens the
     // injection hole the policy exists to close. A property assignment is not
     // an inline style, so this is the shape every caller has to use.
-    else if (k === 'style') Object.assign(node.style, v);
+    //
+    // The type check exists because the two ways to get this wrong fail in the
+    // two least useful ways, and neither of them says `style`. MEASURED, not
+    // assumed (e2e/ui_dom_test.go pins both):
+    //
+    //   `style: 'width: 12ch'` — the mistake somebody writes out of habit —
+    //   throws, but from the wrong layer: "Failed to set an indexed property [0]
+    //   on 'CSSStyleDeclaration'". Object.assign is walking the characters of
+    //   the string. That aborts a render with a message about an indexed
+    //   property setter, naming neither the attribute nor the element.
+    //
+    //   `style: null` or a number throws nothing at all and applies nothing —
+    //   Object.assign ignores a primitive source. A bar at zero width with no
+    //   thread to pull.
+    //
+    // One line turns both into a sentence that names the contract it broke.
+    else if (k === 'style') {
+      if (typeof v !== 'object' || v === null) {
+        throw new TypeError(`el(${tag}): style takes an object of CSS properties, got ${typeof v}`);
+      }
+      Object.assign(node.style, v);
+    }
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
   for (const kid of kids.flat()) if (kid) node.append(kid.nodeType ? kid : document.createTextNode(kid));
