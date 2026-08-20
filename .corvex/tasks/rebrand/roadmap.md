@@ -1,7 +1,9 @@
 # Rebrand do corvex — roadmap
 
-> 📐 **DOCUMENTO DE DESENHO — ENTREGUE.** As dez fases (F0–F9) estão concluídas; os
-> selos de cada uma estão na §Fases abaixo. Este arquivo registra **o que se decidiu
+> 📐 **DOCUMENTO DE DESENHO — ENTREGUE E FECHADO.** As dez fases (F0–F9) estão
+> concluídas, e o último item em voo (o PR #42110 do smartcare, que devolveu o gate
+> de review de produto à `develop`) foi **mergeado em 2026-08-20**. Os selos de cada
+> fase estão na §Fases abaixo. Este arquivo registra **o que se decidiu
 > construir e por quê**, e continua valendo como tal.
 >
 > ⚠️ **Não é fonte de estado.** Para "o que está de pé hoje, e como medir", vá para

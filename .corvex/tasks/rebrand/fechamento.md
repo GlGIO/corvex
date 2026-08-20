@@ -45,17 +45,31 @@ corvex recipe validate ship && corvex recipe validate board
 Os pisos que **não podem cair**: cobertura combinada **60%** (o roadmap), zero
 domínio no binário (invariante 3), e zero falhas nas duas suítes.
 
-## O que está em voo: PR #42110 do smartcare
+## O PR #42110 do smartcare: **MERGEADO** ✅
 
-Único item aberto, e é **decisão do dono**: `chore/flow-tools → develop`.
+Concluído em 2026-08-20 13:18 UTC (merge commit `14e20c6a`), `status: completed`.
+Era o último item em voo do rebrand.
 
-- **Por que importa:** sem ele a `develop` fica sem gate de review de produto. Medido
-  com dois arquivos reais de `backend/`: os cinco eixos antigos dão ZERO e o script
-  sai *"nada a revisar"*, exit 2 — **todo PR de produto sem revisão**.
-- **Raio do merge:** zero arquivos de `backend/` ou `frontend/`. É tooling
-  (`scripts/`, `.corvex/`, `.claude/`). O produto rodando não muda.
-- **`ship-may-complete.sh` recusa `develop` por desenho e não tem override**, então
-  concluir é ato humano, no Azure DevOps.
+**O defeito que ele existia para consertar, validado na `develop` depois do merge.**
+A `develop` particionava o diff em cinco eixos e nenhum continha `backend/` ou
+`frontend/`, então um PR de produto casava ZERO eixos e o gate saía *"nada a
+revisar"*, exit 2 — **todo PR de produto sem revisão**. Medido agora, na develop,
+com dois arquivos reais de produto:
+
+```
+$ scripts/pr-review.sh --axis-list
+fronteira tools recipes prosa testes produto        ← seis, era cinco
+
+$ scripts/pr-review.sh --cover <(backend/…service.js + backend/…test.js)
+produto:2   SEM-EIXO:0   exit=0                     ← era: 5 eixos em ZERO, exit 2
+```
+
+E o resto do que foi entregue, conferido na `develop`: `scripts/flow/test.sh` →
+**0 falharam**; `recipe validate ship`/`board` → 7 e 4 tasks, exit 0; o DAG
+compilado da `board` chegou **atualizado** (era o defeito que tornava os consertos
+da recipe inertes num clone, porque o corvex executa o compilado e não recompila
+quando a recipe não é mais nova); e as cinco dívidas de teste chegaram anotadas com
+a mutação medida de cada.
 
 ## A regra de parada — declarada, aceita, aplicada
 

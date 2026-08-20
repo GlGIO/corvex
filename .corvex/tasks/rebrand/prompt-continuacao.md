@@ -33,8 +33,11 @@ Os seis modos de falha completos, com a medição de cada, estão no `fechamento
 ## O que sobrou, e é decisão — não trabalho
 
 Sete decisões de contrato esperando o dono (o `400` em `exit 3`, o `pr-review.sh`
-engolindo falha de PR Status, o schema de `plan --json`, …) e um PR em voo no
-smartcare. **Lista completa, com o porquê de cada uma, no `fechamento.md`.**
+engolindo falha de PR Status, o schema de `plan --json`, …). **Lista completa, com o
+porquê de cada uma, no `fechamento.md`.**
+
+Nada mais está em voo: o PR #42110 do smartcare — o último item — foi **mergeado**
+em 2026-08-20, e o gate de review de produto foi validado de pé na `develop`.
 
 **Não invente fase nova. Não mexa em `main` do smartcare. Não rode migration. Não
 conclua merge em linha protegida sem confirmar.**
