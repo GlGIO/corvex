@@ -107,7 +107,7 @@ func (m *mockProvider) Stream(_ context.Context, _ types.ExecuteRequest) (<-chan
 	return ch, nil
 }
 
-func (m *mockProvider) Name() string    { return "mock" }
+func (m *mockProvider) Name() string     { return "mock" }
 func (m *mockProvider) Models() []string { return []string{"mock-model"} }
 
 func TestInitCreatesStructure(t *testing.T) {
