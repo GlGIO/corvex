@@ -1,5 +1,14 @@
 # Rebrand do corvex — roadmap
 
+> 📐 **DOCUMENTO DE DESENHO — ENTREGUE.** As dez fases (F0–F9) estão concluídas; os
+> selos de cada uma estão na §Fases abaixo. Este arquivo registra **o que se decidiu
+> construir e por quê**, e continua valendo como tal.
+>
+> ⚠️ **Não é fonte de estado.** Para "o que está de pé hoje, e como medir", vá para
+> `fechamento.md` — é o único arquivo desta pasta que carrega estado, e ele dá o
+> COMANDO de medição em vez do número, porque número em prosa apodrece (foi a lição
+> mais caras desta obra; ver os seis modos de falha lá).
+>
 > Documento vivo, fechado em 4 rodadas de grill conversacional (não `corvex grill`).
 > Branch: `rebrand`. Insumos: `f0-fluxo.md`, `ui-prompt.md`, canvas de design (turno 2, 2a–2h).
 
@@ -903,6 +912,13 @@ era obrigado a reconhecer um diff que não continha a mudança. Consertado com `
 um por eixo (status e liveness).
 
 ## Riscos
+
+> **Estado no fecho** (remedido em 2026-08-20; a instrução de como remedir está no
+> `fechamento.md`): **1** mitigação de pé, população ainda pequena — melhora sozinha
+> com o tempo. **2** melhorou por uso. **3** latente: não existe "adiar" na UI, logo
+> não há adiado invisível. **4** suíte verde. E o Grill, que a tabela de escopo
+> mandava "ganhar teto", **ganhou**: `--max-questions`, default 12, contando
+> sessões anteriores.
 
 1. **Gate que vira carimbo.** É a cicatriz #4 na versão humana. A 2b/1d já força leitura,
    mas isso é atrito, não prova. Mitigação real: **sensor sobre os sensores** — medir

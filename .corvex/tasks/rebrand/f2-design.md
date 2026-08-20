@@ -1,5 +1,9 @@
 # F2 — Taxonomia, gates e evidência (desenho)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Documento de gate, em duas camadas.
 >
 > As **seções 1–16** são o desenho, escrito antes de qualquer linha de Go e aprovado como

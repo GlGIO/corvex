@@ -1,36 +1,149 @@
-# Fechamento do rebrand — o que fechou, o que virou registro, o que é seu
+# Fechamento do rebrand — ESTADO FINAL
 
-> 2026-08-19. Executa `prompt-fechamento.md`. Dois repositórios: o binário (`~/projects/corvex`)
-> e o domínio (`~/projects/yandeh/smartcare`), porque o invariante 4 não deixa os dois no mesmo
-> lugar.
+> **Este arquivo é a FONTE DE ESTADO do rebrand.** Todos os outros documentos desta
+> pasta são registro histórico e estão selados como tal — os números deles valiam
+> quando foram escritos.
+>
+> Dois repositórios, porque o invariante 3 não deixa os dois no mesmo lugar: o
+> binário (`~/projects/corvex`) e o domínio (`~/projects/yandeh/smartcare`).
 
-> ## ⚠️ ERRATA — 2026-08-19, sessão seguinte. Leia antes do resto deste arquivo.
->
-> Este documento foi escrito 4 commits antes de `8c6c1af` e **envelheceu em pontos que
-> mudam a decisão de quem lê**. O que está errado, medido em `8c6c1af` (corvex) e
-> `57b17f98` (smartcare):
->
-> | o doc diz | medido agora |
-> |---|---|
-> | cobertura combinada **82,6 %** | **82,9 %** |
-> | `test.sh` do smartcare: **205 / 205** | **433 passaram, 0 falharam** |
-> | "rode `go install`, o binário é de 29/06" | **já está feito** — `~/go/bin/corvex` traz `vcs.revision=8c6c1af`, `vcs.modified=false` |
-> | `gofmt -l` (implícito, herdado da F0) | **vazio** — o último arquivo (`e2e/corvex_test.go`) foi formatado |
->
-> E **três dos quatro itens de "o que eu faria a seguir" já foram feitos**: a sexta tool
-> (`az-edit-workitem.sh`, `f75e6952`), os defeitos do `az-transition-plan.sh` (anotados e em
-> parte consertados), e o `CORVEX_RUN_ID` (`59c6f45`). O item que **segue aberto** é o 3 — o
-> `pr-review.sh` que engole falha de escrita do PR Status —, e ele é decisão do Giovanni,
-> não conserto livre: mudar isso muda a superfície de erro do gate inteiro.
->
-> O item 4 (`gate audit` com população) segue sendo a única mitigação que melhora sozinha
-> com o tempo. Hoje: 3 gates em 12 repositórios, nenhum com gap zero. n=3 ainda não diz nada.
->
-> **A tabela de invariantes abaixo, e a seção "Um obstáculo operacional", ficam como
-> registro do que era verdade naquele commit — não como instrução.** O estado corrente
-> está em `prompt-continuacao.md`.
+## As dez fases: FECHADAS
+
+**F0 a F9, todas concluídas.** Detalhe de cada uma no `roadmap.md` §Fases e nos
+`f*-registro.md`. Nenhuma fase tem trabalho pendente.
+
+Os quatro riscos do roadmap, remedidos no fecho:
+
+| risco | estado |
+|---|---|
+| 1 — gate que vira carimbo | mitigação **de pé**: `corvex gate audit --all`. População ainda pequena; é a única mitigação que **melhora sozinha com o tempo**. |
+| 2 — a UI nasce vazia | **melhorou por uso**: eram 1 `activity.jsonl`, hoje são vários fora de worktree. |
+| 3 — snooze é vazamento | **latente**: não existe "adiar" na UI, logo não há adiado invisível. Reabre no dia em que alguém puser o botão — e nesse dia o número de adiados tem de ficar visível. |
+| 4 — escopo | suíte verde e `run <project>` funcionando. |
+| (Grill sem regra de parada) | **entregue**: `--max-questions`, default 12, contando sessões anteriores. |
+
+## Como medir o estado — não confie em número escrito aqui
+
+A lição mais caras desta obra é que **número em prosa apodrece**, e apodrece na
+direção confortável. Por isso este arquivo dá o comando, não o valor:
+
+```bash
+# corvex
+cd ~/projects/corvex
+go test ./... -count=1                      # tem de estar verde
+gofmt -l .                                  # tem de estar vazio
+go test ./cmd/ -coverpkg=./cmd/...,./internal/ops/...,./internal/stack/...,./internal/wizard/... -cover -count=1
+grep -rn -iE "azure|smartcare|yandeh" --include="*.go" cmd internal | grep -v _test | grep -vE ':\s*//'
+go build -o /tmp/inv && strings /tmp/inv | grep -iE "azure|smartcare|yandeh"
+
+# smartcare
+cd ~/projects/yandeh/smartcare
+bash scripts/flow/test.sh                   # tem de dar 0 falharam
+corvex recipe validate ship && corvex recipe validate board
+```
+
+Os pisos que **não podem cair**: cobertura combinada **60%** (o roadmap), zero
+domínio no binário (invariante 3), e zero falhas nas duas suítes.
+
+## O que está em voo: PR #42110 do smartcare
+
+Único item aberto, e é **decisão do dono**: `chore/flow-tools → develop`.
+
+- **Por que importa:** sem ele a `develop` fica sem gate de review de produto. Medido
+  com dois arquivos reais de `backend/`: os cinco eixos antigos dão ZERO e o script
+  sai *"nada a revisar"*, exit 2 — **todo PR de produto sem revisão**.
+- **Raio do merge:** zero arquivos de `backend/` ou `frontend/`. É tooling
+  (`scripts/`, `.corvex/`, `.claude/`). O produto rodando não muda.
+- **`ship-may-complete.sh` recusa `develop` por desenho e não tem override**, então
+  concluir é ato humano, no Azure DevOps.
+
+## A regra de parada — declarada, aceita, aplicada
+
+O laço "roda o gate → conserta → roda de novo" foi medido em **21 rodadas** e levou
+os críticos de **11 para 10**: cada leva de conserto criava trabalho novo na mesma
+ordem de grandeza. Cinco dos consertos daquela sessão introduziram o defeito que a
+rodada seguinte achou.
+
+Regra em vigor, decidida pelo dono:
+
+> **🔴 que produz comportamento errado EM EXECUÇÃO bloqueia. Guarda que não
+> morderia um defeito hipotético vira dívida anotada.**
+
+Por essa regra o PR fechou: os achados restantes são todos da segunda categoria, e
+estão anotados **com a mutação que passa verde e o conserto conhecido** em
+`scripts/flow/README.md` §"Dívida conhecida" → *"Cinco guardas que NÃO MORDEM"*.
+Em cada uma, o código de hoje está certo; o que falta é o teste reprovar quem o
+quebrar amanhã.
+
+## O que é DECISÃO do Giovanni, e não trabalho pendente
+
+Nenhum destes é bug a consertar — cada um muda um contrato, e por isso espera dono:
+
+1. **`400` continua em `exit 3`** (= "re-rode") nas tools do board. O argumento que
+   tirou o `404` do `exit 3` não foi aplicado ao `400`, que é como o Azure devolve
+   toda violação de regra. Mudar afeta as seis tools de uma vez.
+2. **`pr-review.sh` engole falha de escrita do PR Status** — o gate diz verde sem ter
+   gravado o status que a Branch Policy lê. **O mais sério da lista.**
+3. **Schema de `plan --json`**: o caso `from == to` sai sem a chave
+   `incomplete_refs`. Acrescentá-la estabiliza o schema e quebra quem detecta o caso
+   pela ausência.
+4. **`Microsoft.VSTS.Common.ValueArea` não modelado** nas tools.
+5. **Durabilidade da história do gate** no corvex: `activity.Entry` não tem chave de
+   gate; tornar durável = chave nova num arquivo que entra no git do usuário.
+6. **Chave de agregação do `gate audit`** — hoje `(recipe, step_id)`, sufixo de
+   fan-out não colapsado.
+7. **`gate answer`: `--text` vs `--choice`** — `--choice` pressupõe conjunto de
+   opções declarado no gate, campo que não existe.
+
+## Dívida técnica ainda aberta no corvex
+
+- **`e2e/cdp_test.go` pula sem Chrome** — mas agora dá para exigir:
+  `CORVEX_REQUIRE_BROWSER=1` transforma "sem navegador" em FALHA, cobrindo os dois
+  caminhos de desistência. Este repo não tem CI; a alavanca está pronta.
+- **Evidência inerte passa em silêncio**: `evidence:` sem `required_reading` num gate
+  não-humano é aceita e nunca coletada. Argumento e recusa da alternativa em
+  `internal/recipe/validate_stage.go`. Um aviso exigiria canal de warning até `cmd/`,
+  que não existe.
+- **Selo da F2 sem rastro**: o roadmap marcava "aguardando gate humano" e o registro
+  dessa decisão não existe em nenhum arquivo. Anotado como selo sem rastro, não
+  declarado feito.
+
+## Os seis modos de falha desta obra — leia antes de mexer
+
+Medidos, não teorizados. É o que esta obra ensinou:
+
+1. **Revisão por leitura não acha o que execução acha.** Nove rodadas e cinco eixos
+   leram uma recipe linha por linha; **rodá-la uma vez** revelou que cinco dos sete
+   steps nunca haviam executado. Se o item é executável, execute-o.
+2. **Asserção estrutural que casa PROSA.** Seis vezes: greps sem filtro de `#`, e um
+   awk cujo filtro de comentário estava DEPOIS das regras — um comentário citando a
+   regra a ligava. Filtre comentário primeiro e prove com um caso que tenha o texto
+   só no comentário.
+3. **Rebaixar o achado que nomeia a classe.** Um 🟡 *"nada prova que a união dos eixos
+   cobre a árvore"* virou dívida em vez de conserto — e virou o defeito que deixou
+   todo PR de produto sem review.
+4. **Generalizar de uma amostra de um.** A partição dos eixos de review veio de um
+   único diff, e o que não estava naquele diff ficou invisível.
+5. **Estado do mundo escrito em prosa de guard-rail.** Cinco sítios afirmavam, com
+   data, que não havia release aberta. Ela foi cortada horas depois, e isso mudou
+   **qual ramo de código executa** — não só o que se lê. Escreva o contrato, nunca o
+   board de hoje.
+6. **Guarda cujo controle é uma CÓPIA da guarda.** Um controle que regrepa o mesmo
+   regex mede a si mesmo: estreitar a regra deixa o controle verde. Controle tem de
+   passar pela PORTA da regra.
+
+E o padrão macro, medido em duas sessões independentes: **a maioria dos críticos é
+introduzida pela própria leva que conserta a anterior**, e o dominante é *interação
+entre consertos*, não erro local. Consertos pequenos, um por commit, com controle
+negativo, e execução antes de declarar pronto.
 
 ---
+
+# Registro histórico da leva de fechamento
+
+> 🗃️ Daqui para baixo é o registro da leva de 2026-08-19, mantido porque a medição é
+> o que dá valor ao caso. **Não é estado corrente** — o estado está acima.
+
 
 **A resposta desconfortável primeiro, e ela é pior do que "faltou fechar":** onde a fronteira do
 `az` fechou, ela é **lombada, não muro**. Medido contra o provider real com

@@ -1,5 +1,9 @@
 # F9 — Custódia de credencial (mecanismo entregue, **default é seu**)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > A F9 é gate humano no roadmap: *"segurança. Custódia de credencial e `DisallowedTools`
 > não se aprovam sozinhos."* Esta leva entrega **o mecanismo**, com default idêntico ao de
 > hoje. A decisão que precisa de você é **virar o default** — e é o §4.

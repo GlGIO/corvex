@@ -1,5 +1,9 @@
 # F5 — Telemetria da UI (registro de fecho)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Escrito depois da implementação. A fase foi executada como **fan-out de 4 agentes**, cada um
 > num worktree próprio a partir de `rebrand`, com **posse de arquivo disjunta**; a integração
 > foi por `cherry-pick` na ordem de dependência (`activity` → `step` → `orchestrator` → `gate/cmd`).

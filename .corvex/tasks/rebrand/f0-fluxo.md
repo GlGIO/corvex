@@ -1,5 +1,9 @@
 # F0 — A espinha do fluxo de dev
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Extraído de `~/projects/yandeh/smartcare/.claude/skills/` em 2026-08-13:
 > `refine` (4.4 KB), `autopilot` (13 KB + 40.7 KB de workflow.js), `ship` (4.3 KB),
 > `release` (9.4 KB), `az` (24.8 KB), `dev-maestri` (7.8 KB).

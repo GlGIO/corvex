@@ -1,5 +1,9 @@
 # F8 — Catálogo de tools: briefing autocontido
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Escrito para ser colado numa sessão **nova**, que não viu nada do rebrand. O trabalho da F8
 > **não acontece neste repositório** — ele acontece no repo do SmartCare, e é por isso que ele
 > ficou de fora quando as outras fases fecharam.

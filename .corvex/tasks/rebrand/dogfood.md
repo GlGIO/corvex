@@ -1,5 +1,9 @@
 # Dogfood — o primeiro `corvex run` de verdade deste repositório
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Recipe `cost-split`, run `run_fb04`, 36 minutos, **falhou**. Escrita como um usuário
 > escreveria: a partir do exemplo da `f2-design.md`, sem consultar o código. A tarefa era real —
 > a dívida de custo roll-up que duas frentes da F5 e a auditoria acharam sozinhas.

@@ -1,5 +1,9 @@
 # Prompt para o claude.ai/design — UI do corvex
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Cole em uma sessão nova. Autocontido de propósito: transfere o domínio inteiro,
 > deixa as decisões visuais em aberto. Gerado na rodada de rebrand (2026-08-13).
 

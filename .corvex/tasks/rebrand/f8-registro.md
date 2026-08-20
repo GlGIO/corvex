@@ -1,5 +1,9 @@
 # F8 — Catálogo de tools (registro de fecho)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > A única fase do rebrand cujo trabalho **não acontece neste repositório**. O código está em
 > `~/projects/yandeh/smartcare` (`scripts/flow/`, `.corvex/recipes/ship.yaml`, e as cinco skills
 > reescritas), commitado em `bb7c03bf`, `62368efe` e `981169aa`, no `develop`. Aqui fica só o

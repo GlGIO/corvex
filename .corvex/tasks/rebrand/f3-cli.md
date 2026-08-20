@@ -1,5 +1,9 @@
 # F3 — Redesenho da superfície de CLI
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Entrega da F3: **documento, zero Go**. As decisões abaixo são o que a F4 implementa.
 > Escrito sobre a F2 (`a89ab89`). Insumos: `roadmap.md` (superfície de comandos, decisões em
 > aberto), `ui-prompt.md` (telas 2a–2h), `f2-design.md` (gates, evidência, fan-out),

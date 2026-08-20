@@ -1,5 +1,9 @@
 # F-1 — A rede de caracterizacao de `cmd/` (leia antes de comecar a F0)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 Voce vai refatorar `cmd/`. Esta rede e a unica coisa que separa "refactor
 mecanico" de "regressao silenciosa em producao". Este documento diz o que ela
 cobre, como rodar sem se enganar, e onde ela **nao** cobre.

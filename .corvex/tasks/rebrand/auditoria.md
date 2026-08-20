@@ -1,5 +1,9 @@
 # Auditoria adversarial do rebrand (F1–F9)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Rodada depois de fechar F3–F7, F9 e o backlog do grill. **Cinco lentes independentes**
 > (vazamento · concorrência · contrato · afirmação-vs-código · qualidade de teste), cada achado
 > passado a um **cético cujo trabalho era refutá-lo** — default "não é real", só aceita se

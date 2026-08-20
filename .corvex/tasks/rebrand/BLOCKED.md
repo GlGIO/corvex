@@ -1,4 +1,33 @@
-# BLOCKED — o gate não converge, e eu paro aqui
+# BLOCKED — acionado e **RESOLVIDO**
+
+> ✅ **RESOLVIDO em 2026-08-20 pela decisão do dono.** Este arquivo fica como
+> registro de uma condição de parada que foi acionada, medida e resolvida — não
+> como bloqueio ativo. Se você chegou aqui procurando o que está travado: **nada
+> está**. O estado corrente está em `fechamento.md`.
+>
+> **A regra que resolveu**, declarada e aceita:
+>
+> > 🔴 que produz comportamento errado EM EXECUÇÃO bloqueia. Guarda que não
+> > morderia um defeito hipotético vira dívida anotada.
+>
+> Por ela, os achados que restavam eram todos da segunda categoria — verificado um
+> por um, e em cada caso o código de hoje está CERTO. Foram anotados com a mutação
+> que passa verde e o conserto conhecido em `scripts/flow/README.md`
+> §"Dívida conhecida" → *"Cinco guardas que NÃO MORDEM"*.
+>
+> Correção ao que este arquivo dizia quando foi escrito: ele fala de "10 🔴
+> restantes". Eram **cinco** — os outros cinco já haviam sido consertados depois da
+> rodada que os achou, e eu não cruzei os horários antes de escrever. O erro está
+> aqui em vez de apagado porque é o mesmo modo de falha que o resto do documento
+> descreve: número em prosa, sem remedir.
+
+---
+
+# Registro da medição que acionou a parada
+
+> 🗃️ Daqui para baixo é o texto original, mantido porque a medição é o que dá valor
+> à decisão. **Os números são daquele momento e não são estado corrente** — inclusive
+> o "10 🔴", corrigido acima para cinco.
 
 > 2026-08-20, 05h. Escrito porque o roadmap manda escrever aqui quando uma condição
 > de parada é acionada. A condição não estava na lista; é esta, e está MEDIDA.

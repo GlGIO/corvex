@@ -1,5 +1,9 @@
 # F7 — Servidor + UI (registro de fecho)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Duas levas: o contrato (`9861029`) e as telas (`7cf19eb`). A ordem é a que o roadmap exige —
 > *"fixe API + design system num único passo, **depois** paralelize as telas. Oito telas em
 > paralelo sem contrato = oito estilos."*

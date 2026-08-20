@@ -1,5 +1,9 @@
 # Prompt de fechamento do rebrand
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Cole em sessão nova. Autocontido: assume que quem lê não viu nada do rebrand.
 
 ---

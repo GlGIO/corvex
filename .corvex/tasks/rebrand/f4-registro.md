@@ -1,5 +1,9 @@
 # F4 — Implementar a superfície + inteligência (registro de fecho)
 
+> 🗃️ **REGISTRO HISTÓRICO.** Os números e status deste arquivo valiam quando ele foi
+> escrito e **não são estado corrente** — não decida por eles. O estado atual, com a
+> instrução de como remedir cada número, está em `fechamento.md`.
+
 > Escrito depois da implementação, sobre a F3 (`6d411e3`) e a F2 (`a89ab89`).
 > As decisões são as 13 da `f3-cli.md`; aqui está o que existe em disco, o que
 > divergiu do desenho, e como cada parte foi provada.
