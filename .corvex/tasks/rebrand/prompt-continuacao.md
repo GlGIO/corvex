@@ -13,6 +13,13 @@
 
 ---
 
+> ⚠️ **LEIA `.corvex/tasks/rebrand/BLOCKED.md` PRIMEIRO.** Depois deste arquivo ser
+> escrito, o gate rodou 21 vezes no PR #42110 e a contagem de 🔴 foi de **11 para 10**
+> — cinco levas de conserto, redução líquida de um. 23 commits novos no smartcare,
+> suíte de 433 → 468 casos. A causa está medida e é interação entre consertos: cinco
+> dos meus consertos criaram o defeito que o gate achou na rodada seguinte. **A tarefa
+> não é mais "consertar o que o gate achou" — é decidir a regra de parada.**
+
 **GOAL: concluir o PR #42110 (`chore/flow-tools` → `develop`) do smartcare — o merge é
 o único passo que falta, e é decisão do humano. Depois, fechar as quatro decisões de
 contrato listadas em §4. Não abrir frente nova.**
