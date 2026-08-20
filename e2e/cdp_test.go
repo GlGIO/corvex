@@ -224,13 +224,27 @@ func chromePath() string {
 	return ""
 }
 
+// noBrowser ends the test the way the environment asked for. A missing browser
+// is a legitimate skip on a laptop and a LIE in CI: the browser half of the UI
+// proof silently evaporates and the run still reports green. So the choice is
+// the caller's, declared once: with CORVEX_REQUIRE_BROWSER set, "no browser" is
+// a failure, not a skip. Nothing here guesses at CI env vars — a guess would
+// either miss the CI that matters or turn every laptop run red.
+func noBrowser(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("CORVEX_REQUIRE_BROWSER") != "" {
+		t.Fatalf("CORVEX_REQUIRE_BROWSER is set and "+format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 // startChrome launches a headless browser with its own profile and returns a
 // session attached to one blank tab.
 func startChrome(t *testing.T) *chrome {
 	t.Helper()
 	bin := chromePath()
 	if bin == "" {
-		t.Skip("no Chrome or Chromium on this machine: the browser half of the UI is unproven here (set CORVEX_CHROME to a binary)")
+		noBrowser(t, "no Chrome or Chromium on this machine: the browser half of the UI is unproven here (set CORVEX_CHROME to a binary)")
 	}
 	profile := t.TempDir()
 	cmd := exec.Command(bin,
@@ -246,7 +260,7 @@ func startChrome(t *testing.T) *chrome {
 	)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Start(); err != nil {
-		t.Skipf("could not start %s: %v", bin, err)
+		noBrowser(t, "could not start %s: %v", bin, err)
 	}
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
