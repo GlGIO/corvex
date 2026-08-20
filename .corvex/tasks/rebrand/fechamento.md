@@ -4,6 +4,34 @@
 > e o domínio (`~/projects/yandeh/smartcare`), porque o invariante 4 não deixa os dois no mesmo
 > lugar.
 
+> ## ⚠️ ERRATA — 2026-08-19, sessão seguinte. Leia antes do resto deste arquivo.
+>
+> Este documento foi escrito 4 commits antes de `8c6c1af` e **envelheceu em pontos que
+> mudam a decisão de quem lê**. O que está errado, medido em `8c6c1af` (corvex) e
+> `57b17f98` (smartcare):
+>
+> | o doc diz | medido agora |
+> |---|---|
+> | cobertura combinada **82,6 %** | **82,9 %** |
+> | `test.sh` do smartcare: **205 / 205** | **433 passaram, 0 falharam** |
+> | "rode `go install`, o binário é de 29/06" | **já está feito** — `~/go/bin/corvex` traz `vcs.revision=8c6c1af`, `vcs.modified=false` |
+> | `gofmt -l` (implícito, herdado da F0) | **vazio** — o último arquivo (`e2e/corvex_test.go`) foi formatado |
+>
+> E **três dos quatro itens de "o que eu faria a seguir" já foram feitos**: a sexta tool
+> (`az-edit-workitem.sh`, `f75e6952`), os defeitos do `az-transition-plan.sh` (anotados e em
+> parte consertados), e o `CORVEX_RUN_ID` (`59c6f45`). O item que **segue aberto** é o 3 — o
+> `pr-review.sh` que engole falha de escrita do PR Status —, e ele é decisão do Giovanni,
+> não conserto livre: mudar isso muda a superfície de erro do gate inteiro.
+>
+> O item 4 (`gate audit` com população) segue sendo a única mitigação que melhora sozinha
+> com o tempo. Hoje: 3 gates em 12 repositórios, nenhum com gap zero. n=3 ainda não diz nada.
+>
+> **A tabela de invariantes abaixo, e a seção "Um obstáculo operacional", ficam como
+> registro do que era verdade naquele commit — não como instrução.** O estado corrente
+> está em `prompt-continuacao.md`.
+
+---
+
 **A resposta desconfortável primeiro, e ela é pior do que "faltou fechar":** onde a fronteira do
 `az` fechou, ela é **lombada, não muro**. Medido contra o provider real com
 `--disallowedTools "Bash(echo:*)"`:

@@ -645,7 +645,11 @@ desliga assertion no caminho normal.
   corrige a linha pelo overlay do record local, que é mais fresco. Requer rotação
   interrompida **mais** a janela; anotado aqui em vez de consertado numa terceira leva.
 
-### F2 — Taxonomia, gates e evidência — ✅ CONCLUÍDA (aguardando gate humano)
+### F2 — Taxonomia, gates e evidência — ✅ CONCLUÍDA (selo de "aguardando gate humano" SEM registro)
+> 2026-08-19: procurei o registro desse gate em `fechamento.md` e nos `f*-registro.md` e **não existe**
+> — a tabela "as quatro decisões que você tomou" não tem linha para a F2. Diferente da F8 e da F9
+> abaixo, aqui eu **não** posso dizer que a decisão foi tomada; só que nenhuma entrega depende dela
+> e que nada está bloqueado por isso. Se o gate foi dado em conversa, ele não deixou rastro no repo.
 - `kind: code|tool|test|repro` na recipe; 4 naturezas de gate; contrato de evidência
   (`required_reading`); **fan-out dinâmico com ondas**.
 - `human-gate` implementado de verdade (era `kind` reservado que **matava** o run).
@@ -832,11 +836,19 @@ O que a fase produziu além de código: **duas contradições decididas** (`feat
 develop em três skills e para `release/X.Y.0` na quarta; e o merge-por-nível era denylist, que
 com a primeira decisão autorizaria auto-merge dentro do trem de PRD). Ver `f8-registro.md`.
 
-⚠️ **Espera ratificação:** `ship-may-vote.sh` deixou de votar em nível de gate humano, porque um
+✅ **RATIFICADO** (2026-08-19, `fechamento.md` §"as quatro decisões que você tomou": *"ratificado
+fechado — nenhuma linha de código mudou, era o que já estava certo"*). O parágrafo abaixo fica como
+registro do que a decisão era, não como pendência.
+
+⚠️ ~~Espera ratificação:~~ `ship-may-vote.sh` deixou de votar em nível de gate humano, porque um
 voto da automação satisfaz o `Required reviewers` da `main` e destrava o merge. É a única
 decisão da fase que é política, não leitura.
 
-### F9 — Custódia de credencial — ⚠️ MECANISMO ENTREGUE, DEFAULT AGUARDA VOCÊ
+### F9 — Custódia de credencial — ✅ MECANISMO ENTREGUE, DEFAULT DECIDIDO: **não virar**
+> 2026-08-19: decidido e registrado em `fechamento.md` — *"nada mudou no binário; fechado **por repo**
+> no smartcare, não no default"*. O motivo: a F8 fechou, mas as tools de board só existiram depois, e
+> mesmo agora a leitura ainda pede `az` cru. Virar o default agora fecharia a porta deixando a chave
+> na fechadura.
 **`f9-custodia.md`.** Entregues com default idêntico ao de hoje (nada quebra):
 `security.runner_only_env` (nomes exatos que o runner guarda, vencendo qualquer prefixo da
 allowlist), `security.disallowed_tools` (config **acrescenta e nunca encurta** o bloqueio
