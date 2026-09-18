@@ -315,12 +315,28 @@ expanded into N instances, up to a cap:
   - id: S05
     fanout:
       over: S04
+      wave_by: item.wave         # items run in waves; wave k+1 waits for wave k
+      isolate: worktree          # one git worktree + branch per item
+      max_parallel: 2            # items in flight at once
+      on_item_failure: continue  # a dead item does not take its siblings down
       max_items: 20              # default 50; each item can be an LLM call
       template:
         - id: fix
           kind: code
-          description: "fix {{item}}"
+          description: "fix {{ item }} (story {{ item.id }})"
 ```
+
+`{{ item }}` is the whole item; `{{ item.field }}` is one field of it when the
+discovery stage emitted JSON objects — which is what a title wants, since a step
+called `fix {"id":"59821","title":…}` is unreadable in every place a person
+reads it. An unresolved field stays literal rather than blanking.
+
+`isolate: worktree` gives every item its own checkout and its own branch, and
+appends a generated `merge` node that brings it back. That node depends on the
+item's own steps, so an item that failed never lands — and a merge conflict is a
+step that failed, with git's output on the screen where failures already live.
+Without it, items that WRITE are serialised on the run's single checkout: two
+agents editing one tree is how work gets swept away by the next checkpoint.
 
 `requires:` declares what the run needs on the machine *before* spending a
 token — a missing `bin:` (a name on PATH, or a path relative to the run's

@@ -29,9 +29,23 @@ const (
 // once been present.
 func expandRepro(tasks []types.Task, spec types.DAGSpec) ([]types.Task, types.DAGSpec) {
 	rename := make(map[string]string)
+	// fixerWaitsFor is the edge this expansion was missing, and its absence
+	// undid the whole step type.
+	//
+	// MEASURED, first time anybody ran a repro stage: with a bug that did NOT
+	// reproduce, `S01/before` failed saying "nothing to fix" — and the run then
+	// executed the fixer anyway, because nothing in the graph connected the two.
+	// The scheduler was right to do it (an independent branch continues when a
+	// task fails); the graph was lying. A repro exists to stop a fix from being
+	// written against a bug that is not there, and a fix that runs regardless is
+	// the same as not having asked.
+	fixerWaitsFor := make(map[string][]string)
 	for _, t := range tasks {
 		if types.NormalizeKind(t.Kind) == types.KindRepro {
 			rename[t.ID] = t.ID + ReproAfter
+			if t.FixedBy != "" {
+				fixerWaitsFor[t.FixedBy] = append(fixerWaitsFor[t.FixedBy], t.ID+ReproBefore)
+			}
 		}
 	}
 	if len(rename) == 0 {
@@ -43,7 +57,7 @@ func expandRepro(tasks []types.Task, spec types.DAGSpec) ([]types.Task, types.DA
 
 	for _, t := range tasks {
 		if types.NormalizeKind(t.Kind) != types.KindRepro {
-			t.DependsOn = repoint(t.DependsOn, rename)
+			t.DependsOn = dedupe(append(repoint(t.DependsOn, rename), fixerWaitsFor[t.ID]...))
 			out = append(out, t)
 			deps[t.ID] = t.DependsOn
 			continue
