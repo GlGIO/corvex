@@ -88,10 +88,30 @@ do dono, porque é a identidade dele no Azure.**
    é dinheiro, é a identidade dele no Azure, e é a medição do
    `Dependency-Reverse` que segue não medida.
 
-2. **A /pilot-incident** — o outro fluxo que o corvex tem de substituir, e que
-   ainda não foi olhado nesta obra: um incidente, diagnóstico-primeiro, com o
-   veredito TEMPORAL do `kind: repro` (tem de reproduzir ANTES e parar DEPOIS),
-   que o corvex já tem e ninguém usou.
+## Rodada 7 — FECHADA
+
+**A `/pilot-incident` virou recipe** (`incident.yaml`, smartcare `7c97d326`):
+contexto+preflight de acesso a PRD → diagnóstico → 🛑 FREIO A na CAUSA →
+teste que reproduz → `kind: repro` → conserto → suíte → entrega. Rodei os nove
+steps dublados: o freio parou, aprovei pelo CLI com ack, o `before` provou o
+defeito, o conserto rodou, o `after` provou que parou.
+
+**E o `repro` tinha um buraco que anulava o propósito dele** (`5fbab26`): com um
+defeito que NÃO reproduz, o `before` falhava dizendo "nothing to fix" — e o run
+executava o conserto assim mesmo, porque nada no grafo ligava o fixer à pergunta.
+Faltava uma aresta. Ninguém tinha rodado o step type desde que ele foi escrito.
+
+Mais o README, que não documentava `wave_by`, `isolate`, `max_parallel`,
+`on_item_failure` nem `{{ item.field }}` — tudo entregue nas rodadas anteriores.
+
+## O que falta
+
+1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
+   identidade no Azure, e a medição do `Dependency-Reverse`.
+2. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
+   por construção: o deploy é humano. Candidata natural a `corvex` agendado.
+3. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
+   agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
 ## Regras desta obra
 
