@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -254,19 +255,76 @@ func instantiate(fan *types.Task, item string, index int, roots []string) ([]typ
 	return nodes, leaves
 }
 
-// substituteItem replaces the `{{ item }}` placeholder.
+// substituteItem replaces the `{{ item }}` placeholder, and `{{ item.field }}`
+// for one field of a structured item.
 //
-// Deliberately not a template engine: one placeholder, textual, no expressions.
-// A recipe is configuration a person reads at a gate, and a language inside it
-// is a language somebody has to debug at three in the morning.
+// Deliberately not a template engine: two forms, textual, no expressions, no
+// nesting. A recipe is configuration a person reads at a gate, and a language
+// inside it is a language somebody has to debug at three in the morning.
+//
+// The field form was not in the first version and the first REAL fan-out is what
+// asked for it. Items from a board are objects, so every title written with
+// `{{ item }}` came out as
+//
+//	Investigar {"id":"59821","type":"User Story","state":"New","title":…}
+//
+// in the run screen, in the gate inbox and in the ledger — the three places a
+// person reads to decide something. `{{ item.id }}` is the difference between a
+// queue somebody can scan and a wall of JSON.
+//
+// An unresolved placeholder stays LITERAL rather than becoming empty: a title
+// that reads `Investigar {{ item.titel }}` is a typo somebody fixes in seconds,
+// and `Investigar ` is a typo nobody ever sees.
 func substituteItem(s, item string) string {
 	if s == "" {
 		return s
+	}
+	if strings.Contains(s, "item.") {
+		s = substituteItemFields(s, item)
 	}
 	for _, form := range []string{"{{ item }}", "{{item}}", "{{ .item }}", "{{.item}}"} {
 		s = strings.ReplaceAll(s, form, item)
 	}
 	return s
+}
+
+// itemFieldRef matches `{{ item.field }}` and `{{.item.field}}`, with or without
+// the spaces and the leading dot — the same four spellings the whole-item form
+// already accepted, because a recipe author who learned one should not discover
+// that the other silently does nothing.
+var itemFieldRef = regexp.MustCompile(`\{\{ *\.?item\.([A-Za-z0-9_]+) *\}\}`)
+
+// substituteItemFields resolves the field form against a structured item. A
+// non-object item (a path, a migration name — the common shape before boards
+// entered the picture) resolves nothing and keeps its text.
+func substituteItemFields(s, item string) string {
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(item), &obj); err != nil {
+		return s
+	}
+	return itemFieldRef.ReplaceAllStringFunc(s, func(match string) string {
+		key := itemFieldRef.FindStringSubmatch(match)[1]
+		v, ok := obj[key]
+		if !ok || v == nil {
+			return match
+		}
+		switch typed := v.(type) {
+		case string:
+			return typed
+		case float64:
+			// A wave or an id that arrived as a number must not come back as
+			// 5.9337e+04: %v on a float64 is exactly how that happens.
+			return strconv.FormatFloat(typed, 'f', -1, 64)
+		default:
+			// A nested object or list has no one-line spelling that is not a
+			// decision about formatting, so it keeps the JSON it arrived as.
+			raw, merr := json.Marshal(typed)
+			if merr != nil {
+				return match
+			}
+			return string(raw)
+		}
+	})
 }
 
 // sortWaveKeys puts the waves in the order they run.

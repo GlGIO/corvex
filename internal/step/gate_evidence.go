@@ -76,10 +76,30 @@ func (e *Executor) resolveDeclared(ctx context.Context, r *Run, t *types.Task, a
 		item := decl
 		item.From = ""
 		item.Content = out
-		if err != nil {
+		switch {
+		case err != nil:
 			item.Status = types.EvidenceFail
 			item.Content = out + "\n[corvex: `" + decl.From + "` failed: " + err.Error() + "]"
-		} else if item.Status == "" {
+		case strings.TrimSpace(out) == "":
+			// Evidence that came back EMPTY says so, in the content, where every
+			// reader already looks.
+			//
+			// Measured on the first real run of a fan-out recipe: the gate that
+			// decides whether a feature may be shipped had one piece of required
+			// reading, `git diff --stat` with the runner's own paperwork excluded,
+			// and the agent had written no product code — so the box a person is
+			// forced to acknowledge was BLANK. "I read it and there was nothing"
+			// and "the command printed nothing" look identical on a blank box,
+			// and the second one is the interesting case.
+			//
+			// The note goes in the content rather than into a new field for the
+			// same reason the truncation note does (internal/gate/evidence.go):
+			// a reader who only sees the text still knows. And the status is
+			// `warn` rather than `fail` because an empty diff is often the
+			// TRUTH — it is unreadable, not wrong.
+			item.Status = types.EvidenceWarn
+			item.Content = "[corvex: `" + decl.From + "` ran and printed nothing]"
+		case item.Status == "":
 			// A declared item with no status is neutral, not green: nothing
 			// judged it.
 			item.Status = types.EvidenceWarn

@@ -234,3 +234,45 @@ func TestResolveDeclaredEvidence(t *testing.T) {
 		t.Errorf("a failing `from` must show up as failed evidence: %+v", items[2])
 	}
 }
+
+// Evidence that came back empty SAYS so.
+//
+// Measured on the first real run of a fan-out recipe: the gate that decides
+// whether a feature may be shipped had one piece of required reading — a
+// `git diff --stat` with the runner's own files excluded — and the step had
+// written no product code. The box a person was forced to acknowledge was
+// blank, and a blank box cannot distinguish "there was nothing to read" from
+// "the command that was supposed to show you something printed nothing". The
+// second is the interesting case, and it was the invisible one.
+func TestResolveDeclaredEvidence_EmptyOutputIsSaidOutLoud(t *testing.T) {
+	e := gateExecutor(t, &mockProvider{}, nil)
+	acc := newEvidenceSet()
+	tk := &types.Task{ID: "S05", Evidence: []types.Evidence{
+		{Kind: types.EvidenceDiff, Label: "O diff da feature", From: "true", RequiredReading: true},
+		{Kind: types.EvidenceTestOutput, Label: "Só espaços", From: "printf '   \n'"},
+	}}
+	e.resolveDeclared(context.Background(), &Run{}, tk, acc)
+	items := acc.all()
+	if len(items) != 2 {
+		t.Fatalf("resolved %d items, want 2", len(items))
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.Content) == "" {
+			t.Errorf("%q is still blank: a reader cannot tell it apart from evidence nobody produced", item.Label)
+		}
+		if !strings.Contains(item.Content, "printed nothing") {
+			t.Errorf("%q does not say the command printed nothing: %q", item.Label, item.Content)
+		}
+		// `warn`, not `fail`: an empty diff is frequently the truth. It is
+		// unreadable, not wrong.
+		if item.Status != types.EvidenceWarn {
+			t.Errorf("%q has status %q, want warn", item.Label, item.Status)
+		}
+	}
+	// And the lock still holds: emptiness does not quietly drop the requirement
+	// to acknowledge, because "nothing changed" is exactly the claim somebody
+	// should have to look at before shipping.
+	if !items[0].RequiredReading {
+		t.Error("required_reading was dropped when the evidence came back empty")
+	}
+}
