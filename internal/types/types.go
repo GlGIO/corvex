@@ -134,6 +134,26 @@ type Task struct {
 	Expanded bool
 	// FanoutOf is the id of the fanout node this task was expanded from.
 	FanoutOf string
+	// WritesRunTree marks a command step that edits the RUN's checkout, which
+	// the runner cannot tell from the command itself: `npm test` and `git merge`
+	// are both `kind: tool` and only one of them writes.
+	//
+	// It exists because of a measured collision: two generated merge nodes of an
+	// isolated fan-out ran in the same wave, in the same checkout, and the
+	// second git call died on `.git/index.lock` — exit 128, reported as a failed
+	// step with a message about a lock file. Marking them makes the tree lock
+	// (internal/orchestrator/schedule.go) cover them, which is what the lock was
+	// always for: one writer per tree.
+	WritesRunTree bool
+	// WorkDir is the directory this task executes in when it is not the run's
+	// own checkout: the git worktree an isolated fan-out item was given.
+	//
+	// Persisted with the task, not derived from the id, because a resumed run
+	// has to land in the SAME worktree the first attempt used — and a derivation
+	// rule is a second source of truth that drifts the day the naming changes.
+	// Empty means the run's checkout, which is every task that is not an
+	// isolated fan-out item.
+	WorkDir string
 }
 
 type TaskFiles struct {

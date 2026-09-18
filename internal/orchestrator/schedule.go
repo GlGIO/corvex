@@ -149,14 +149,28 @@ func (o *Orchestrator) runsWaveInParallel() bool {
 	return o.cfg.Execution.Parallel && o.targetTask == "" && !o.singleTask && len(o.abModels) != 2
 }
 
-// writesTheWorkingTree reports whether a task produces its result by editing
-// the checkout rather than by running a fixed command.
+// writesTheRunsTree reports whether a task edits the checkout the RUN shares.
 //
-// It is the question the tree lock in runWaveParallel asks, and it is asked of
-// the NORMALISED kind on purpose: a planner-written task carries no `kind` at
-// all, and types.NormalizeKind maps that (and every unrecognised value) to
-// KindCode — the reading that errs toward isolation instead of away from it.
-func writesTheWorkingTree(t *types.Task) bool {
+// The first version of this asked "does it write", and that was the wrong
+// question by one word: a task with its own worktree writes plenty and shares
+// nothing, while a generated `git merge` node is a fixed command that writes the
+// tree everyone else is reading. Both answers were wrong in the same release —
+// the first cost parallelism that was safe, the second cost a run that died on
+// `.git/index.lock` with two merges in one wave.
+//
+//   - An isolated item (WorkDir set) owns its tree: never contends.
+//   - A step with no fixed command produces its result by EDITING: contends.
+//     Asked of the NORMALISED kind, so a planner-written task with no `kind` at
+//     all (types.NormalizeKind maps it to KindCode) errs toward isolation.
+//   - A command step contends only when it says so with `writes_run_tree`,
+//     because `npm test` and `git merge` are the same kind from here.
+func writesTheRunsTree(t *types.Task) bool {
+	if t.WorkDir != "" {
+		return false
+	}
+	if t.WritesRunTree {
+		return true
+	}
 	return !types.NormalizeKind(t.Kind).IsComputational()
 }
 
@@ -218,12 +232,12 @@ func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready [
 	var treeMu sync.Mutex
 	writers := 0
 	for _, taskID := range ready {
-		if t := findTask(s.tasks, taskID); t != nil && writesTheWorkingTree(t) {
+		if t := findTask(s.tasks, taskID); t != nil && writesTheRunsTree(t) {
 			writers++
 		}
 	}
 	if writers > 1 {
-		msg := fmt.Sprintf("%d steps in this wave write the working tree; they run one at a time (one checkout)", writers)
+		msg := fmt.Sprintf("%d steps in this wave write the run's checkout; they run one at a time (isolated items are not among them)", writers)
 		o.emit(Event{Type: EventTaskWarn, Message: msg})
 		charmbraceletlog.Warn("serialising the writers of this wave", "writers", writers)
 	}
@@ -248,7 +262,7 @@ func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready [
 		go func(t *types.Task) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if writesTheWorkingTree(t) {
+			if writesTheRunsTree(t) {
 				treeMu.Lock()
 				defer treeMu.Unlock()
 			}

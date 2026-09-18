@@ -67,7 +67,7 @@ func TestParallelWave_WorkerStepsNeverShareTheTree(t *testing.T) {
 	go func() {
 		defer close(done)
 		for ev := range events {
-			if ev.Type == EventTaskWarn && strings.Contains(ev.Message, "write the working tree") {
+			if ev.Type == EventTaskWarn && strings.Contains(ev.Message, "write the run's checkout") {
 				warnMu.Lock()
 				warned = true
 				warnMu.Unlock()

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/giovannialves/corvex/internal/run"
 )
 
 // Worktree represents a temporary git worktree created for parallel task
@@ -28,6 +31,25 @@ func CreateWorktree(ctx context.Context, repoRoot, suffix string) (*Worktree, er
 
 	path := filepath.Join(repoRoot, ".corvex", "worktrees", suffix)
 	branch := "corvex-ab/" + suffix
+
+	// The worktrees directory is machine-local scratch and must be invisible to
+	// the repository that contains it.
+	//
+	// MEASURED, not feared: with auto_commit on, the run's own checkpoint does
+	// `git add -A` in the main checkout, sees `.corvex/worktrees/<suffix>` — a
+	// directory with a `.git` file in it — and commits it as an EMBEDDED GIT
+	// REPOSITORY. git says so in a warning nobody reads during a run:
+	//     warning: adding embedded git repository: .corvex/worktrees/S02-000
+	// and the commit then carries a gitlink to a checkout that is about to be
+	// deleted. The A/B path has had this hole since it was written; it only
+	// stayed invisible because an A/B run rarely checkpoints beside a live
+	// worktree. A fan-out that isolates every item does it on every run.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("worktree: creating %s: %w", filepath.Dir(path), err)
+	}
+	if err := run.EnsureScratchIgnored(filepath.Dir(path)); err != nil {
+		return nil, fmt.Errorf("worktree: %w", err)
+	}
 
 	cmd := exec.CommandContext(ctx, "git", "-C", repoRoot, "worktree", "add", "-b", branch, path, "HEAD")
 	var stderr bytes.Buffer

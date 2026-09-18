@@ -115,7 +115,7 @@ func (e *Executor) runGate(ctx context.Context, r *Run, t *types.Task, g types.G
 
 // computationalGate runs a shell check and turns its output into evidence.
 func (e *Executor) computationalGate(ctx context.Context, r *Run, t *types.Task, g types.Gate, acc *evidenceSet) error {
-	out, err := e.runShell(ctx, r, g.Command)
+	out, err := e.runShellForTask(ctx, r, t, g.Command)
 	acc.add(gate.FromCommandOutput(gateLabel(g, "check"), out, err == nil))
 	if err != nil {
 		return e.gateRefused(t, g, fmt.Sprintf("`%s` exited non-zero: %v", g.Command, err))
@@ -144,7 +144,10 @@ func (e *Executor) inferentialGate(ctx context.Context, r *Run, t *types.Task, g
 	// gate is where it sits in the recipe, not what it costs.
 	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview, Message: g.Describe()})
 
-	reviewer := NewReviewer(e.provider, model, e.workDir, skill)
+	// The reviewer reads the tree the work landed in, which for an isolated
+	// fan-out item is that item's worktree — judging the run's checkout would be
+	// judging a tree the step never touched.
+	reviewer := NewReviewer(e.provider, model, e.taskDir(t), skill)
 	res, err := reviewer.Review(ctx, t)
 	if err != nil {
 		acc.add(gate.FromVerdict(gateLabel(g, "review"), "ERROR", "", err.Error(), false))

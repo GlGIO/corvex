@@ -51,7 +51,7 @@ func (s *evidenceSet) all() []types.Evidence {
 // A git failure is silent here — the step succeeded, and "we could not summarise
 // the diff" is not worth failing a task that passed review.
 func (e *Executor) addDiffEvidence(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) {
-	out, err := e.runShell(ctx, r, "git diff --stat HEAD")
+	out, err := e.runShellForTask(ctx, r, t, "git diff --stat HEAD")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return
 	}
@@ -72,7 +72,7 @@ func (e *Executor) resolveDeclared(ctx context.Context, r *Run, t *types.Task, a
 			acc.add(decl)
 			continue
 		}
-		out, err := e.runShell(ctx, r, decl.From)
+		out, err := e.runShellForTask(ctx, r, t, decl.From)
 		item := decl
 		item.From = ""
 		item.Content = out

@@ -69,7 +69,7 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *ev
 		// Per-task worker clone: escalation upgrades this clone's model and
 		// sets its stream callback, so parallel tasks never race on shared
 		// worker state.
-		worker:         e.worker.clone(),
+		worker:         e.worker.clone().inDir(e.taskDir(t)),
 		categoryCounts: make(map[string]int),
 		maxRetries:     maxRetries,
 	}

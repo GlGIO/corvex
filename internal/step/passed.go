@@ -141,7 +141,7 @@ func (e *Executor) commitPassedTask(
 		charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)
 	}
 	if e.cfg.Execution.AutoCommit {
-		if err := e.recovery.MarkCheckpoint(t.ID); err != nil {
+		if err := e.checkpointer(t).MarkCheckpoint(t.ID); err != nil {
 			charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
 		}
 	}

@@ -221,9 +221,48 @@ func (e *Executor) markGateFailure(r *Run, t *types.Task) {
 // which is why the run's environment is assembled in one place: a variable a
 // stage could read and its gate could not would be worse than no variable,
 // because the recipe would look correct and derive two different answers.
+// taskDir is where a task executes: its own worktree when it is an isolated
+// fan-out item, and the run's checkout for everything else.
+//
+// One function, so the four places that need it — the agent's cwd, a command
+// stage's shell, a gate's shell, an evidence command — cannot disagree about
+// which tree a step belongs to. A step whose evidence came from a different
+// checkout than its work would be evidence about somebody else's tree.
+func (e *Executor) taskDir(t *types.Task) string {
+	if t != nil && t.WorkDir != "" {
+		return t.WorkDir
+	}
+	return e.workDir
+}
+
+// checkpointer is the recovery manager for the tree a task writes into.
+//
+// auto_commit commits what the step produced, and an isolated fan-out item
+// produces it on its own branch in its own worktree. Committing that from the
+// run's checkout would commit NOTHING (the tree is untouched there) while the
+// item's work sat uncommitted — and the merge back would then have nothing to
+// merge. The run's own manager is reused when the task has no tree of its own,
+// so the common path keeps its memoised state.
+func (e *Executor) checkpointer(t *types.Task) *recovery.Manager {
+	dir := e.taskDir(t)
+	if dir == e.workDir {
+		return e.recovery
+	}
+	return recovery.NewManager(dir)
+}
+
 func (e *Executor) runShell(ctx context.Context, r *Run, command string) (string, error) {
+	return e.runShellIn(ctx, r, e.workDir, command)
+}
+
+// runShellForTask runs a command in the task's own checkout.
+func (e *Executor) runShellForTask(ctx context.Context, r *Run, t *types.Task, command string) (string, error) {
+	return e.runShellIn(ctx, r, e.taskDir(t), command)
+}
+
+func (e *Executor) runShellIn(ctx context.Context, r *Run, dir, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	cmd.Dir = e.workDir
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"CORVEX_RUN_BASE="+e.runBase(ctx),
 		"CORVEX_RUN_ID="+r.runID(),

@@ -93,7 +93,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		}
 		e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
 
-		out, runErr := e.runShell(cmdCtx, r, t.Command)
+		out, runErr := e.runShellForTask(cmdCtx, r, t, t.Command)
 		if trimmed := strings.TrimSpace(out); trimmed != "" {
 			ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
 			e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &ev})
@@ -104,7 +104,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		if strings.TrimSpace(t.LoopUntil) != "" {
 			// The until-condition governs; the command is the work that may
 			// make it pass over successive iterations.
-			untilOut, untilErr := e.runShell(cmdCtx, r, t.LoopUntil)
+			untilOut, untilErr := e.runShellForTask(cmdCtx, r, t, t.LoopUntil)
 			ok = untilErr == nil
 			lastErr, lastOut = untilErr, untilOut
 		} else {
@@ -237,7 +237,7 @@ func (e *Executor) markStagePassed(r *Run, t *types.Task, summary string, durati
 		charmbraceletlog.Warn("saving anchor", "task", t.ID, "err", err)
 	}
 	if e.cfg.Execution.AutoCommit {
-		if err := e.recovery.MarkCheckpoint(t.ID); err != nil {
+		if err := e.checkpointer(t).MarkCheckpoint(t.ID); err != nil {
 			charmbraceletlog.Warn("marking checkpoint", "task", t.ID, "err", err)
 		}
 	}

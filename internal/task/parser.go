@@ -65,16 +65,18 @@ type inlineYAML struct {
 
 	// F2 fields. All omitempty on the way out, so a task that declares none of
 	// them serialises byte-identically to its pre-F2 form.
-	Gates      []types.Gate     `yaml:"gates,omitempty"`
-	Evidence   []types.Evidence `yaml:"evidence,omitempty"`
-	Fanout     *types.Fanout    `yaml:"fanout,omitempty"`
-	Produces   string           `yaml:"produces,omitempty"`
-	FixedBy    string           `yaml:"fixed_by,omitempty"`
-	ExpectFail bool             `yaml:"expect_fail,omitempty"`
-	Item       string           `yaml:"item,omitempty"`
-	Items      []string         `yaml:"items,omitempty"`
-	Expanded   bool             `yaml:"expanded,omitempty"`
-	FanoutOf   string           `yaml:"fanout_of,omitempty"`
+	Gates         []types.Gate     `yaml:"gates,omitempty"`
+	Evidence      []types.Evidence `yaml:"evidence,omitempty"`
+	Fanout        *types.Fanout    `yaml:"fanout,omitempty"`
+	Produces      string           `yaml:"produces,omitempty"`
+	FixedBy       string           `yaml:"fixed_by,omitempty"`
+	ExpectFail    bool             `yaml:"expect_fail,omitempty"`
+	Item          string           `yaml:"item,omitempty"`
+	Items         []string         `yaml:"items,omitempty"`
+	Expanded      bool             `yaml:"expanded,omitempty"`
+	FanoutOf      string           `yaml:"fanout_of,omitempty"`
+	WorkDir       string           `yaml:"workdir,omitempty"`
+	WritesRunTree bool             `yaml:"writes_run_tree,omitempty"`
 }
 
 // ParseTasksFile reads a tasks.md file and returns the parsed tasks and DAG specification.
@@ -294,6 +296,11 @@ func extractInlineYAML(lines []string, task *types.Task) {
 	task.Evidence = iy.Evidence
 	task.Fanout = iy.Fanout
 	task.Produces = iy.Produces
+	// The worktree an isolated fan-out item runs in. It has to survive a
+	// resume: the second attempt of a step belongs in the SAME checkout as the
+	// first, or it reads a tree without the work the first one left there.
+	task.WorkDir = iy.WorkDir
+	task.WritesRunTree = iy.WritesRunTree
 	task.FixedBy = iy.FixedBy
 	task.ExpectFail = iy.ExpectFail
 	task.Item = iy.Item

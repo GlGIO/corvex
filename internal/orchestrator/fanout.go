@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	charmbraceletlog "github.com/charmbracelet/log"
 
 	"github.com/giovannialves/corvex/internal/dag"
+	"github.com/giovannialves/corvex/internal/sandbox"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -187,6 +189,13 @@ func (o *Orchestrator) expandOne(s *schedule, fan *types.Task) error {
 		waveRoots := dedupeStrings(append(append([]string(nil), outerDeps...), prevWaveLeaves...))
 		for _, item := range wave.items {
 			nodes, leaves := instantiate(fan, item, index, waveRoots)
+			if f.IsolatesItems() {
+				var isoErr error
+				nodes, leaves, isoErr = o.isolateItem(fan, nodes, leaves, index)
+				if isoErr != nil {
+					return fmt.Errorf("fan-out %s, item %d: %w", fan.ID, index, isoErr)
+				}
+			}
 			expanded = append(expanded, nodes...)
 			waveLeaves = append(waveLeaves, leaves...)
 			index++
@@ -203,6 +212,82 @@ func (o *Orchestrator) expandOne(s *schedule, fan *types.Task) error {
 	o.emit(Event{Type: EventDAGResolved, TaskID: fan.ID, Total: len(items),
 		Message: fmt.Sprintf("fan-out %s expanded %d item(s) into %d node(s)", fan.ID, len(items), len(expanded))})
 	return nil
+}
+
+// isolateItem gives one item its own checkout and its own way back.
+//
+// Two things happen here, and they are one decision: every node of the item is
+// pinned to a fresh git worktree, and a `merge` node is appended that depends on
+// the item's leaves, runs in the RUN's checkout, and brings the branch home.
+//
+// The merge is a node rather than something the runner does behind the graph,
+// and that is the whole design:
+//
+//   - it only runs if the item's own steps passed, because a failed dependency
+//     blocks it — so a story that broke never lands on the feature branch, with
+//     no bookkeeping needed to arrange that;
+//   - a conflict is a step that FAILED, with git's conflict output in the step's
+//     own output, on the screen where every other failure already appears;
+//   - the operator can read, in tasks.md, exactly which branches will be merged
+//     and in which order, before any of it happens.
+//
+// What it deliberately does NOT do is resolve a conflict. The reference flow
+// hands that to an agent ("Sincronizar"); here it stops and says so. Two stories
+// that edited the same lines is a fact about the decomposition, and the person
+// who owns the decomposition is not this process.
+func (o *Orchestrator) isolateItem(fan *types.Task, nodes []types.Task, leaves []string, index int) ([]types.Task, []string, error) {
+	suffix := fmt.Sprintf("%s-%03d", sanitiseWorktreeName(fan.ID), index)
+	wt, err := sandbox.CreateWorktree(context.Background(), o.workDir, suffix)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating the worktree for this item: %w", err)
+	}
+	for i := range nodes {
+		nodes[i].WorkDir = wt.Path
+	}
+
+	mergeID := fmt.Sprintf("%s/%03d/merge", fan.ID, index)
+	// `--no-ff` so the item keeps a shape in history: one merge commit per
+	// story, which is what makes "which story broke this" answerable later by
+	// reading the log instead of by guessing from a flat sequence of commits.
+	// `git worktree remove` only after the merge succeeded — a failed merge
+	// leaves the tree on disk ON PURPOSE, because the work in it is the only
+	// copy and a person is about to need it.
+	command := fmt.Sprintf("set -e\ngit merge --no-ff -m %q %s\ngit worktree remove --force %q",
+		"corvex: merge "+mergeID, wt.Branch, wt.Path)
+	nodes = append(nodes, types.Task{
+		ID:        mergeID,
+		Title:     "Trazer o trabalho de volta (" + wt.Branch + ")",
+		Status:    types.StatusPending,
+		Type:      types.TypeGeneral,
+		Kind:      string(types.KindTool),
+		DependsOn: append([]string(nil), leaves...),
+		Command:   command,
+		Item:      nodes[0].Item,
+		FanoutOf:  fan.ID,
+		// It is a command, and it writes the tree every other merge writes. The
+		// runner cannot see that from the string, so the node says it: without
+		// this, two merges in one wave race on `.git/index.lock` and the loser
+		// reports exit 128 as a failed step.
+		WritesRunTree: true,
+		// No WorkDir: the merge belongs to the run's checkout, which is the
+		// tree it merges INTO. Pinning it to the item's worktree would merge a
+		// branch into itself and leave the feature branch untouched.
+	})
+	return nodes, []string{mergeID}, nil
+}
+
+// sanitiseWorktreeName keeps a stage id usable as a directory and a branch
+// segment. Stage ids are `S03`-shaped today; a slash in one would otherwise
+// create a directory nobody asked for.
+func sanitiseWorktreeName(id string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, id)
 }
 
 // instantiate builds one item's nodes and returns them plus its leaf ids.

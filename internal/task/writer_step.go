@@ -17,30 +17,34 @@ import (
 // keys and requote strings for no gain. A task that declares none of these
 // fields appends nothing, so its block is byte-identical to before.
 type stepFields struct {
-	Gates      []types.Gate     `yaml:"gates,omitempty"`
-	Evidence   []types.Evidence `yaml:"evidence,omitempty"`
-	Fanout     *types.Fanout    `yaml:"fanout,omitempty"`
-	Produces   string           `yaml:"produces,omitempty"`
-	FixedBy    string           `yaml:"fixed_by,omitempty"`
-	ExpectFail bool             `yaml:"expect_fail,omitempty"`
-	Item       string           `yaml:"item,omitempty"`
-	Items      []string         `yaml:"items,omitempty"`
-	Expanded   bool             `yaml:"expanded,omitempty"`
-	FanoutOf   string           `yaml:"fanout_of,omitempty"`
+	Gates         []types.Gate     `yaml:"gates,omitempty"`
+	Evidence      []types.Evidence `yaml:"evidence,omitempty"`
+	Fanout        *types.Fanout    `yaml:"fanout,omitempty"`
+	Produces      string           `yaml:"produces,omitempty"`
+	FixedBy       string           `yaml:"fixed_by,omitempty"`
+	ExpectFail    bool             `yaml:"expect_fail,omitempty"`
+	Item          string           `yaml:"item,omitempty"`
+	Items         []string         `yaml:"items,omitempty"`
+	Expanded      bool             `yaml:"expanded,omitempty"`
+	FanoutOf      string           `yaml:"fanout_of,omitempty"`
+	WorkDir       string           `yaml:"workdir,omitempty"`
+	WritesRunTree bool             `yaml:"writes_run_tree,omitempty"`
 }
 
 func collectStepFields(t types.Task) stepFields {
 	return stepFields{
-		Gates:      t.Gates,
-		Evidence:   t.Evidence,
-		Fanout:     t.Fanout,
-		Produces:   t.Produces,
-		FixedBy:    t.FixedBy,
-		ExpectFail: t.ExpectFail,
-		Item:       t.Item,
-		Items:      t.Items,
-		Expanded:   t.Expanded,
-		FanoutOf:   t.FanoutOf,
+		Gates:         t.Gates,
+		Evidence:      t.Evidence,
+		Fanout:        t.Fanout,
+		Produces:      t.Produces,
+		FixedBy:       t.FixedBy,
+		ExpectFail:    t.ExpectFail,
+		Item:          t.Item,
+		Items:         t.Items,
+		Expanded:      t.Expanded,
+		FanoutOf:      t.FanoutOf,
+		WorkDir:       t.WorkDir,
+		WritesRunTree: t.WritesRunTree,
 	}
 }
 
@@ -50,7 +54,7 @@ func hasStepFields(t types.Task) bool {
 	f := collectStepFields(t)
 	return len(f.Gates) > 0 || len(f.Evidence) > 0 || f.Fanout != nil ||
 		f.Produces != "" || f.FixedBy != "" || f.Item != "" || f.ExpectFail ||
-		len(f.Items) > 0 || f.Expanded || f.FanoutOf != ""
+		len(f.Items) > 0 || f.Expanded || f.FanoutOf != "" || f.WorkDir != "" || f.WritesRunTree
 }
 
 // writeStepFields appends the marshalled F2 fields to an already-open block.

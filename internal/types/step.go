@@ -308,9 +308,26 @@ type Fanout struct {
 	// execution.max_parallel.
 	MaxParallel int `yaml:"max_parallel,omitempty" json:"max_parallel,omitempty"`
 	// OnItemFailure is OnItemFailureAbort (default) or OnItemFailureContinue.
-	OnItemFailure string     `yaml:"on_item_failure,omitempty" json:"on_item_failure,omitempty"`
-	Template      []StepSpec `yaml:"template" json:"template"`
+	OnItemFailure string `yaml:"on_item_failure,omitempty" json:"on_item_failure,omitempty"`
+	// Isolate gives each item its own git worktree and branch, merged back when
+	// the item finishes. Empty (the default) keeps every item in the run's one
+	// checkout.
+	//
+	// It exists because "N items in parallel" and "one working tree" cannot both
+	// be true for items that WRITE. Without isolation the runner serialises the
+	// writers (internal/orchestrator/schedule.go) — correct, and slow. With it,
+	// each item edits its own checkout on its own branch, and the merge back is
+	// a node of the graph like any other, so a conflict is a step that failed
+	// with the conflict in its output rather than a surprise in a shared tree.
+	Isolate  string     `yaml:"isolate,omitempty" json:"isolate,omitempty"`
+	Template []StepSpec `yaml:"template" json:"template"`
 }
+
+// IsolateWorktree is the one isolation mode: a git worktree per item.
+const IsolateWorktree = "worktree"
+
+// IsolatesItems reports whether each item gets its own checkout.
+func (f Fanout) IsolatesItems() bool { return f.Isolate == IsolateWorktree }
 
 // EffectiveMaxItems resolves the ceiling, applying the default.
 func (f Fanout) EffectiveMaxItems() int {

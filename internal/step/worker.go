@@ -76,6 +76,20 @@ func (w *Worker) clone() *Worker {
 	}
 }
 
+// inDir returns a clone pinned to another checkout — the worktree an isolated
+// fan-out item was given. The worker is the one component that MUST move: its
+// cwd is where the agent reads and writes code, and an isolated item whose
+// worker still edited the run's checkout would have isolation in the graph and
+// none on disk.
+func (w *Worker) inDir(dir string) *Worker {
+	if dir == "" || dir == w.workDir {
+		return w
+	}
+	c := w.clone()
+	c.workDir = dir
+	return c
+}
+
 // SetOnStream installs a callback that receives streaming events from the
 // provider while a task runs. Pass nil to clear. The callback is invoked
 // synchronously on the provider's goroutine, so it should be cheap (e.g.
