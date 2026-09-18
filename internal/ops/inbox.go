@@ -93,12 +93,12 @@ func (g GateLister) LoadInbox(localRepo string) (Inbox, error) {
 func (g GateLister) reposInScope(localRepo string) []string {
 	seen := map[string]bool{}
 	if localRepo != "" {
-		seen[canonicalRepo(localRepo)] = true
+		seen[CanonicalRepo(localRepo)] = true
 	}
 	if views, err := g.Resolver.List(); err == nil {
 		for _, v := range views {
 			if v.Record.Repo != "" {
-				seen[canonicalRepo(v.Record.Repo)] = true
+				seen[CanonicalRepo(v.Record.Repo)] = true
 			}
 		}
 	}
@@ -107,6 +107,36 @@ func (g GateLister) reposInScope(localRepo string) []string {
 		out = append(out, repo)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// Workspace is one repository this machine knows about, in the shape a screen
+// needs it.
+type Workspace struct {
+	Path string `json:"path"`
+	// Name is the directory's base name — what a person calls the repository.
+	Name string `json:"name"`
+	// Current marks the repository the UI was opened in. It is the default for
+	// a dispatch, and the only one whose recipes are certain to be readable.
+	Current bool `json:"current"`
+}
+
+// Workspaces is the repository list the UI offers, built from the SAME walk the
+// inbox uses (reposInScope): the repository under the cursor plus every one the
+// global run index has seen.
+//
+// It shares that walk deliberately. The inbox already shows gates from every
+// repository — that is what makes one screen an answer to "what is waiting on
+// me" rather than "what is waiting on me here" — and a dispatch list built from
+// a different source would be able to show a gate for a repository it refuses to
+// dispatch into. Shared, the two cannot disagree.
+func (g GateLister) Workspaces(localRepo string) []Workspace {
+	local := CanonicalRepo(localRepo)
+	repos := g.reposInScope(localRepo)
+	out := make([]Workspace, 0, len(repos))
+	for _, repo := range repos {
+		out = append(out, Workspace{Path: repo, Name: filepath.Base(repo), Current: repo == local})
+	}
 	return out
 }
 

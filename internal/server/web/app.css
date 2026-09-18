@@ -70,3 +70,5 @@ textarea{width:100%;resize:vertical}
    than a path the reader is expected to go and open themselves. */
 pre.log{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px}
 label.check{display:flex;gap:6px;align-items:center;color:var(--dim);cursor:pointer;white-space:nowrap}
+.step.clickable{cursor:pointer}
+.step.clickable:hover{background:var(--panel-2)}

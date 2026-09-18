@@ -3,6 +3,7 @@ package server_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -242,5 +243,75 @@ func TestRunLog_ServesTheTailAndRefusesEverythingElse(t *testing.T) {
 		if rec.Code == http.StatusOK {
 			t.Errorf("GET /api/runs/logs/%s = 200, want a refusal", name)
 		}
+	}
+}
+
+// The orchestrator question: a UI opened in one repository dispatches into
+// another, but only into one the machine has already seen.
+//
+// The refusal is the load-bearing half. This surface exists to spawn a binary;
+// letting the body name any path on disk would make it spawn that binary
+// anywhere, and "the token stops a stranger" is an argument about attackers, not
+// about a mistake in a form.
+func TestStartRun_RefusesARepositoryTheMachineDoesNotKnow(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "repo")
+	other := filepath.Join(root, "somewhere-else")
+	for _, dir := range []string{workDir, other} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	argv := filepath.Join(root, "argv")
+	srv, err := server.New(server.Options{WorkDir: workDir, Binary: stubBinary(t, argv, "true", 0)})
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+	h := srv.Handler()
+
+	rec, body := post(t, h, srv, "/api/runs", `{"target":"demo","repo":"`+other+`"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "run corvex there once") {
+		t.Errorf("the refusal does not say how to make it work: %v", body["error"])
+	}
+	if _, err := os.Stat(argv); err == nil {
+		t.Error("a refused dispatch still spawned the binary")
+	}
+
+	// The repository the UI opened is always in the list, by either spelling.
+	rec, _ = post(t, h, srv, "/api/runs", `{"target":"demo","repo":"`+workDir+`"}`)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("dispatching into the UI's own repository = %d, want 202", rec.Code)
+	}
+}
+
+// GET /api/repos answers with the list the dispatch form offers, and the local
+// repository is in it and marked.
+func TestRepos_ListsTheLocalRepositoryAsCurrent(t *testing.T) {
+	srv, h := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "http://localhost/api/repos", nil)
+	req.Header.Set("Authorization", "Bearer "+srv.Token())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	var repos []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &repos); err != nil {
+		t.Fatalf("decoding: %v (%s)", err, rec.Body)
+	}
+	var current int
+	for _, r := range repos {
+		if cur, _ := r["current"].(bool); cur {
+			current++
+			if name, _ := r["name"].(string); name == "" {
+				t.Error("the current repository has no name to show")
+			}
+		}
+	}
+	if current != 1 {
+		t.Errorf("%d repositories marked current, want exactly 1: %v", current, repos)
 	}
 }

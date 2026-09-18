@@ -43,6 +43,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/gates/{id}/answer", s.handleAnswer)
 	s.mux.HandleFunc("GET /api/actions", s.handleActions)
 	s.mux.HandleFunc("GET /api/recipes", s.handleRecipes)
+	s.mux.HandleFunc("GET /api/repos", s.handleRepos)
 	s.mux.HandleFunc("GET /assets/", s.handleAsset)
 	s.mux.HandleFunc("GET /", s.handleIndex)
 }
@@ -256,6 +257,27 @@ func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, actions)
 }
 
+// handleRecipes lists the recipes of one repository — the local one by default,
+// or the `repo` asked for, resolved through the same list a dispatch is allowed
+// to name. A screen that offered a repository it could not read the recipes of
+// would be offering a text field with extra steps.
 func (s *Server) handleRecipes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, ops.ListRecipes(s.opts.WorkDir))
+	dir := s.opts.WorkDir
+	if repo := strings.TrimSpace(r.URL.Query().Get("repo")); repo != "" {
+		resolved, err := s.dispatchRepo(startRequest{Repo: repo})
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		dir = resolved
+	}
+	writeJSON(w, http.StatusOK, ops.ListRecipes(dir))
+}
+
+// handleRepos is the orchestrator's first question: which repositories is this
+// screen speaking for. The inbox has always aggregated them (ops.LoadInbox walks
+// every repository the index knows); this is the same walk, on the wire, so the
+// dispatch form can offer exactly the set the inbox already reports on.
+func (s *Server) handleRepos(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.gates().Workspaces(s.opts.WorkDir))
 }

@@ -94,11 +94,11 @@ func (l RunLister) ListRuns(opts RunListOptions) ([]RunRow, error) {
 		return nil, err
 	}
 	now := l.now()
-	want := canonicalRepo(opts.Repo)
+	want := CanonicalRepo(opts.Repo)
 
 	rows := make([]RunRow, 0, len(views))
 	for _, v := range views {
-		if want != "" && canonicalRepo(v.Record.Repo) != want {
+		if want != "" && CanonicalRepo(v.Record.Repo) != want {
 			continue
 		}
 		age := now.Sub(v.Record.StartedAt)
@@ -186,16 +186,23 @@ func (e *UnknownRunError) Error() string {
 
 // SameRepo reports whether two paths name the same repository, after resolving
 // symlinks — /tmp is one on darwin, which is where every test lives.
-func SameRepo(a, b string) bool { return canonicalRepo(a) == canonicalRepo(b) }
+func SameRepo(a, b string) bool { return CanonicalRepo(a) == CanonicalRepo(b) }
 
 // IsRunID reports whether a positional argument is a run id rather than a
 // project name (F3, D2). It lives here so `cmd/` does not have to import the
 // identity package to answer a question about its own argument.
 func IsRunID(s string) bool { return run.ValidID(s) }
 
-// canonicalRepo makes two spellings of one repository compare equal. Symlinks
-// are resolved because /tmp is one on darwin, which is where every test lives.
-func canonicalRepo(path string) string {
+// CanonicalRepo makes two spellings of one repository compare equal: absolute,
+// with symlinks resolved — /tmp is one on darwin, which is where every test
+// lives, and it is also how a path a person typed and a path a process recorded
+// come to differ by nothing anybody can see.
+//
+// Exported because the UI has to answer the same question when it is asked to
+// dispatch into a repository by name: "is this one of the repositories I know".
+// Two spellings of that answer would be a door that opens for one and not the
+// other.
+func CanonicalRepo(path string) string {
 	if path == "" {
 		return ""
 	}

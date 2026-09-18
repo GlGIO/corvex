@@ -229,7 +229,7 @@ type GateAuditOptions struct {
 // gate that was actually answered was invisible on every surface this tool has.
 func (g GateLister) LoadGateAudit(localRepo string, opts GateAuditOptions) (GateAudit, error) {
 	repos := g.reposInScope(localRepo)
-	if want := canonicalRepo(opts.Repo); want != "" {
+	if want := CanonicalRepo(opts.Repo); want != "" {
 		repos = []string{want}
 	}
 	now := g.now()

@@ -29,6 +29,16 @@ type startRequest struct {
 	// from an abandoned experiment, and the person looking at the screen is the
 	// one who knows.
 	Here bool `json:"here,omitempty"`
+	// Repo dispatches into a repository other than the one the UI opened. Empty
+	// means the local one.
+	//
+	// It is a CHOICE FROM A LIST, never a free path: the value has to match a
+	// repository `GET /api/repos` offers, which is the repository under the
+	// cursor plus the ones the run index has seen. Accepting any path would turn
+	// a localhost surface whose whole job is to spawn a binary into one that
+	// spawns it anywhere the poster names, and the fact that the token stops a
+	// stranger is not a reason to leave that open to a mistake.
+	Repo string `json:"repo,omitempty"`
 }
 
 // handleStartRun spawns a DETACHED run and returns immediately.
@@ -53,7 +63,12 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir := s.dispatchDir(req)
+	repo, repoErr := s.dispatchRepo(req)
+	if repoErr != nil {
+		fail(w, http.StatusBadRequest, repoErr)
+		return
+	}
+	dir := s.dispatchDir(repo, req)
 	args := startArgs(req)
 	command := dispatchCommand(dir, s.opts.WorkDir, args)
 
@@ -144,14 +159,39 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 // guard's question instead of silencing it — it dispatches INTO the worktree,
 // which is also the model the operator has in mind when they keep one worktree
 // per feature and watch all of them from one screen.
-func (s *Server) dispatchDir(req startRequest) string {
+func (s *Server) dispatchDir(repo string, req startRequest) string {
 	if req.Here {
-		return s.opts.WorkDir
+		return repo
 	}
-	if wt := ops.FindProjectWorktree(s.opts.WorkDir, req.Target); wt != "" {
+	if wt := ops.FindProjectWorktree(repo, req.Target); wt != "" {
 		return wt
 	}
-	return s.opts.WorkDir
+	return repo
+}
+
+// dispatchRepo resolves which repository a dispatch belongs to, refusing
+// anything the machine has not already seen.
+//
+// The refusal names the two ways in, because "unknown repository" with no way
+// forward is how a person concludes the feature does not exist: a repository
+// joins the list by having been run once — from a terminal, or from a UI opened
+// there — and that is a sentence the error can say.
+func (s *Server) dispatchRepo(req startRequest) (string, error) {
+	local := ops.CanonicalRepo(s.opts.WorkDir)
+	asked := strings.TrimSpace(req.Repo)
+	if asked == "" {
+		return s.opts.WorkDir, nil
+	}
+	want := ops.CanonicalRepo(asked)
+	if want == local {
+		return s.opts.WorkDir, nil
+	}
+	for _, ws := range s.gates().Workspaces(s.opts.WorkDir) {
+		if ws.Path == want {
+			return ws.Path, nil
+		}
+	}
+	return "", fmt.Errorf("%q is not a repository this machine has run: the list is the repository this UI opened plus the ones in the run index — run corvex there once, or open a UI in it", asked)
 }
 
 // dispatchCommand is the parity line for a spawn: what a person would have typed

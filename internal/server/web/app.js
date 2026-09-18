@@ -158,7 +158,14 @@ function runCard(r) {
         : r.liveness === 'alive' ? el('button', { onclick: () => pauseRun(r.run_id) }, 'Pause') : null,
       r.liveness === 'alive' ? el('button', { class: 'danger', onclick: () => killRun(r.run_id) }, 'Stop') : null,
     ),
-    el('div', { class: 'dim', text: r.repo }),
+    // Which repository this run belongs to, by name, because the point of one
+    // screen over several repositories is that a row says which one it is
+    // without the reader parsing a path.
+    el('div', { class: 'dim' },
+      el('span', { class: 'pill', text: (r.repo || '').split('/').filter(Boolean).pop() || '?' }),
+      ' ',
+      r.repo || '',
+    ),
   );
 }
 
@@ -219,7 +226,21 @@ async function renderLogDetail(root, name) {
 
 // ── dispatch (2c) ───────────────────────────────────────────────────────────
 async function dispatchForm() {
-  const recipes = await api.get('/api/recipes').catch(() => []);
+  // The repository comes FIRST, because everything under it depends on which one
+  // is meant: which recipes exist, which worktree a project has, which checkout
+  // the run writes into. The list is the one the inbox already aggregates —
+  // this repo plus the ones the run index knows — so the form can never offer a
+  // repository the screen would refuse to dispatch into.
+  const repos = await api.get('/api/repos').catch(() => []);
+  const current = (repos || []).find((r) => r.current) || { path: '' };
+  const repo = el('select', {}, ...(repos || []).map((r) =>
+    el('option', { value: r.path, selected: r.current ? 'selected' : null }, r.name)));
+  const recipeList = el('datalist', { id: 'recipe-list' });
+  const loadRecipes = async () => {
+    const list = await api.get(`/api/recipes?repo=${encodeURIComponent(repo.value || current.path)}`).catch(() => []);
+    recipeList.replaceChildren(...(list || []).map((r) => el('option', { value: r.name })));
+  };
+  repo.addEventListener('change', loadRecipes);
   const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list' });
   const env = el('select', {}, el('option', { value: 'simple' }, 'simple'), el('option', { value: 'stack' }, 'stack (database)'));
   // A project with a worktree runs IN its worktree (spawn.go), which is the
@@ -229,15 +250,16 @@ async function dispatchForm() {
   const here = el('input', { type: 'checkbox' });
   const box = el('div', { class: 'card' },
     el('div', { class: 'row' },
+      repo,
       target,
-      el('datalist', { id: 'recipe-list' }, (recipes || []).map((r) => el('option', { value: r.name }))),
+      recipeList,
       env,
       el('label', { class: 'check' }, here, ' run here'),
       el('button', {
         class: 'primary',
         onclick: async () => {
           try {
-            const res = await api.post('/api/runs', { target: target.value.trim(), environment: env.value, here: here.checked });
+            const res = await api.post('/api/runs', { target: target.value.trim(), environment: env.value, here: here.checked, repo: repo.value });
             status(`started in ${res.dir} — ${res.command}`, 'ok');
             refresh();
           } catch (e) { status(e.message, 'bad'); }
@@ -248,6 +270,7 @@ async function dispatchForm() {
   );
   const view = $('#view');
   view.prepend(box);
+  loadRecipes();
 }
 
 // ── leaving a detail screen ─────────────────────────────────────────────────
@@ -309,9 +332,28 @@ async function renderRunDetail(root, id) {
     root.append(bars);
   }
 
+  // The step that ended the run is named at the top, not left to be found by
+  // scanning a list of pills. A run reported as `failed` with nothing saying
+  // WHERE is the same dead end the dispatch used to be.
+  const failed = (r.tasks || []).find((t) => t.status === 'FAILED');
+  if (failed) {
+    root.append(el('div', { class: 'card bad' },
+      el('div', { class: 'row' },
+        el('span', { class: 'pill bad', text: 'failed at' }),
+        el('span', { class: 'mono-id', text: failed.id }),
+        el('span', { class: 'grow', text: failed.title }),
+        el('button', { class: 'primary', onclick: () => openStep(r.run_id || id, failed.id) }, 'Why'),
+      ),
+    ));
+  }
+
   const steps = el('div', { class: 'steps' });
   for (const t of r.tasks || []) {
-    steps.append(el('div', { class: 'step' },
+    // Every step opens, not just the failed one: "what did the step that
+    // PASSED actually do" is the other half of reading a run, and until now the
+    // answer was only on the CLI (`run show <id> --step S03`). A screen that
+    // can show less than the terminal is a screen people leave.
+    steps.append(el('div', { class: 'step clickable', onclick: () => openStep(r.run_id || id, t.id) },
       el('span', { class: 'id', text: t.id }),
       el('span', { class: `pill ${t.status === 'FAILED' ? 'bad' : t.status === 'PASSED' ? 'det' : ''}`, text: t.status }),
       el('span', { class: 'grow', text: t.title }),
@@ -321,6 +363,66 @@ async function renderRunDetail(root, id) {
     ));
   }
   root.append(el('div', { class: 'card' }, steps));
+}
+
+// ── one step (2d, the half the UI did not have) ─────────────────────────────
+// `corvex run show <id> --step S03` has always answered "why did this fail":
+// the ledger's timeline plus the tail of what the command printed, which lives
+// in machine-local scratch because command output is not committable. The API
+// carried it (`?step=`) and nothing on the screen asked for it — so the one
+// question an operator has at 2am was terminal-only, in a tool whose point is
+// that it does not need the terminal.
+async function openStep(id, step) {
+  state.detail = { kind: 'step', id, step };
+  render();
+}
+
+async function renderStepDetail(root, id, step) {
+  const d = await api.get(`/api/runs/${encodeURIComponent(id)}?step=${encodeURIComponent(step)}`);
+  const s = d.step || {};
+  root.append(el('div', { class: 'row' },
+    el('button', { class: 'ghost', onclick: () => openRun(id) }, '← run'),
+    el('span', { class: 'mono-id', text: s.id || step }),
+    el('span', { class: `pill ${s.status === 'FAILED' ? 'bad' : s.status === 'PASSED' ? 'det' : ''}`, text: s.status || 'PENDING' }),
+    el('span', { class: 'grow', text: s.title || '' }),
+    s.retries ? el('span', { class: 'pill warn', text: `${s.retries} retr${s.retries === 1 ? 'y' : 'ies'}` }) : null,
+    s.cost_usd ? el('span', { class: 'dim', text: money(s.cost_usd) }) : null,
+  ));
+
+  if (s.description) root.append(el('div', { class: 'card' }, el('div', { class: 'dim', text: s.description })));
+  if ((s.criteria || []).length) {
+    root.append(el('div', { class: 'card' },
+      el('strong', { text: 'criteria' }),
+      ...s.criteria.map((c) => el('div', { class: 'dim', text: `· ${c}` })),
+    ));
+  }
+
+  // The output first when there is one: it is the answer to the question that
+  // brought the reader here, and the timeline is the context around it.
+  if (s.output) {
+    root.append(el('div', { class: 'card' },
+      el('div', { class: 'row' }, el('strong', { class: 'grow', text: 'what the step printed' })),
+      el('pre', { class: 'log', text: s.output }),
+    ));
+  }
+
+  const events = s.events || [];
+  if (!events.length) {
+    root.append(el('p', { class: 'empty', text: 'The ledger has nothing for this step yet.' }));
+    return;
+  }
+  const rows = el('div', { class: 'steps' });
+  for (const ev of events) {
+    rows.append(el('div', { class: 'step' },
+      el('span', { class: 'id', text: new Date(ev.timestamp || ev.at).toLocaleTimeString() }),
+      ev.phase ? kindPill(ev.phase === 'worker' ? 'code' : ev.phase) : null,
+      el('span', { class: `pill ${String(ev.status).toLowerCase() === 'failed' ? 'bad' : ''}`, text: ev.status || ev.type || '' }),
+      el('span', { class: 'grow dim', text: ev.message || ev.tool || '' }),
+      ev.duration_ms ? el('span', { class: 'dim', text: human(ev.duration_ms * 1e6) }) : null,
+      ev.cost_usd ? el('span', { class: 'dim', text: money(ev.cost_usd) }) : null,
+    ));
+  }
+  root.append(el('div', { class: 'card' }, rows));
 }
 
 async function killRun(id) {
@@ -554,6 +656,7 @@ async function render() {
     if (state.detail?.kind === 'run') return await renderRunDetail(root, state.detail.id);
     if (state.detail?.kind === 'gate') return await renderGateDetail(root, state.detail.id, state.detail.step);
     if (state.detail?.kind === 'log') return await renderLogDetail(root, state.detail.name);
+    if (state.detail?.kind === 'step') return await renderStepDetail(root, state.detail.id, state.detail.step);
     if (state.view === 'recipes') return await renderRecipes(root);
     const data = state.data || (await api.get('/api/state'));
     $('#repo').textContent = data.repo || '';

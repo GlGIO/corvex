@@ -34,19 +34,32 @@ Três defeitos, cada um com controle positivo medido antes da correção:
    ao mesmo tempo numa onda paralela. Agora serializam num lock; tool/test/repro
    continuam sobrepondo.
 
+## Rodada 2 — FECHADA
+
+1. **O run registrado que falha agora diz onde e por quê.** A tela do run nomeia
+   o step que a derrubou (`failed at S02`) e TODO step abre: descrição, critérios,
+   a linha do tempo do ledger e o tail do que o comando imprimiu (que já existia
+   em `?step=` e no CLI, e a tela nunca pedia). Controle positivo: contra a página
+   anterior o teste de navegador expira — a tela mostrava só as pílulas PASSED /
+   FAILED, sem nada clicável.
+2. **Multi-repo no dispatch.** `GET /api/repos` devolve a MESMA lista que a caixa
+   de gates já agrega (o repo aberto + os que o índice global viu), o formulário
+   escolhe o repositório, as recipes são lidas do repositório escolhido, e o card
+   do run carrega o nome do repo. Um repositório que a máquina nunca rodou é
+   RECUSADO com a instrução de como entrar na lista — esta superfície existe para
+   spawnar um binário, e aceitar caminho livre a transformaria em spawnar em
+   qualquer lugar que o corpo do POST nomear.
+
 ## O que falta, na ordem em que eu pretendo atacar
 
-1. **Motivo da falha de um run REGISTRADO** — a correção da rodada 1 cobre o
-   dispatch que morre cedo. Um run que registra e falha depois ainda mostra
-   `failed` sem dizer por quê.
-2. **Multi-repo na UI** — o histórico já é global (`~/.corvex/runs.jsonl`); o
-   DISPATCH é preso ao WorkDir. Para "coordeno vários repos de uma tela" falta
-   uma lista de repos conhecidos e um dispatch que aceite qual.
-3. **Board → DAG** — não existe tool que leia uma Feature e devolva as stories
+1. **Board → DAG** — não existe tool que leia uma Feature e devolva as stories
    folha com dependências. O contrato do fan-out (`produces: items` + array JSON
    + `wave_by`) é o formato que essa tool tem de emitir. Vive no smartcare.
-4. **Isolamento por item do fan-out** — um worktree por story. Sem isso, story em
+2. **Isolamento por item do fan-out** — um worktree por story. Sem isso, story em
    paralelo é serial (rodada 1) ou perigosa (antes dela).
+3. **O que a UI ainda não responde**: quanto um run está custando ENQUANTO roda
+   (o card só mostra status/idade), e nada avisa fora da aba — um gate que abre
+   com o navegador em outra janela espera o olho humano voltar.
 
 ## Regras desta obra
 
