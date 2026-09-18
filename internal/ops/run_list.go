@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/run"
 )
 
@@ -30,6 +31,11 @@ type RunRow struct {
 	StartedAt   time.Time     `json:"started_at"`
 	UpdatedAt   time.Time     `json:"updated_at,omitempty"`
 	Age         time.Duration `json:"age_ns"`
+	// CostUSD is what this run has spent so far. Filled by the caller that has a
+	// screen to draw (CostsByRun); zero in a listing nobody asked to price,
+	// because pricing means reading a ledger per project and the index read is
+	// on the stream's one-second tick.
+	CostUSD float64 `json:"cost_usd,omitempty"`
 }
 
 // Live reports whether this run still has a process behind it — including one
@@ -235,4 +241,43 @@ func ParseRunStatus(raw string) (run.Status, error) {
 		return "", fmt.Errorf("unknown status %q: use running, parked, paused, canceling, done, failed or canceled "+
 			"(for \"is a process behind it\", that is --live)", raw)
 	}
+}
+
+// CostsByRun answers "what has each of these runs spent" for one project.
+//
+// It exists because the money has to be on the LIST, not only inside a run: a
+// screen where a $0.40 run and a $23 run look identical until you open them is a
+// screen that cannot answer the question people actually have about an agent
+// runner. What it must NOT do is compute that number a second way — a row and a
+// detail disagreeing about spend is worse than neither showing it, so this walks
+// the same buildRunTaskRows the report walks, with the same last-write-wins rule
+// that makes a retried task count once.
+//
+// The project's view and ledger are read ONCE for every run named, because the
+// caller is a screen listing a week of runs and the alternative is one full
+// report load per row, per poll.
+func (l RunLister) CostsByRun(repo, project string, runIDs []string) map[string]float64 {
+	out := make(map[string]float64, len(runIDs))
+	if repo == "" || project == "" || len(runIDs) == 0 {
+		return out
+	}
+	view, err := ReadProject(repo, project)
+	if err != nil {
+		return out
+	}
+	entries, err := activity.Read(repo, project)
+	if err != nil || len(entries) == 0 {
+		return out
+	}
+	for _, id := range runIDs {
+		if id == "" {
+			continue
+		}
+		var total float64
+		for _, row := range buildRunTaskRows(view, activity.FilterByRun(entries, id)) {
+			total += row.CostUSD
+		}
+		out[id] = total
+	}
+	return out
 }

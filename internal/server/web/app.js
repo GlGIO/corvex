@@ -93,6 +93,46 @@ function kindPill(kind) {
   return el('span', { class: `pill ${ai ? 'ai' : 'det'}`, text: kind });
 }
 
+// ── what is waiting, said OUTSIDE this tab ──────────────────────────────────
+//
+// The tool's whole promise is that a run goes on without you and stops when it
+// needs you. A gate that opens while the browser is behind an editor then waits
+// for a human eye to wander back — which is the same as the runner not having
+// told anybody.
+//
+// Two channels, deliberately different in cost:
+//
+//   · the TITLE always carries the count. It needs no permission, it survives a
+//     denied notification prompt, and a tab strip is where a person already
+//     looks for "is something waiting".
+//   · a system notification fires only when the count GOES UP and only while the
+//     page is hidden. Not on every render (a re-read is not news) and not while
+//     the person is looking at the inbox (they can see it).
+//
+// Permission is asked on a CLICK and never on load: a page that opens with a
+// permission prompt gets it denied once and for all, and takes the title badge
+// down with it in the user's memory of "that tool that nags".
+let lastWaiting = null;
+
+function announceWaiting(count, items) {
+  document.title = count > 0 ? `(${count}) corvex` : 'corvex';
+  const previous = lastWaiting;
+  lastWaiting = count;
+  if (previous === null || count <= previous || !document.hidden) return;
+  if (typeof Notification !== 'function' || Notification.permission !== 'granted') return;
+  const newest = items[0];
+  try {
+    new Notification(`corvex: ${count} esperando você`, {
+      body: newest || 'um gate abriu',
+      tag: 'corvex-inbox', // one notification, replaced — not a pile
+    });
+  } catch (_) {
+    // A browser that refuses to construct it (some do while the page is
+    // backgrounded) still leaves the title badge, which is the channel that
+    // never fails.
+  }
+}
+
 // ── inbox (2a) ──────────────────────────────────────────────────────────────
 function renderInbox(root, data) {
   const gates = data.inbox.gates || [];
@@ -149,6 +189,11 @@ function runCard(r) {
       el('span', { class: 'pill', text: r.liveness }),
       r.environment && r.environment !== 'simple' ? el('span', { class: 'pill warn', text: r.environment }) : null,
       el('span', { class: 'grow', text: r.recipe || r.project || '' }),
+      // What it spent, on the LIST. A screen where a $0.40 run and a $23 run
+      // look identical until you open them cannot answer the question people
+      // actually have about an agent runner. The number is the same one the run
+      // screen shows — one rule, in ops, so the two cannot drift.
+      r.cost_usd ? el('span', { class: 'pill', text: money(r.cost_usd) }) : null,
       el('span', { class: 'dim', text: `${human(r.age_ns)} ago` }),
       el('button', { onclick: () => openRun(r.run_id) }, 'Open'),
       // Two controls, and they are not the same control: pause holds the run at
@@ -670,8 +715,28 @@ async function render() {
 async function refresh() {
   try {
     state.data = await api.get('/api/state');
+    // Attention is announced from HERE and not from the inbox renderer: the
+    // question "is something waiting on me" does not depend on which tab is
+    // open, and the first version of this only updated the title while the
+    // inbox happened to be the visible screen — which is the one moment the
+    // badge is redundant.
+    attentionFrom(state.data);
     await render();
   } catch (e) { status(e.message, 'bad'); }
+}
+
+// attentionFrom counts what is blocked on a person and hands it to the two
+// channels outside this tab.
+function attentionFrom(data) {
+  const gates = data.inbox?.gates || [];
+  const escalations = data.inbox?.escalations || [];
+  const dead = (data.dispatches || []).filter((d) => d.result && d.result !== 'ok');
+  $('#badge-inbox').textContent = gates.length + escalations.length + dead.length || '';
+  announceWaiting(gates.length + escalations.length + dead.length, [
+    ...gates.map((g) => `${g.gate.run_id}: ${g.gate.label || g.gate.title || 'gate'}`),
+    ...escalations.map((e) => `${e.project} ${e.step}: escalation`),
+    ...dead.map((d) => `dispatch: ${d.result}`),
+  ]);
 }
 
 function boot() {
@@ -695,6 +760,21 @@ function boot() {
     });
   }
   document.querySelector('.tab').classList.add('active');
+  // Permission is asked on a gesture, never on load — see announceWaiting. The
+  // button also states the current answer, because "did I turn that on" is
+  // otherwise a thing people test by waiting for a gate.
+  const notify = $('#notify-toggle');
+  const paintNotify = () => {
+    if (typeof Notification !== 'function') { notify.textContent = 'No notify'; notify.disabled = true; return; }
+    notify.textContent = Notification.permission === 'granted' ? 'Notify: on'
+      : Notification.permission === 'denied' ? 'Notify: blocked' : 'Notify';
+  };
+  notify.addEventListener('click', async () => {
+    if (typeof Notification !== 'function') return;
+    try { await Notification.requestPermission(); } catch (_) { /* older API shape */ }
+    paintNotify();
+  });
+  paintNotify();
   $('#palette-open').addEventListener('click', openPalette);
   $('#palette-close').addEventListener('click', () => $('#palette').classList.add('hidden'));
   document.addEventListener('keydown', (e) => {

@@ -61,3 +61,41 @@ func TestUI_ADispatchThatDiesSaysSoOnTheScreen(t *testing.T) {
 		t.Error("the log screen opened empty: the reader is back where they started")
 	}
 }
+
+// The tab says what is waiting, from any screen.
+//
+// The runner's promise is that a run goes on without you and STOPS when it needs
+// you. A gate that opens while the browser sits behind an editor then waits for
+// a human eye to wander back, which is the same as nobody having been told. The
+// title is the channel that needs no permission and cannot be denied, so it is
+// the one pinned here — and it is pinned from the RUNS tab, because the first
+// version of this only updated the title while the inbox happened to be open,
+// which is the one moment the badge already says it.
+func TestUI_TheTabTitleCarriesWhatIsWaiting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns real processes and a browser")
+	}
+	dir := setupIdentityRepo(t)
+	url := startUI(t, dir)
+	c := startChrome(t)
+	c.navigate(t, url)
+	c.waitFor(t, 20*time.Second, "the app to boot", "typeof el === 'function'")
+
+	// Nothing is waiting yet.
+	c.waitFor(t, 10*time.Second, "a quiet title", `document.title === 'corvex'`)
+
+	// Move to a screen that is NOT the inbox, then make something wait: a
+	// dispatch that dies is work blocked on a person exactly like a gate.
+	c.eval(t, `[...document.querySelectorAll('.tab')].find(t => t.dataset.view === 'runs').click()`, nil)
+	c.eval(t, `fetch('/api/runs', {
+		method: 'POST',
+		headers: {'Content-Type': 'application/json'},
+		body: JSON.stringify({target: 'nope'})
+	})`, nil)
+
+	c.waitFor(t, 20*time.Second, "the title to carry the count",
+		`document.title.startsWith('(') && document.title.includes('corvex')`)
+	if title := c.evalString(t, "document.title"); !strings.Contains(title, "(1)") {
+		t.Errorf("title = %q, want it to count the one thing waiting", title)
+	}
+}

@@ -67,6 +67,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
+	runs = s.priced(runs)
 	// Dispatches ride along with the state the screen already reads, because a
 	// dead dispatch is not a footnote to the history — it is the run the person
 	// thinks they started. A read failure here is not worth failing the whole
@@ -106,7 +107,38 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rows)
+	writeJSON(w, http.StatusOK, s.priced(rows))
+}
+
+// priced fills in what each run has spent.
+//
+// It happens HERE and not in ops.ListRuns because the same listing feeds the
+// stream's one-second fingerprint, and pricing costs a ledger read per project.
+// The screens pay for it; the change detector does not.
+//
+// Grouped by project so a week of runs in one project is one read, not one read
+// per row.
+func (s *Server) priced(rows []ops.RunRow) []ops.RunRow {
+	type key struct{ repo, project string }
+	byProject := map[key][]string{}
+	for _, r := range rows {
+		if r.Project == "" || r.Repo == "" {
+			continue
+		}
+		k := key{r.Repo, r.Project}
+		byProject[k] = append(byProject[k], r.RunID)
+	}
+	costs := map[string]float64{}
+	lister := s.lister()
+	for k, ids := range byProject {
+		for id, cost := range lister.CostsByRun(k.repo, k.project, ids) {
+			costs[id] = cost
+		}
+	}
+	for i := range rows {
+		rows[i].CostUSD = costs[rows[i].RunID]
+	}
+	return rows
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
