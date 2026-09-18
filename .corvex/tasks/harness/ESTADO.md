@@ -78,11 +78,15 @@ do dono, porque é a identidade dele no Azure.**
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.
    Sem isso as peças existem e ninguém as conecta.
-2. **Isolamento por item do fan-out** — um worktree por story. Sem isso, story em
+1. **Isolamento por item do fan-out** — um worktree por story. Sem isso, story em
    paralelo é serial (rodada 1) ou perigosa (antes dela).
-3. **O que a UI ainda não responde**: quanto um run está custando ENQUANTO roda
+2. **O que a UI ainda não responde**: quanto um run está custando ENQUANTO roda
    (o card só mostra status/idade), e nada avisa fora da aba — um gate que abre
    com o navegador em outra janela espera o olho humano voltar.
+
+3. **O primeiro run de VERDADE** — com um board real e tokens. Precisa do dono:
+   é dinheiro, é a identidade dele no Azure, e é a medição do
+   `Dependency-Reverse` que segue não medida.
 
 ## Regras desta obra
 
