@@ -166,3 +166,66 @@ func TestParallelWave_CommandStepsStillOverlap(t *testing.T) {
 		t.Errorf("marker has %d opens, want 3: %q", opens, data)
 	}
 }
+
+// Waves run in numeric order, not alphabetical.
+//
+// `wave_by` groups items by a field and the waves run in key order. Sorted as
+// text, wave 10 comes before wave 2 — so a feature with eleven waves would run
+// its last wave third, with the dependencies inverted and nothing saying so.
+// Only graphs big enough that nobody checks them by hand are affected, which is
+// the half of the input space a person cannot review.
+func TestWaveKeys_SortAsNumbersWhenTheyAreNumbers(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{
+			name: "eleven numeric waves",
+			in:   []string{"10", "2", "1", "0", "9"},
+			want: []string{"0", "1", "2", "9", "10"},
+		},
+		{
+			name: "named waves keep the lexicographic rule",
+			in:   []string{"frontend", "backend", "migration"},
+			want: []string{"backend", "frontend", "migration"},
+		},
+		{
+			name: "a mixed set is not half-sorted into a third order",
+			in:   []string{"10", "backend", "2"},
+			want: []string{"10", "2", "backend"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := append([]string(nil), tt.in...)
+			sortWaveKeys(got)
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("sortWaveKeys(%v) = %v, want %v", tt.in, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// And the same thing where it actually bites: a fan-out whose discovery step
+// emits eleven waves runs them in order.
+func TestFanout_ElevenWavesRunInNumericOrder(t *testing.T) {
+	var items []string
+	for i := 0; i <= 10; i++ {
+		items = append(items, fmt.Sprintf(`{"id":"s%02d","wave":%d}`, i, i))
+	}
+	waves, err := groupIntoWaves(items, "item.wave")
+	if err != nil {
+		t.Fatalf("groupIntoWaves: %v", err)
+	}
+	if len(waves) != 11 {
+		t.Fatalf("got %d waves, want 11", len(waves))
+	}
+	for i, w := range waves {
+		if want := fmt.Sprint(i); w.key != want {
+			t.Errorf("wave %d has key %q, want %q — the order is the dependency order", i, w.key, want)
+		}
+	}
+}

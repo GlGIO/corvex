@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	charmbraceletlog "github.com/charmbracelet/log"
@@ -268,6 +269,44 @@ func substituteItem(s, item string) string {
 	return s
 }
 
+// sortWaveKeys puts the waves in the order they run.
+//
+// It was `sort.Strings`, and that is right for a key like `backend`/`frontend`
+// and WRONG for the key every real fan-out uses: a wave NUMBER. Lexicographic
+// order puts 10 before 2, so a feature with ten or more waves would run its
+// eleventh wave third — dependencies inverted, silently, and only on the graphs
+// big enough that nobody checks them by hand.
+//
+// Found from the other side: the tool that reads an Azure Feature and emits
+// `wave` per story (scripts/flow/az-feature-dag.sh in the SmartCare repo) is
+// this function's first real client, and writing it is what exposed the
+// ordering. Numeric when every key is a number, lexicographic otherwise —
+// mixed sets stay on the old rule rather than inventing a third order.
+func sortWaveKeys(keys []string) {
+	// The key and its number travel TOGETHER. The first version of this sorted
+	// `keys` with a comparator that indexed a parallel `nums` slice — which the
+	// sort never permutes, so every comparison after the first swap read the
+	// number of a different key. It passed the two-wave case and would have
+	// scrambled anything larger.
+	type waveKey struct {
+		key string
+		num float64
+	}
+	parsed := make([]waveKey, len(keys))
+	for i, k := range keys {
+		n, err := strconv.ParseFloat(k, 64)
+		if err != nil {
+			sort.Strings(keys)
+			return
+		}
+		parsed[i] = waveKey{key: k, num: n}
+	}
+	sort.Slice(parsed, func(i, j int) bool { return parsed[i].num < parsed[j].num })
+	for i, p := range parsed {
+		keys[i] = p.key
+	}
+}
+
 // itemWave is one dependency wave of a fan-out.
 type itemWave struct {
 	key   string
@@ -308,7 +347,7 @@ func groupIntoWaves(items []string, waveBy string) ([]itemWave, error) {
 		}
 		grouped[key] = append(grouped[key], item)
 	}
-	sort.Strings(keys)
+	sortWaveKeys(keys)
 	waves := make([]itemWave, 0, len(keys))
 	for _, k := range keys {
 		waves = append(waves, itemWave{key: k, items: grouped[k]})
