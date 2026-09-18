@@ -84,9 +84,14 @@ do dono, porque é a identidade dele no Azure.**
    (o card só mostra status/idade), e nada avisa fora da aba — um gate que abre
    com o navegador em outra janela espera o olho humano voltar.
 
-2. **O primeiro run de VERDADE** — com um board real e tokens. Precisa do dono:
+1. **O primeiro run de VERDADE** — com um board real e tokens. Precisa do dono:
    é dinheiro, é a identidade dele no Azure, e é a medição do
    `Dependency-Reverse` que segue não medida.
+
+2. **A /pilot-incident** — o outro fluxo que o corvex tem de substituir, e que
+   ainda não foi olhado nesta obra: um incidente, diagnóstico-primeiro, com o
+   veredito TEMPORAL do `kind: repro` (tem de reproduzir ANTES e parar DEPOIS),
+   que o corvex já tem e ninguém usou.
 
 ## Regras desta obra
 
