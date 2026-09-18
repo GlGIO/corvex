@@ -50,11 +50,34 @@ Três defeitos, cada um com controle positivo medido antes da correção:
    spawnar um binário, e aceitar caminho livre a transformaria em spawnar em
    qualquer lugar que o corpo do POST nomear.
 
-## O que falta, na ordem em que eu pretendo atacar
+## Rodada 3 — FECHADA
 
-1. **Board → DAG** — não existe tool que leia uma Feature e devolva as stories
-   folha com dependências. O contrato do fan-out (`produces: items` + array JSON
-   + `wave_by`) é o formato que essa tool tem de emitir. Vive no smartcare.
+**Board → DAG existe.** `scripts/flow/az-feature-dag.sh` no smartcare (branch
+`flow/feature-dag`, commit `66739581`): lê a Feature, pega as filhas, filtra as
+terminais, lê os links de precedência e emite o array JSON com `wave` por story —
+o contrato exato do fan-out. 14 casos offline; a suíte deles foi de 472 para 486.
+
+A suíte do smartcare cobrou três integrações no instante em que o arquivo
+apareceu no disco (eixo do `pr-review.sh`, inventário de custódia do
+`config.yaml`, pin do `--help`). Todas feitas. É a melhor propaganda que aquele
+harness tem.
+
+**E o produtor achou um defeito no consumidor**: `wave_by` ordenava as chaves com
+`sort.Strings`, então a onda 10 rodava antes da onda 2 — dependência invertida em
+silêncio, só em grafos grandes demais para alguém conferir na mão. Corrigido no
+corvex (`9d027ab`) com controle positivo.
+
+**NÃO MEDIDO, e é o próximo risco a fechar**: `Dependency-Reverse` = Predecessor
+vem da documentação do Azure, não de uma resposta do board do SmartCare. Se o
+board não modela precedência, tudo cai na onda 0 (comportamento correto na
+ausência de links, e é o que a skill manda perguntar ao humano). **Um `--dry-run`
+seguido de um GET de leitura numa Feature real fecha isso em um minuto — precisa
+do dono, porque é a identidade dele no Azure.**
+
+## O que falta, na ordem em que eu pretendo atacar
+1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
+   fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.
+   Sem isso as peças existem e ninguém as conecta.
 2. **Isolamento por item do fan-out** — um worktree por story. Sem isso, story em
    paralelo é serial (rodada 1) ou perigosa (antes dela).
 3. **O que a UI ainda não responde**: quanto um run está custando ENQUANTO roda
