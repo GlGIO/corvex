@@ -65,3 +65,8 @@ textarea{width:100%;resize:vertical}
    proportion, and colouring each phase differently would invite reading the
    hue as a judgement about which kind of work is "good". */
 .bar{display:inline-block;height:10px;background:var(--acc);border-radius:2px;min-width:2px}
+/* A dispatch log is read to answer one question — why did this die — so it is
+   shown as the file is, monospaced and scrollable, with the tail at hand rather
+   than a path the reader is expected to go and open themselves. */
+pre.log{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px}
+label.check{display:flex;gap:6px;align-items:center;color:var(--dim);cursor:pointer;white-space:nowrap}

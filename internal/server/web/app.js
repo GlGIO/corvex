@@ -97,11 +97,15 @@ function kindPill(kind) {
 function renderInbox(root, data) {
   const gates = data.inbox.gates || [];
   const escalations = data.inbox.escalations || [];
-  $('#badge-inbox').textContent = gates.length + escalations.length || '';
+  // A dispatch that died needs a person exactly the way a parked gate does: the
+  // run they asked for is not running, and nothing else on the screen says so.
+  const dead = (data.dispatches || []).filter((d) => d.result && d.result !== 'ok');
+  $('#badge-inbox').textContent = gates.length + escalations.length + dead.length || '';
 
-  if (!gates.length && !escalations.length) {
+  if (!gates.length && !escalations.length && !dead.length) {
     root.append(el('p', { class: 'empty', text: 'Nothing is waiting on you.' }));
   }
+  renderDeadDispatches(root, data);
   if (gates.length) root.append(el('h2', { text: `${gates.length} gate(s) waiting` }));
   for (const g of gates) {
     root.append(el('div', { class: 'card waiting' },
@@ -163,9 +167,54 @@ function renderRuns(root, data) {
     el('h2', { class: 'grow', text: 'history' }),
     el('button', { class: 'primary', onclick: dispatchForm }, 'Dispatch a run'),
   ));
+  renderDeadDispatches(root, data);
   const runs = data.runs || [];
   if (!runs.length) root.append(el('p', { class: 'empty', text: 'No runs in the last 7 days.' }));
   for (const r of runs) root.append(runCard(r));
+}
+
+// ── dispatches that never became runs ───────────────────────────────────────
+// A run that dies before it registers itself leaves NOTHING in the history: no
+// row, no id, no cost. The screen said `ok` at dispatch and then showed an empty
+// list, and the reason — a dirty tree, a worktree the run belonged in, a recipe
+// that does not parse — was in a file on disk nobody mentioned.
+//
+// So the failed dispatch is a card of its own, above the history, with the exit
+// status the server recorded and a button that opens the log. It disappears on
+// its own: it is drawn from the action log, which is bounded by the same window
+// as everything else on this screen.
+function renderDeadDispatches(root, data) {
+  const dead = (data.dispatches || []).filter((d) => d.result && d.result !== 'ok');
+  if (!dead.length) return;
+  root.append(el('h2', { text: `${dead.length} dispatch(es) that never started` }));
+  for (const d of dead) {
+    root.append(el('div', { class: 'card bad' },
+      el('div', { class: 'row' },
+        el('span', { class: 'pill bad', text: 'died' }),
+        el('code', { class: 'grow', text: d.command }),
+        el('span', { class: 'dim', text: new Date(d.at).toLocaleTimeString() }),
+        d.log ? el('button', { onclick: () => openLog(d.log) }, 'Log') : null,
+      ),
+      el('div', { class: 'dim', text: d.result }),
+    ));
+  }
+}
+
+// ── a dispatch log (the other half of 2h) ───────────────────────────────────
+async function openLog(name) {
+  state.detail = { kind: 'log', name };
+  render();
+}
+
+async function renderLogDetail(root, name) {
+  const log = await api.get(`/api/runs/logs/${encodeURIComponent(name)}`);
+  root.append(el('div', { class: 'row' },
+    el('button', { onclick: leaveDetail }, '← back'),
+    el('h2', { class: 'grow', text: name }),
+    log.truncated ? el('span', { class: 'pill warn', text: 'tail only' }) : null,
+  ));
+  root.append(el('div', { class: 'dim', text: log.path }));
+  root.append(el('pre', { class: 'log', text: log.content || '(empty)' }));
 }
 
 // ── dispatch (2c) ───────────────────────────────────────────────────────────
@@ -173,23 +222,29 @@ async function dispatchForm() {
   const recipes = await api.get('/api/recipes').catch(() => []);
   const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list' });
   const env = el('select', {}, el('option', { value: 'simple' }, 'simple'), el('option', { value: 'stack' }, 'stack (database)'));
+  // A project with a worktree runs IN its worktree (spawn.go), which is the
+  // whole point of one worktree per feature. The box is the way to say "no,
+  // this checkout" — the CLI's --here, on the surface where the person can see
+  // which directory they are about to write into.
+  const here = el('input', { type: 'checkbox' });
   const box = el('div', { class: 'card' },
     el('div', { class: 'row' },
       target,
       el('datalist', { id: 'recipe-list' }, (recipes || []).map((r) => el('option', { value: r.name }))),
       env,
+      el('label', { class: 'check' }, here, ' run here'),
       el('button', {
         class: 'primary',
         onclick: async () => {
           try {
-            const res = await api.post('/api/runs', { target: target.value.trim(), environment: env.value });
-            status(`started — ${res.command}`, 'ok');
+            const res = await api.post('/api/runs', { target: target.value.trim(), environment: env.value, here: here.checked });
+            status(`started in ${res.dir} — ${res.command}`, 'ok');
             refresh();
           } catch (e) { status(e.message, 'bad'); }
         },
       }, 'Run'),
     ),
-    el('div', { class: 'dim', text: 'The run is detached: closing this page does not stop it.' }),
+    el('div', { class: 'dim', text: 'The run is detached: closing this page does not stop it. A project with a worktree runs inside it unless you tick "run here".' }),
   );
   const view = $('#view');
   view.prepend(box);
@@ -498,6 +553,7 @@ async function render() {
   try {
     if (state.detail?.kind === 'run') return await renderRunDetail(root, state.detail.id);
     if (state.detail?.kind === 'gate') return await renderGateDetail(root, state.detail.id, state.detail.step);
+    if (state.detail?.kind === 'log') return await renderLogDetail(root, state.detail.name);
     if (state.view === 'recipes') return await renderRecipes(root);
     const data = state.data || (await api.get('/api/state'));
     $('#repo').textContent = data.repo || '';

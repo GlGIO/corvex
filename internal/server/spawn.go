@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,12 @@ type startRequest struct {
 	Environment string `json:"environment,omitempty"`
 	Task        string `json:"task,omitempty"`
 	Recompile   bool   `json:"recompile,omitempty"`
+	// Here forces the run into the directory the UI opened, even when the
+	// project has a worktree. It is the `--here` flag, and it exists on the wire
+	// for the same reason it exists on the CLI: the worktree can be a leftover
+	// from an abandoned experiment, and the person looking at the screen is the
+	// one who knows.
+	Here bool `json:"here,omitempty"`
 }
 
 // handleStartRun spawns a DETACHED run and returns immediately.
@@ -46,8 +53,9 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir := s.dispatchDir(req)
 	args := startArgs(req)
-	command := "corvex " + strings.Join(args, " ")
+	command := dispatchCommand(dir, s.opts.WorkDir, args)
 
 	bin, err := s.binary()
 	if err != nil {
@@ -63,9 +71,10 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer logFile.Close()
+	logName := filepath.Base(logPath)
 
 	cmd := exec.Command(bin, args...)
-	cmd.Dir = s.opts.WorkDir
+	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	// The run must not inherit this server's controlling terminal or process
 	// group: with Setsid, Ctrl-C in the shell that started `corvex ui` cannot
@@ -73,7 +82,7 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	err = cmd.Start()
-	action := s.actions.Record(command, err)
+	action := s.actions.RecordDispatch(command, err, logName)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
 		return
@@ -98,14 +107,134 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 	// the child is in its own session, so no terminal signal reaches it. Waiting
 	// costs one parked goroutine per dispatch and buys a process table that
 	// tells the truth.
-	go func() { _ = cmd.Wait() }()
+	//
+	// The wait is ALSO where the dispatch stops lying. A run that dies before it
+	// registers itself — a dirty tree, a worktree mismatch, a recipe that does
+	// not parse — never reaches the index, so the history stays empty and the
+	// only record of it is the `ok` this handler already wrote. The UI reported
+	// a success and the reason lived in a file nobody was told about. So the
+	// exit status is recorded when it is known, with the line from the log that
+	// says why.
+	go func() {
+		werr := cmd.Wait()
+		s.actions.RecordOutcome(command, dispatchOutcome(werr, logPath), logName)
+	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"pid":     pid,
-		"log":     logPath,
-		"action":  action,
-		"command": command,
+		"pid":      pid,
+		"dir":      dir,
+		"log":      logPath,
+		"log_name": logName,
+		"action":   action,
+		"command":  command,
 	})
+}
+
+// dispatchDir is the directory the run executes in.
+//
+// `corvex start <project>` opens a worktree beside the repo, and every later
+// command for that project belongs in it — the CLI enforces that by REFUSING to
+// run from the main checkout (cmd/guards.go). The UI used to spawn in its own
+// WorkDir regardless, so dispatching a project that had a worktree produced a
+// child that died on that guard while the screen said `ok`.
+//
+// Bypassing the guard with `--here` would have been the smaller change and the
+// wrong one: the guard is right, and the UI is exactly the surface where "which
+// checkout is this writing to" must not be a guess. So the UI answers the
+// guard's question instead of silencing it — it dispatches INTO the worktree,
+// which is also the model the operator has in mind when they keep one worktree
+// per feature and watch all of them from one screen.
+func (s *Server) dispatchDir(req startRequest) string {
+	if req.Here {
+		return s.opts.WorkDir
+	}
+	if wt := ops.FindProjectWorktree(s.opts.WorkDir, req.Target); wt != "" {
+		return wt
+	}
+	return s.opts.WorkDir
+}
+
+// dispatchCommand is the parity line for a spawn: what a person would have typed
+// to do the same thing, including the `cd` when the run does not happen where
+// the UI is. A recorded command that silently omits the directory is a command
+// that does something else when pasted.
+func dispatchCommand(dir, workDir string, args []string) string {
+	command := "corvex " + strings.Join(args, " ")
+	if dir != "" && dir != workDir {
+		return "cd " + dir + " && " + command
+	}
+	return command
+}
+
+// dispatchOutcome phrases what became of a dispatched run: "ok" when it exited
+// clean, and otherwise the exit status plus the reason the run itself printed.
+func dispatchOutcome(werr error, logPath string) string {
+	if werr == nil {
+		return "ok"
+	}
+	status := werr.Error()
+	var exit *exec.ExitError
+	if errors.As(werr, &exit) {
+		status = fmt.Sprintf("exit %d", exit.ExitCode())
+	}
+	if reason := failureReason(logPath); reason != "" {
+		return status + " — " + reason
+	}
+	return status
+}
+
+// failureReason digs the explanation out of a dispatch log.
+//
+// It prefers the last `Error:` line, which is the shape cmd.Execute prints, and
+// falls back to the last non-empty line — a run killed by a signal or by a
+// crashing hook prints no `Error:` at all, and "exit 2" with nothing attached is
+// the state this change exists to remove. Only the tail is read: a `code` step's
+// log holds every token the model emitted.
+func failureReason(logPath string) string {
+	f, err := os.Open(logPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	const tail = 8 << 10
+	offset := info.Size() - tail
+	if offset < 0 {
+		offset = 0
+	}
+	buf := make([]byte, info.Size()-offset)
+	if _, rerr := f.ReadAt(buf, offset); rerr != nil && rerr != io.EOF {
+		return ""
+	}
+	var lastError, lastLine string
+	for _, line := range strings.Split(string(buf), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lastLine = line
+		if strings.HasPrefix(line, "Error:") {
+			lastError = strings.TrimSpace(strings.TrimPrefix(line, "Error:"))
+		}
+	}
+	if lastError != "" {
+		return truncateReason(lastError)
+	}
+	return truncateReason(lastLine)
+}
+
+// truncateReason keeps one line of the audit file readable. The whole log is one
+// fetch away (GET /api/runs/logs/{name}); this is the sentence that tells the
+// reader whether they need it.
+func truncateReason(s string) string {
+	const max = 240
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 // startArgs builds the CLI invocation. The UI has no private vocabulary: what it
@@ -113,6 +242,9 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 // log auditable rather than decorative.
 func startArgs(req startRequest) []string {
 	args := []string{"run", "start", req.Target, "--plain", "--yes"}
+	if req.Here {
+		args = append(args, "--here")
+	}
 	if req.Environment != "" {
 		args = append(args, "--env", req.Environment)
 	}
@@ -212,6 +344,59 @@ func (s *Server) runLog(target string) (string, *os.File, error) {
 		return "", nil, fmt.Errorf("opening %s: %w", path, err)
 	}
 	return path, f, nil
+}
+
+// maxLogTail is how much of a dispatch log the API hands back. A `code` step's
+// log is unbounded — every token the model emitted — and the question the reader
+// has ("why did this die") is answered at the end of the file.
+const maxLogTail = 64 << 10
+
+// handleRunLog serves one dispatch log by name.
+//
+// It is the other half of recording the exit status: the audit line says `exit
+// 1 — working tree has 1 uncommitted change(s)`, and this is where the reader
+// goes when that sentence is not enough. Without it the UI can only ever point
+// at a path on disk, which is the same as pointing at nothing for someone who is
+// looking at a browser.
+//
+// The name is a base name inside this repo's log directory and nothing else:
+// `filepath.Base` collapses any traversal, and the result has to match what was
+// asked for, so `../../etc/passwd` is refused rather than quietly rewritten into
+// something that happens to exist.
+func (s *Server) handleRunLog(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" || filepath.Base(name) != name || !strings.HasSuffix(name, ".log") {
+		fail(w, http.StatusBadRequest, fmt.Errorf("%q is not a dispatch log name", name))
+		return
+	}
+	path := filepath.Join(s.opts.WorkDir, ".corvex", "runs", "logs", name)
+	f, err := os.Open(path)
+	if err != nil {
+		fail(w, http.StatusNotFound, fmt.Errorf("no dispatch log named %q", name))
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		fail(w, http.StatusNotFound, fmt.Errorf("no dispatch log named %q", name))
+		return
+	}
+	offset := info.Size() - maxLogTail
+	if offset < 0 {
+		offset = 0
+	}
+	buf := make([]byte, info.Size()-offset)
+	if _, rerr := f.ReadAt(buf, offset); rerr != nil && rerr != io.EOF {
+		fail(w, http.StatusInternalServerError, fmt.Errorf("reading %s: %w", name, rerr))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":      name,
+		"path":      path,
+		"size":      info.Size(),
+		"truncated": offset > 0,
+		"content":   string(buf),
+	})
 }
 
 // sanitize keeps a target name from escaping the log directory.

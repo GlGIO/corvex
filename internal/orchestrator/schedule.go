@@ -149,10 +149,42 @@ func (o *Orchestrator) runsWaveInParallel() bool {
 	return o.cfg.Execution.Parallel && o.targetTask == "" && !o.singleTask && len(o.abModels) != 2
 }
 
+// writesTheWorkingTree reports whether a task produces its result by editing
+// the checkout rather than by running a fixed command.
+//
+// It is the question the tree lock in runWaveParallel asks, and it is asked of
+// the NORMALISED kind on purpose: a planner-written task carries no `kind` at
+// all, and types.NormalizeKind maps that (and every unrecognised value) to
+// KindCode — the reading that errs toward isolation instead of away from it.
+func writesTheWorkingTree(t *types.Task) bool {
+	return !types.NormalizeKind(t.Kind).IsComputational()
+}
+
 // runWaveParallel runs one DAG level concurrently. step.Executor.Execute is
 // concurrency-safe (per-task worker clone + Bookkeeper-guarded state/writes), so
 // the LLM calls overlap while bookkeeping stays serialised. Results are
 // processed after the barrier on this single scheduler goroutine.
+//
+// # One checkout, so only the computational steps really overlap
+//
+// "Concurrency-safe" above is a statement about corvex's own bookkeeping, and it
+// was read for years as if it covered the repository too. It does not. A `code`
+// step's product is an EDIT to the working tree, and every task in a run shares
+// one tree: two workers in the same wave see each other's half-written files,
+// and the checkpoint commit after the first one sweeps up whatever the second
+// had in flight. Nothing in the ledger records that as a defect — the tasks both
+// pass, and the diff is simply wrong.
+//
+// So a tree lock serialises the steps that write, while tool/test/repro steps —
+// fixed commands that observe or act outside the checkout — keep overlapping,
+// which is where the wall-clock actually comes from in a recipe. The isolation a
+// real fan-out of `code` steps needs is a worktree per item, which the runner
+// does not have yet (the A/B path is the only place that opens one); until it
+// does, this is the difference between slow and silently wrong.
+//
+// Lock order is sem → treeMu, never the reverse: a goroutine holding treeMu
+// while waiting for a slot would deadlock against the goroutines holding slots
+// while waiting for treeMu.
 func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready []string) error {
 	o.drainCommands(ctx, s)
 	if err := o.waitWhilePaused(ctx, s); err != nil {
@@ -179,6 +211,22 @@ func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready [
 		maxParallel = fp
 	}
 	sem := make(chan struct{}, maxParallel)
+	// The lock the comment above argues for, plus one line on the ledger when it
+	// actually costs something: a wave with two writers is a wave that LOOKS
+	// parallel in the recipe and is not, and an operator reading the timings
+	// deserves to know why rather than to infer it.
+	var treeMu sync.Mutex
+	writers := 0
+	for _, taskID := range ready {
+		if t := findTask(s.tasks, taskID); t != nil && writesTheWorkingTree(t) {
+			writers++
+		}
+	}
+	if writers > 1 {
+		msg := fmt.Sprintf("%d steps in this wave write the working tree; they run one at a time (one checkout)", writers)
+		o.emit(Event{Type: EventTaskWarn, Message: msg})
+		charmbraceletlog.Warn("serialising the writers of this wave", "writers", writers)
+	}
 	for _, taskID := range ready {
 		if o.skip[taskID] {
 			if err := o.book.SetStatus(s.run.TasksPath, taskID, types.StatusSkipped); err != nil {
@@ -200,6 +248,10 @@ func (o *Orchestrator) runWaveParallel(ctx context.Context, s *schedule, ready [
 		go func(t *types.Task) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if writesTheWorkingTree(t) {
+				treeMu.Lock()
+				defer treeMu.Unlock()
+			}
 			err := o.exec.Execute(ctx, s.run, t)
 			resMu.Lock()
 			results = append(results, batchResult{t: t, err: err})

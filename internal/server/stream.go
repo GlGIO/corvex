@@ -202,6 +202,19 @@ func (s *Server) stateFingerprint() string {
 			r.RunID, r.Status, r.Liveness, r.UpdatedAt.UnixNano())
 	}
 
+	// A dispatch that died is on NEITHER of the two lists above — that is the
+	// whole defect it belongs to: no run row, no gate, nothing to change. Left
+	// out of the fingerprint it would be a card the screen only draws the next
+	// time something ELSE moved, which for a person watching a run they just
+	// started is the same as not drawing it.
+	dispatches, derr := s.actions.Dispatches(20)
+	if derr != nil {
+		fmt.Fprintf(h, "dispatch-error\x00%s\n", derr)
+	}
+	for _, d := range dispatches {
+		fmt.Fprintf(h, "dispatch\x00%s\x00%s\x00%d\n", d.Log, d.Result, d.At.UnixNano())
+	}
+
 	return hex.EncodeToString(h.Sum(nil))
 }
 

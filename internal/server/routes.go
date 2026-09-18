@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	charmlog "github.com/charmbracelet/log"
+
 	"github.com/giovannialves/corvex/internal/gate"
 	"github.com/giovannialves/corvex/internal/ops"
 )
@@ -21,6 +23,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/state", s.handleState)
 	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.mux.HandleFunc("GET /api/runs", s.handleRuns)
+	// Literal before {id} in intent, like /api/gates/audit below: a run id is
+	// `run_` + 4 hex and can never be the word `logs`, and Go's mux prefers the
+	// literal segment anyway.
+	s.mux.HandleFunc("GET /api/runs/logs/{name}", s.handleRunLog)
 	s.mux.HandleFunc("GET /api/runs/{id}", s.handleRun)
 	s.mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/kill", s.handleKillRun)
@@ -60,10 +66,19 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
+	// Dispatches ride along with the state the screen already reads, because a
+	// dead dispatch is not a footnote to the history — it is the run the person
+	// thinks they started. A read failure here is not worth failing the whole
+	// screen over: the inbox and the runs are the load-bearing parts.
+	dispatches, derr := s.actions.Dispatches(20)
+	if derr != nil {
+		charmlog.Warn("reading the dispatch log", "err", derr)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"inbox": inbox,
-		"runs":  runs,
-		"repo":  s.opts.WorkDir,
+		"inbox":      inbox,
+		"runs":       runs,
+		"repo":       s.opts.WorkDir,
+		"dispatches": dispatches,
 	})
 }
 

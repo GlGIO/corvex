@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,11 @@ type Action struct {
 	// "the UI tried to approve a gate whose run had died" is exactly the kind of
 	// thing that is invisible otherwise.
 	Result string `json:"result"`
+	// Log names the dispatch log this action belongs to, when it has one (the
+	// file's base name, which is the key GET /api/runs/logs/{name} takes). It is
+	// what turns "exit 1" in the palette into something a reader can open, and
+	// it is the only field here that is not itself the audit line.
+	Log string `json:"log,omitempty"`
 }
 
 // ActionLog appends actions to `<repo>/.corvex/runs/ui-actions.jsonl`.
@@ -64,6 +70,33 @@ func (l *ActionLog) Record(command string, err error) Action {
 	if err != nil {
 		a.Result = err.Error()
 	}
+	return l.append(a)
+}
+
+// RecordDispatch is Record for a spawn: same line, plus the log the child writes
+// into, so the reader of a failed dispatch has somewhere to go.
+func (l *ActionLog) RecordDispatch(command string, err error, logName string) Action {
+	a := Action{At: l.clock(), Command: command, Result: "ok", Log: logName}
+	if err != nil {
+		a.Result = err.Error()
+	}
+	return l.append(a)
+}
+
+// RecordOutcome writes the SECOND line a dispatch produces: what came of the
+// process that was started.
+//
+// Two lines rather than one amended line, because the file is append-only and
+// because the two facts are genuinely different — "the UI started this" is true
+// the moment it happens, and "it exited 1 because the tree was dirty" is only
+// true minutes later. Rewriting history to merge them would make the log
+// something other than a log.
+func (l *ActionLog) RecordOutcome(command, result, logName string) Action {
+	return l.append(Action{At: l.clock(), Command: command, Result: result, Log: logName})
+}
+
+// append writes one line. Callers above have already shaped the Action.
+func (l *ActionLog) append(a Action) Action {
 	line, merr := json.Marshal(a)
 	if merr != nil {
 		return a
@@ -118,6 +151,46 @@ func (l *ActionLog) Read(limit int) ([]Action, error) {
 	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
+	}
+	return out, nil
+}
+
+// Dispatches folds the action log into one line per dispatched run: the newest
+// record of each log file, which is the outcome once the child has exited and
+// the spawn line until then.
+//
+// It exists because the two lines a dispatch writes answer one question
+// together and neither answers it alone — "the UI started this" plus "it exited
+// 1 because the tree was dirty" is the sentence, and a screen that showed both
+// lines separately would be asking the reader to do the fold by eye.
+//
+// Dispatches with no log (the spawn itself failed) are kept, keyed by their
+// command: losing them would reintroduce, in a smaller way, exactly the silence
+// this is here to end.
+func (l *ActionLog) Dispatches(limit int) ([]Action, error) {
+	actions, err := l.Read(0)
+	if err != nil {
+		return nil, err
+	}
+	// Read returns newest first, so the first sighting of a key IS the newest.
+	seen := map[string]bool{}
+	var out []Action
+	for _, a := range actions {
+		if !strings.Contains(a.Command, "run start ") {
+			continue
+		}
+		key := a.Log
+		if key == "" {
+			key = a.Command + a.At.String()
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, a)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	return out, nil
 }
