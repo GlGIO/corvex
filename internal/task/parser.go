@@ -77,6 +77,7 @@ type inlineYAML struct {
 	FanoutOf      string           `yaml:"fanout_of,omitempty"`
 	WorkDir       string           `yaml:"workdir,omitempty"`
 	WritesRunTree bool             `yaml:"writes_run_tree,omitempty"`
+	Always        bool             `yaml:"always,omitempty"`
 }
 
 // ParseTasksFile reads a tasks.md file and returns the parsed tasks and DAG specification.
@@ -301,6 +302,7 @@ func extractInlineYAML(lines []string, task *types.Task) {
 	// first, or it reads a tree without the work the first one left there.
 	task.WorkDir = iy.WorkDir
 	task.WritesRunTree = iy.WritesRunTree
+	task.Always = iy.Always
 	task.FixedBy = iy.FixedBy
 	task.ExpectFail = iy.ExpectFail
 	task.Item = iy.Item

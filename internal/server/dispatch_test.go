@@ -315,3 +315,49 @@ func TestRepos_ListsTheLocalRepositoryAsCurrent(t *testing.T) {
 		t.Errorf("%d repositories marked current, want exactly 1: %v", current, repos)
 	}
 }
+
+// Re-executing one step is a dispatch like any other — and it is refused while
+// the run is alive.
+//
+// With a fan-out over a board, one story of eight failing is the ordinary case.
+// Redoing the seven that passed is both the money and the risk, so `run retry
+// <target> --step S03` is the operation the screen needs. What it must not do is
+// start a second process against a project whose tasks.md and checkout another
+// process is still writing: this codebase has paid for that collision twice
+// already, and both times the fix was to make it impossible.
+func TestRetryRun_RefusesWhileTheRunIsAlive(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "repo")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	argv := filepath.Join(root, "argv")
+	srv, err := server.New(server.Options{WorkDir: workDir, Binary: stubBinary(t, argv, "true", 0)})
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+	h := srv.Handler()
+
+	// No such run: a 404 that names what was missing, not a 500.
+	rec, body := post(t, h, srv, "/api/runs/run_beef/retry", `{"step":"S03"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown run = %d, want 404: %s", rec.Code, rec.Body)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "run_beef") {
+		t.Errorf("the error does not name the run: %v", body["error"])
+	}
+
+	// A retry with no step is a bad request, not a whole-run re-execution: the
+	// difference between "redo S03" and "redo everything" is money.
+	rec, body = post(t, h, srv, "/api/runs/run_beef/retry", `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("retry with no step = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "step is required") {
+		t.Errorf("the refusal does not say what is missing: %v", body["error"])
+	}
+
+	if _, err := os.Stat(argv); err == nil {
+		t.Error("a refused retry still spawned the binary")
+	}
+}

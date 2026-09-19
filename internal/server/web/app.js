@@ -388,6 +388,11 @@ async function renderRunDetail(root, id) {
         el('span', { class: 'mono-id', text: failed.id }),
         el('span', { class: 'grow', text: failed.title }),
         el('button', { class: 'primary', onclick: () => openStep(r.run_id || id, failed.id) }, 'Why'),
+        // Re-execute THAT step, not the run. With a fan-out over a board, one
+        // story of eight failing is the ordinary case, and redoing the seven
+        // that passed is both the money and the risk.
+        r.liveness === 'alive' ? null
+          : el('button', { onclick: () => retryStep(r.run_id || id, failed.id) }, 'Retry step'),
       ),
     ));
   }
@@ -434,6 +439,14 @@ async function renderStepDetail(root, id, step) {
     s.cost_usd ? el('span', { class: 'dim', text: money(s.cost_usd) }) : null,
   ));
 
+  if (s.status === 'FAILED') {
+    root.append(el('div', { class: 'card bad' },
+      el('div', { class: 'row' },
+        el('span', { class: 'grow dim', text: 'Re-executar só este step: o resto do run fica como está.' }),
+        el('button', { class: 'primary', onclick: () => retryStep(id, s.id || step) }, 'Retry step'),
+      ),
+    ));
+  }
   if (s.description) root.append(el('div', { class: 'card' }, el('div', { class: 'dim', text: s.description })));
   if ((s.criteria || []).length) {
     root.append(el('div', { class: 'card' },
@@ -468,6 +481,15 @@ async function renderStepDetail(root, id, step) {
     ));
   }
   root.append(el('div', { class: 'card' }, rows));
+}
+
+async function retryStep(id, step) {
+  if (!confirm(`Re-executar ${step} de ${id}? O step volta a PENDING e roda de novo.`)) return;
+  try {
+    const res = await api.post(`/api/runs/${encodeURIComponent(id)}/retry`, { step });
+    status(`re-executando ${step} — ${res.command}`, 'ok');
+    leaveDetail();
+  } catch (e) { status(e.message, 'bad'); }
 }
 
 async function killRun(id) {

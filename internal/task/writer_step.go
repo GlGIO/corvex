@@ -29,6 +29,7 @@ type stepFields struct {
 	FanoutOf      string           `yaml:"fanout_of,omitempty"`
 	WorkDir       string           `yaml:"workdir,omitempty"`
 	WritesRunTree bool             `yaml:"writes_run_tree,omitempty"`
+	Always        bool             `yaml:"always,omitempty"`
 }
 
 func collectStepFields(t types.Task) stepFields {
@@ -45,6 +46,7 @@ func collectStepFields(t types.Task) stepFields {
 		FanoutOf:      t.FanoutOf,
 		WorkDir:       t.WorkDir,
 		WritesRunTree: t.WritesRunTree,
+		Always:        t.Always,
 	}
 }
 
@@ -54,7 +56,7 @@ func hasStepFields(t types.Task) bool {
 	f := collectStepFields(t)
 	return len(f.Gates) > 0 || len(f.Evidence) > 0 || f.Fanout != nil ||
 		f.Produces != "" || f.FixedBy != "" || f.Item != "" || f.ExpectFail ||
-		len(f.Items) > 0 || f.Expanded || f.FanoutOf != "" || f.WorkDir != "" || f.WritesRunTree
+		len(f.Items) > 0 || f.Expanded || f.FanoutOf != "" || f.WorkDir != "" || f.WritesRunTree || f.Always
 }
 
 // writeStepFields appends the marshalled F2 fields to an already-open block.

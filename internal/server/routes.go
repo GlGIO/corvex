@@ -30,6 +30,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/runs/{id}", s.handleRun)
 	s.mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/kill", s.handleKillRun)
+	s.mux.HandleFunc("POST /api/runs/{id}/retry", s.handleRetryRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/pause", s.handlePauseRun)
 	s.mux.HandleFunc("POST /api/runs/{id}/resume", s.handleResumeRun)
 	s.mux.HandleFunc("GET /api/gates", s.handleGates)

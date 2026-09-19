@@ -338,6 +338,13 @@ step that failed, with git's output on the screen where failures already live.
 Without it, items that WRITE are serialised on the run's single checkout: two
 agents editing one tree is how work gets swept away by the next checkpoint.
 
+A stage can declare `always: true` when its value is in OBSERVING rather than in
+building — a post-deploy probe, a health check. Corvex does not redo what
+already passed, which is right for work and wrong for measurement: a probe
+skipped because it passed yesterday reports success without having looked. An
+`always` stage, and everything downstream of it, goes back to PENDING at the
+start of every run.
+
 `requires:` declares what the run needs on the machine *before* spending a
 token — a missing `bin:` (a name on PATH, or a path relative to the run's
 workDir) or `env:` (a variable set on the runner) fails the run up front

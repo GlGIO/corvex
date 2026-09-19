@@ -72,6 +72,18 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 	args := startArgs(req)
 	command := dispatchCommand(dir, s.opts.WorkDir, args)
 
+	s.spawnDetached(w, dir, req.Target, args, command)
+}
+
+// spawnDetached is the one place a run is started from the UI: resolve the
+// binary, open the log, start it in its own session, record the parity line now
+// and the outcome when it exits.
+//
+// It became a function when `retry` arrived. Two copies would have drifted on the
+// part that is easy to get subtly wrong and invisible when wrong — the reaping,
+// the pid read before Release, the outcome line — and the second copy is always
+// the one that misses the fix.
+func (s *Server) spawnDetached(w http.ResponseWriter, dir, label string, args []string, command string) {
 	bin, err := s.binary()
 	if err != nil {
 		action := s.actions.Record(command, err)
@@ -79,7 +91,7 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logPath, logFile, err := s.runLog(req.Target)
+	logPath, logFile, err := s.runLog(label)
 	if err != nil {
 		action := s.actions.Record(command, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "action": action})
@@ -520,4 +532,66 @@ func gateVerb(v gate.Verdict) string {
 	default:
 		return string(v)
 	}
+}
+
+// retryRequest names the step to re-execute.
+type retryRequest struct {
+	Step string `json:"step"`
+}
+
+// handleRetryRun re-executes ONE step of a finished run.
+//
+// It is `corvex run retry <project> --step S03`: reset that step to PENDING and
+// run with the target pinned, which is the roadmap's "re-execute one stage
+// without redoing the rest". The UI needs it for the case the fan-out made
+// ordinary — one story of eight failed, and redoing the seven that passed is
+// both the money and the risk.
+//
+// A LIVE run is refused. Two processes writing one project's tasks.md and one
+// checkout is the collision this codebase has already paid for twice (the
+// merge nodes on `.git/index.lock`, the workers sharing a tree), and the fix
+// there was to make it impossible rather than to hope. Stop the run first: the
+// button for that is right next to this one.
+func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req retryRequest
+	if err := decodeBody(r, &req); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	step := strings.ToUpper(strings.TrimSpace(req.Step))
+	if step == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("step is required: name the step to re-execute (e.g. S03)"))
+		return
+	}
+
+	report, err := s.lister().LoadRunReport("", id, "")
+	if err != nil {
+		fail(w, http.StatusNotFound, err)
+		return
+	}
+	if report.Liveness == run.LivenessAlive || report.Liveness == run.LivenessCanceling {
+		fail(w, http.StatusConflict, fmt.Errorf("run %s is still %s: stop it before re-executing %s — two processes writing one project's tasks.md and one checkout is a collision, not a race worth taking",
+			id, report.Liveness, step))
+		return
+	}
+
+	target := report.Recipe
+	if target == "" {
+		target = report.Project
+	}
+	if target == "" {
+		fail(w, http.StatusConflict, fmt.Errorf("run %s names neither a recipe nor a project to re-execute", id))
+		return
+	}
+
+	// The retry runs where the run ran. Not where the UI is: a run recorded in
+	// another repository (the listing is cross-repo by design) would otherwise
+	// have its step re-executed against this checkout.
+	dir := report.Repo
+	if dir == "" {
+		dir = s.opts.WorkDir
+	}
+	args := []string{"run", "retry", target, "--step", step, "--plain", "--yes"}
+	s.spawnDetached(w, dir, target+"-"+step, args, dispatchCommand(dir, s.opts.WorkDir, args))
 }

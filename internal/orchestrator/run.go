@@ -60,6 +60,7 @@ func (o *Orchestrator) Run(ctx context.Context, project string) error {
 	o.emit(Event{Type: EventDAGResolved, Total: d.Size()})
 
 	o.resetInterruptedTasks(tasksPath, tasks)
+	o.resetAlwaysTasks(tasksPath, tasks)
 
 	completed := passedTasks(tasks)
 	if err := checkDAGIntegrity(tasks, completed); err != nil {
@@ -199,6 +200,58 @@ func (o *Orchestrator) resetInterruptedTasks(tasksPath string, tasks []types.Tas
 		tasks[i].Status = types.StatusPending
 		if err := o.book.SetStatus(tasksPath, tasks[i].ID, types.StatusPending); err != nil {
 			charmbraceletlog.Warn("persisting RUNNING→PENDING reset", "task", tasks[i].ID, "err", err)
+		}
+	}
+}
+
+// resetAlwaysTasks puts every `always` step — and everything downstream of it —
+// back to PENDING before the run starts.
+//
+// The cascade is the half that is easy to forget and impossible to live without:
+// a probe that re-queries production while the human gate BELOW it stays PASSED
+// would re-observe and then skip the screen that shows the observation. The
+// gate's verdict was about yesterday's number.
+//
+// Measured on the second run of a probe recipe, before this existed: the query
+// never ran, and the run went straight to a gate announcing that the probe had
+// passed. A probe that reports success without probing is worse than no probe,
+// because the hole looks covered.
+func (o *Orchestrator) resetAlwaysTasks(tasksPath string, tasks []types.Task) {
+	stale := make(map[string]bool)
+	for _, t := range tasks {
+		if t.Always {
+			stale[t.ID] = true
+		}
+	}
+	if len(stale) == 0 {
+		return
+	}
+	// Downstream closure. The list is in dependency order already (the compiler
+	// emits it that way), but a second pass costs nothing and does not rely on
+	// that being true forever.
+	for again := true; again; {
+		again = false
+		for _, t := range tasks {
+			if stale[t.ID] {
+				continue
+			}
+			for _, dep := range t.DependsOn {
+				if stale[dep] {
+					stale[t.ID] = true
+					again = true
+					break
+				}
+			}
+		}
+	}
+	for i := range tasks {
+		if !stale[tasks[i].ID] || tasks[i].Status == types.StatusPending {
+			continue
+		}
+		charmbraceletlog.Info("re-executing an `always` step and what depends on it", "task", tasks[i].ID, "was", tasks[i].Status)
+		tasks[i].Status = types.StatusPending
+		if err := o.book.SetStatus(tasksPath, tasks[i].ID, types.StatusPending); err != nil {
+			charmbraceletlog.Warn("persisting the always reset", "task", tasks[i].ID, "err", err)
 		}
 	}
 }

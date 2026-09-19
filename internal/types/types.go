@@ -134,6 +134,17 @@ type Task struct {
 	Expanded bool
 	// FanoutOf is the id of the fanout node this task was expanded from.
 	FanoutOf string
+	// Always makes this step re-execute on every run, even when the last run
+	// left it PASSED — and drags everything downstream of it back to PENDING
+	// with it.
+	//
+	// It exists because resumability, which is right for building something, is
+	// WRONG for observing something. A post-deploy probe re-reads production to
+	// answer "did the failure stop"; a probe that was skipped because it passed
+	// yesterday reports success without having looked, which is worse than no
+	// probe — it is a covered-looking hole. MEASURED on the second run of one:
+	// the query never ran and the human gate opened saying the probe had passed.
+	Always bool
 	// WritesRunTree marks a command step that edits the RUN's checkout, which
 	// the runner cannot tell from the command itself: `npm test` and `git merge`
 	// are both `kind: tool` and only one of them writes.

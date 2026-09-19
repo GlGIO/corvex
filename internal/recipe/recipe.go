@@ -83,6 +83,14 @@ type Stage struct {
 	// FixedBy is the stage expected to make a `repro` command stop
 	// reproducing.
 	FixedBy string `yaml:"fixed_by"`
+	// Always re-executes this stage on every run — and everything downstream of
+	// it — even when the last run left it PASSED.
+	//
+	// For stages whose value is in OBSERVING rather than in building: a
+	// post-deploy probe re-reads production to answer "did the failure stop",
+	// and a probe skipped because it passed yesterday reports success without
+	// having looked. Resumability is right for work and wrong for measurement.
+	Always bool `yaml:"always,omitempty"`
 }
 
 // Loop is a command stage's loop-with-policy: re-run the command until Until
@@ -262,6 +270,7 @@ func (r *Recipe) Compile() ([]types.Task, types.DAGSpec, error) {
 			Evidence:    s.Evidence,
 			Fanout:      s.Fanout,
 			Produces:    s.Produces,
+			Always:      s.Always,
 			FixedBy:     s.FixedBy,
 			Timeout:     s.Timeout,
 		}

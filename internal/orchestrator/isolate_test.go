@@ -198,3 +198,87 @@ func TestIsolate_AFailedItemDoesNotLand(t *testing.T) {
 		t.Errorf("the failed item's worktree was removed; its work was the only copy:\n%s", out)
 	}
 }
+
+// `always`: a step whose value is in OBSERVING re-runs even when it passed.
+//
+// Resumability is right for building and wrong for measuring. A post-deploy
+// probe asks production "did the failure stop"; skipped because it passed
+// yesterday, it answers with yesterday's number and the hole looks covered.
+// MEASURED on a real probe recipe before this existed: the second run never
+// executed the query and went straight to a human gate announcing success.
+func TestAlways_ReObservesAndDragsItsDependentsAlong(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "probe"
+	marker := filepath.Join(t.TempDir(), "runs")
+
+	// Both steps are already PASSED on disk, which is the state a second run
+	// starts from. Only S01 declares `always`; S02 must be dragged along,
+	// because a gate or a report that stays PASSED would show the previous
+	// observation next to the new one.
+	tasks := "---\ngenerated_by: corvex-recipe:probe\ndag:\n    S01: []\n    S02:\n        - S01\n---\n\n" +
+		"## S01 — Reconsulta ✅ PASSED\n\n```yaml\nkind: test\nalways: true\ncommand: \"echo s01 >> " + marker + "\"\n```\n\n### O que fazer\nprobe\n\n---\n\n" +
+		"## S02 — O veredito ✅ PASSED\n\n```yaml\nkind: tool\ndepends_on: [S01]\ncommand: \"echo s02 >> " + marker + "\"\n```\n\n### O que fazer\nverdict\n"
+	setupProject(t, dir, project, tasks)
+	gitCommitAll(t, dir, "add probe tasks")
+
+	events := make(chan Event, 200)
+	go func() {
+		for range events {
+		}
+	}()
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = false
+
+	if err := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events}).Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("neither step ran again: %v", err)
+	}
+	if got := strings.Count(string(data), "s01"); got != 1 {
+		t.Errorf("the `always` step ran %d times, want 1 — it was skipped as PASSED", got)
+	}
+	if got := strings.Count(string(data), "s02"); got != 1 {
+		t.Errorf("the dependent ran %d times, want 1 — it kept the verdict of the previous observation", got)
+	}
+}
+
+// And the ordinary case is untouched: a PASSED step with no `always` stays done,
+// which is the property that makes a resume worth having.
+func TestAlways_LeavesOrdinaryPassedStepsAlone(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "resume"
+	marker := filepath.Join(t.TempDir(), "runs")
+	tasks := "---\ngenerated_by: corvex-recipe:resume\ndag:\n    S01: []\n    S02:\n        - S01\n---\n\n" +
+		"## S01 — Já feito ✅ PASSED\n\n```yaml\nkind: tool\ncommand: \"echo s01 >> " + marker + "\"\n```\n\n### O que fazer\nx\n\n---\n\n" +
+		"## S02 — Falta este ⬜ PENDING\n\n```yaml\nkind: tool\ndepends_on: [S01]\ncommand: \"echo s02 >> " + marker + "\"\n```\n\n### O que fazer\ny\n"
+	setupProject(t, dir, project, tasks)
+	gitCommitAll(t, dir, "add resume tasks")
+
+	events := make(chan Event, 200)
+	go func() {
+		for range events {
+		}
+	}()
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = false
+	if err := New(Options{Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events}).Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	data, _ := os.ReadFile(marker)
+	if strings.Contains(string(data), "s01") {
+		t.Error("a PASSED step with no `always` was re-executed: the resume stopped being a resume")
+	}
+	if !strings.Contains(string(data), "s02") {
+		t.Error("the pending step did not run")
+	}
+}

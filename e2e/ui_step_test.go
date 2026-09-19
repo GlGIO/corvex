@@ -21,6 +21,10 @@ import (
 	"time"
 )
 
+// The failing stage reads a marker that does not exist yet, so the first run
+// fails and a retry AFTER the marker is committed passes. That is the workflow
+// the button exists for: the step failed, a person fixed the cause, and only
+// that step should run again.
 const failingRecipeYAML = `name: falha
 description: |
   Um stage que passa e um que falha, para o e2e do detalhe de step.
@@ -33,7 +37,7 @@ stages:
     kind: test
     title: "Falha dizendo por quê"
     depends_on: [S01]
-    command: "echo 'a coluna operacao_origem nao existe na replica' && exit 1"
+    command: "test -f corrigido.txt || (echo 'a coluna operacao_origem nao existe na replica' && exit 1)"
 `
 
 func setupFailingRepo(t *testing.T) string {
@@ -102,4 +106,76 @@ func gitIn(dir string, args ...string) (string, error) {
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// The whole point of retrying ONE step: the run's other steps are not redone.
+func TestUI_RetryReExecutesOnlyTheFailedStep(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns real processes and a browser")
+	}
+	dir := setupFailingRepo(t)
+	if out, err := corvexCLI(t, dir, "run", "start", "falha", "--plain", "--yes", "--skip-doctor"); err == nil {
+		t.Fatalf("the fixture run was supposed to fail:\n%s", out)
+	}
+
+	// The cause, fixed by a person — committed, because corvex refuses to run on
+	// a dirty tree and that refusal is not what this test is about.
+	if err := os.WriteFile(filepath.Join(dir, "corrigido.txt"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-m", "conserta a causa"}} {
+		if out, err := gitIn(dir, args...); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+
+	url := startUI(t, dir)
+	c := startChrome(t)
+	c.navigate(t, url)
+	c.waitFor(t, 20*time.Second, "the app to boot", "typeof el === 'function'")
+	c.eval(t, `[...document.querySelectorAll('.tab')].find(t => t.dataset.view === 'runs').click()`, nil)
+	c.waitFor(t, 15*time.Second, "the failed run to be listed", `document.body.innerText.includes('failed')`)
+	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Open').click()`, nil)
+	c.waitFor(t, 15*time.Second, "the run screen", `document.body.innerText.includes('failed at')`)
+
+	// `confirm` is a modal in a headless browser: answer it before clicking.
+	c.eval(t, `window.confirm = () => true`, nil)
+	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Retry step').click()`, nil)
+
+	// The step runs again and passes this time, and the step that had already
+	// passed is not touched: its ledger keeps exactly one completion.
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		out, _ := corvexCLI(t, dir, "run", "show", "falha")
+		if strings.Contains(out, "2/2 steps") {
+			// One COMPLETION per execution. The first version of this counted
+			// every ledger line mentioning S01 — task_start, tool_use,
+			// tool_result, checkpoint — and reported five executions of a step
+			// that ran once. The ledger was right; the assertion was reading it
+			// as if each line were a run.
+			ledger, _ := os.ReadFile(filepath.Join(dir, ".corvex", "tasks", "falha", "activity.jsonl"))
+			if got := completions(string(ledger), "S01"); got != 1 {
+				t.Errorf("S01 completed %d times: a retry of S02 re-executed a step that had already passed", got)
+			}
+			if got := completions(string(ledger), "S02"); got != 2 {
+				t.Errorf("S02 completed %d times, want 2 (the failure and the retry)", got)
+			}
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	out, _ := corvexCLI(t, dir, "run", "show", "falha")
+	t.Fatalf("the retried step never passed:\n%s", out)
+}
+
+// completions counts how many times a step finished, which is one ledger line
+// per execution — not one per event the execution emitted.
+func completions(ledger, step string) int {
+	n := 0
+	for _, line := range strings.Split(ledger, "\n") {
+		if strings.Contains(line, `"task_id":"`+step+`"`) && strings.Contains(line, `"type":"task_complete"`) {
+			n++
+		}
+	}
+	return n
 }
