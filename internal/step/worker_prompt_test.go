@@ -15,7 +15,7 @@ func TestBuildWorkerPrompt_BasicTask(t *testing.T) {
 		Description: "Do something basic",
 	}
 
-	prompt := buildWorkerPrompt(task, "", nil, "", "", "")
+	prompt := buildWorkerPrompt(task, "", nil, "", "", "", GateAnswer{})
 
 	if !strings.Contains(prompt, "## Current Task: S01 — Basic Task") {
 		t.Error("prompt missing current task header")
@@ -42,7 +42,7 @@ func TestBuildWorkerPrompt_WithAnchorContext(t *testing.T) {
 	task := &types.Task{ID: "S02", Title: "Task", Description: "desc"}
 	anchor := "## Completed Work\n\n### S01 — First\nDone."
 
-	prompt := buildWorkerPrompt(task, anchor, nil, "", "", "")
+	prompt := buildWorkerPrompt(task, anchor, nil, "", "", "", GateAnswer{})
 
 	if !strings.Contains(prompt, "## Previous Work") {
 		t.Error("prompt missing previous work section")
@@ -57,7 +57,7 @@ func TestBuildWorkerPrompt_WithContextDocs(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	docs := []string{"doc1 content", "doc2 content"}
 
-	prompt := buildWorkerPrompt(task, "", docs, "", "", "")
+	prompt := buildWorkerPrompt(task, "", docs, "", "", "", GateAnswer{})
 
 	if !strings.Contains(prompt, "## Project Context") {
 		t.Error("prompt missing project context section")
@@ -75,7 +75,7 @@ func TestBuildWorkerPrompt_WithAgentPrompt(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	agent := "You are a database specialist."
 
-	prompt := buildWorkerPrompt(task, "", nil, agent, "", "")
+	prompt := buildWorkerPrompt(task, "", nil, agent, "", "", GateAnswer{})
 
 	if !strings.Contains(prompt, "## Agent Instructions") {
 		t.Error("prompt missing agent instructions section")
@@ -90,7 +90,7 @@ func TestBuildWorkerPrompt_WithDiagnosis(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 	diag := "Missing import for fmt package"
 
-	prompt := buildWorkerPrompt(task, "", nil, "", diag, "")
+	prompt := buildWorkerPrompt(task, "", nil, "", diag, "", GateAnswer{})
 
 	if !strings.Contains(prompt, "## Previous Attempt Failed") {
 		t.Error("prompt missing diagnosis section")
@@ -113,7 +113,7 @@ func TestBuildWorkerPrompt_AllCombined(t *testing.T) {
 		},
 	}
 
-	prompt := buildWorkerPrompt(task, "anchor ctx", []string{"doc1"}, "agent prompt", "prev error", "")
+	prompt := buildWorkerPrompt(task, "anchor ctx", []string{"doc1"}, "agent prompt", "prev error", "", GateAnswer{})
 
 	if strings.Contains(prompt, "Required Skill") {
 		t.Error("prompt should not mention a skill when none is routed")
@@ -157,11 +157,44 @@ func TestBuildWorkerPrompt_AllCombined(t *testing.T) {
 
 func TestBuildWorkerPrompt_RoutedSkill(t *testing.T) {
 	task := &types.Task{ID: "S01", Title: "Build UI", Type: types.TypeFrontend, Description: "do it"}
-	prompt := buildWorkerPrompt(task, "", nil, "", "", "frontend-design")
+	prompt := buildWorkerPrompt(task, "", nil, "", "", "frontend-design", GateAnswer{})
 	if !strings.Contains(prompt, "Required Skill") {
 		t.Error("prompt missing the Required Skill section for a routed task")
 	}
 	if !strings.Contains(prompt, "frontend-design") {
 		t.Error("prompt should name the routed skill")
+	}
+}
+
+// The answer a person gave reaches the AGENT, not only the shell.
+//
+// A `question` gate on a `code` step asks something only a person knows — which
+// branch, which tenant, which of two designs — and the agent is the reader who
+// has to act on it. The shell half shipped a round earlier; without this one, a
+// question asked of an agent is a question asked of nobody.
+func TestBuildWorkerPrompt_CarriesTheAnswerAndTheQuestion(t *testing.T) {
+	task := &types.Task{ID: "S03", Title: "Abrir o PR", Description: "abra o PR no alvo certo"}
+	answered := GateAnswer{
+		Question: "A release ativa não foi encontrada. Qual branch deve receber este PR?",
+		Answer:   "release/1.8.0",
+	}
+
+	prompt := buildWorkerPrompt(task, "", nil, "", "", "", answered)
+	for _, want := range []string{
+		"Answered by a person",
+		"Qual branch deve receber este PR?",
+		"release/1.8.0",
+		"decision already taken",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
+		}
+	}
+
+	// A step that asked nothing says nothing: an empty section would be a
+	// standing instruction about a decision nobody made.
+	quiet := buildWorkerPrompt(task, "", nil, "", "", "", GateAnswer{})
+	if strings.Contains(quiet, "Answered by a person") {
+		t.Errorf("a step with no question gate got an answer section:\n%s", quiet)
 	}
 }

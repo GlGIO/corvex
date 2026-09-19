@@ -3,6 +3,7 @@ package step
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	charmbraceletlog "github.com/charmbracelet/log"
@@ -202,8 +203,18 @@ func (e *Executor) questionGate(ctx context.Context, r *Run, t *types.Task, g ty
 	// Unambiguous by construction: the recipe validator refuses more than one
 	// gate that parks a run on a person per stage (they would collide on one
 	// gate file), so a stage has at most one answer.
-	acc.setAnswer(decided.Answer)
+	acc.setAnswer(questionText(g), decided.Answer)
 	return nil
+}
+
+// questionText is what the run asked, in the words the recipe wrote: the prompt
+// when there is one, the label otherwise. A worker that receives an answer
+// without the question has to guess what it answers.
+func questionText(g types.Gate) string {
+	if q := strings.TrimSpace(g.Prompt); q != "" {
+		return q
+	}
+	return strings.TrimSpace(g.Label)
 }
 
 func verdictStatus(v gate.Verdict) types.TaskStatus {

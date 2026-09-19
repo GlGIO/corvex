@@ -352,7 +352,7 @@ func TestMarkGateFailure_TheTerminalLineSaysWhy(t *testing.T) {
 func TestRunShellForStep_CarriesTheAnswerToTheCommand(t *testing.T) {
 	e := gateExecutor(t, &mockProvider{}, nil)
 	acc := newEvidenceSet()
-	acc.setAnswer("release/1.8.0")
+	acc.setAnswer("Qual branch é o alvo?", "release/1.8.0")
 
 	out, err := e.runShellForStep(context.Background(), &Run{}, &types.Task{ID: "S01"}, acc,
 		`printf '%s' "${CORVEX_GATE_ANSWER:-<vazio>}"`)

@@ -103,7 +103,7 @@ func TestWorkerForwardsItsOwnAllowlistToSandbox(t *testing.T) {
 		sb := &mockSandbox{}
 		w := NewWorker(&mockCommandProvider{}, "sonnet", "/tmp", sb, nil, allowlist, config.SecurityConfig{})
 		task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
-		if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
+		if _, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{}); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
 		sb.mu.Lock()

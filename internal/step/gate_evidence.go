@@ -28,6 +28,10 @@ type evidenceSet struct {
 	// the run on a person per stage, because two of them collide on one gate
 	// file.
 	answer string
+	// question is the label of the gate that asked, so a worker prompt can say
+	// what was asked as well as what was answered. An answer without its
+	// question is a sentence with no subject.
+	question string
 }
 
 func newEvidenceSet() *evidenceSet { return &evidenceSet{} }
@@ -41,14 +45,24 @@ func (s *evidenceSet) add(e types.Evidence) {
 	s.items = append(s.items, gate.Cap(e))
 }
 
-// setAnswer records the reply to this step's question gate.
-func (s *evidenceSet) setAnswer(a string) {
+// setAnswer records the reply to this step's question gate, and what was asked.
+func (s *evidenceSet) setAnswer(question, a string) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.answer = a
+	s.question, s.answer = question, a
+}
+
+// gateQuestion is what the step asked, for the prompt that carries the answer.
+func (s *evidenceSet) gateQuestion() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.question
 }
 
 // gateAnswer is what the step's command receives as $CORVEX_GATE_ANSWER.

@@ -139,7 +139,9 @@ func (e *Executor) runABSide(
 	}
 
 	worker := NewWorker(e.provider, model, wt.Path, nil, e.cfg.SkillRouting, e.cfg.EnvAllowlist(), e.cfg.Security)
-	workerResult, err := worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, "")
+	// A/B runs one task twice and has no gate of its own: no question was asked
+	// on this path, so there is no answer to carry.
+	workerResult, err := worker.Execute(ctx, t, anchorCtx, contextDocs, agentPrompt, "", GateAnswer{})
 	if err != nil {
 		return abRunResult{Model: model, Worktree: wt, Err: fmt.Errorf("worker: %w", err)}
 	}

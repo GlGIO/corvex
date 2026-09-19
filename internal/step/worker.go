@@ -102,13 +102,13 @@ func (w *Worker) SetOnStream(cb func(types.StreamEvent)) {
 // policy. It is a method rather than inline code so the policy is assertable:
 // "the raw path is closed" is a security claim, and a security claim that only
 // exists inside a 40-line function is a claim nobody tests.
-func (w *Worker) buildRequest(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis string) types.ExecuteRequest {
+func (w *Worker) buildRequest(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis string, answered GateAnswer) types.ExecuteRequest {
 	routedSkill := ""
 	if w.skillRouting != nil {
 		routedSkill = w.skillRouting[string(t.Type)]
 	}
 	return types.ExecuteRequest{
-		Prompt:  buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill),
+		Prompt:  buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill, answered),
 		Model:   w.model,
 		WorkDir: w.workDir,
 		// Hard block: the worker LLM cannot touch corvex state files
@@ -144,8 +144,9 @@ func (w *Worker) Execute(
 	contextDocs []string,
 	agentPrompt string,
 	diagnosis string,
+	answered GateAnswer,
 ) (*types.ExecuteResult, error) {
-	req := w.buildRequest(t, anchorCtx, contextDocs, agentPrompt, diagnosis)
+	req := w.buildRequest(t, anchorCtx, contextDocs, agentPrompt, diagnosis, answered)
 
 	// When a streaming callback is set AND we're running on a LocalSandbox,
 	// bypass the sandbox abstraction (which buffers stdout) and stream
@@ -266,7 +267,20 @@ func collectAuthEnv(prefixes, denied []string) map[string]string {
 	return env
 }
 
-func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis, routedSkill string) string {
+// GateAnswer is what a person told this step when its question gate parked the
+// run: what was asked, and what they said.
+//
+// It reaches a `code` step through the PROMPT, because that is the only channel
+// an agent reads. A shell step gets the same value as $CORVEX_GATE_ANSWER. The
+// two halves were built a round apart, and the second one is the one that makes
+// a question worth asking of an agent: "which branch is the target" answered
+// into a variable no agent reads is a question asked of nobody.
+type GateAnswer struct {
+	Question string
+	Answer   string
+}
+
+func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, agentPrompt, diagnosis, routedSkill string, answered GateAnswer) string {
 	var b strings.Builder
 
 	if agentPrompt != "" {
@@ -314,6 +328,18 @@ func buildWorkerPrompt(t *types.Task, anchorCtx string, contextDocs []string, ag
 			fmt.Fprintf(&b, "- Modify: %s\n", f)
 		}
 		b.WriteString("\n")
+	}
+
+	// Before the failure section, and deliberately: an answer is a DECISION
+	// that has already been made, and it frames the work rather than explaining
+	// a previous mistake.
+	if strings.TrimSpace(answered.Answer) != "" {
+		b.WriteString("## Answered by a person\n\n")
+		if q := strings.TrimSpace(answered.Question); q != "" {
+			fmt.Fprintf(&b, "This step parked and asked: %s\n\n", q)
+		}
+		fmt.Fprintf(&b, "A person answered:\n\n%s\n\n", strings.TrimSpace(answered.Answer))
+		b.WriteString("Treat that as a decision already taken. Do not ask it again, do not second-guess it, and do not substitute a value you prefer.\n\n")
 	}
 
 	if diagnosis != "" {

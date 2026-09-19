@@ -56,7 +56,7 @@ func TestWorker_ConfigCanCloseToolsOnTopOfTheBuiltInBlock(t *testing.T) {
 		DisallowedTools: []string{"WebFetch", "Bash(curl:*)"},
 	})
 
-	req := w.buildRequest(&types.Task{ID: "S01", Title: "t"}, "", nil, "", "")
+	req := w.buildRequest(&types.Task{ID: "S01", Title: "t"}, "", nil, "", "", GateAnswer{})
 	joined := strings.Join(req.DisallowedTools, " ")
 	for _, want := range []string{"WebFetch", "Bash(curl:*)", "Write(.corvex/**)"} {
 		if !strings.Contains(joined, want) {

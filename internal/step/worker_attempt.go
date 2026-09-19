@@ -45,7 +45,7 @@ func (e *Executor) runWorker(ctx context.Context, r *Run, t *types.Task, st *aiT
 	streaming := isLocalOrNilSandbox(e.sandbox)
 	go e.watchTask(taskCtx, cancelTask, watchDone, taskID, live, timedOut, streaming, t.Timeout)
 
-	result, err := st.worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, st.diagnosis)
+	result, err := st.worker.Execute(taskCtx, t, anchorCtx, contextDocs, agentPrompt, st.diagnosis, st.answered)
 	close(watchDone)
 	cancelTask()
 	st.worker.SetOnStream(nil)

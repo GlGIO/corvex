@@ -22,7 +22,7 @@ func TestExecute_NoAllowedTools(t *testing.T) {
 	w := NewWorker(mock, "test-model", "/tmp", nil, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
-	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
+	if _, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{}); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestExecute_ModelAndWorkDir(t *testing.T) {
 	w := NewWorker(mock, "sonnet", "/my/workdir", nil, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Task", Description: "desc"}
 
-	if _, err := w.Execute(context.Background(), task, "", nil, "", ""); err != nil {
+	if _, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,7 +84,7 @@ func TestWorkerExecute_ViaSandbox(t *testing.T) {
 	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
-	result, err := w.Execute(context.Background(), task, "", nil, "", "")
+	result, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -114,7 +114,7 @@ func TestWorkerExecute_FallbackDirect(t *testing.T) {
 	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
-	result, err := w.Execute(context.Background(), task, "", nil, "", "")
+	result, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestWorkerExecute_NilSandbox(t *testing.T) {
 	w := NewWorker(prov, "sonnet", "/tmp", nil, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
-	result, err := w.Execute(context.Background(), task, "", nil, "", "")
+	result, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -174,7 +174,7 @@ func TestWorkerExecute_SandboxError(t *testing.T) {
 	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
-	_, err := w.Execute(context.Background(), task, "", nil, "", "")
+	_, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{})
 	if err == nil {
 		t.Fatal("expected error from sandbox")
 	}
@@ -208,7 +208,7 @@ func TestWorkerExecute_NonZeroExitCode(t *testing.T) {
 	w := NewWorker(prov, "sonnet", "/tmp", sb, nil, config.DefaultEnvAllowlist(), config.SecurityConfig{})
 	task := &types.Task{ID: "S01", Title: "Test", Description: "desc"}
 
-	result, err := w.Execute(context.Background(), task, "", nil, "", "")
+	result, err := w.Execute(context.Background(), task, "", nil, "", "", GateAnswer{})
 	if err == nil {
 		t.Fatal("expected error for non-zero exit code")
 	}

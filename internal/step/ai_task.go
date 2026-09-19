@@ -26,7 +26,10 @@ type aiTask struct {
 	// two are separate fields rather than one string used twice because that is
 	// exactly how the leak happened — one value with two readers, and only one
 	// of them safe.
-	reason         string
+	reason string
+	// answered is what a person told this step at its question gate, carried
+	// into every attempt's prompt. A retry answers to the same decision.
+	answered       GateAnswer
 	categoryCounts map[string]int
 	costUSD        float64
 	maxRetries     int
@@ -66,6 +69,10 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *ev
 	}
 
 	st := &aiTask{
+		// What a person answered at this step's question gate, if it asked one.
+		// Read once here rather than per attempt: the gate ran before the first
+		// attempt, and a retry answers to the same decision.
+		answered: GateAnswer{Question: acc.gateQuestion(), Answer: acc.gateAnswer()},
 		// Per-task worker clone: escalation upgrades this clone's model and
 		// sets its stream callback, so parallel tasks never race on shared
 		// worker state.
