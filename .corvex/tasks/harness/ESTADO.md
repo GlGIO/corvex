@@ -289,6 +289,22 @@ pedia `mcp: prd` e o servidor existente chama-se `SmartCarePRD` (recusaria um
 ambiente correto), e o repro virou `${REPRO_CMD:-npm test}` para não rodar a
 suíte inteira duas vezes.
 
+## Rodada 20 — FECHADA
+
+Preparei o ambiente do dono para o primeiro run de incidente (binário
+reinstalado, MCP declarado sem credencial no repo, `mcp.json` ignorado, `SELECT
+1` no PRD respondendo) e rodei **o primeiro step real da recipe contra o board
+real**, num worktree isolado, sem gastar token: o `az-show-workitem.sh` leu o
+incidente 73960 de dentro do run.
+
+E aí um defeito: `run start incident --task S01` rodou 1 step de 9, não falhou
+nada, e gravou **`done`** — a palavra que alguém lendo o histórico entende como
+"a recipe terminou". Agora existe `partial` (`fc17de0`), que já era a palavra do
+hook `post-run` e que o registro nunca usara.
+
+**Esperando o dono:** qual incidente (11 abertos, recomendei 73960 ou 73607) e a
+autorização de gasto. A branch `corvex/prova-s01` foi removida com a worktree.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
