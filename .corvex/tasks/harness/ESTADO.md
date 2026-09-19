@@ -197,6 +197,23 @@ quem gravasse por último. A proteção que existia era acidental (o guard de á
 suja, que só pega se o primeiro já sujou algo). Agora há porta, antes de o
 segundo run existir, nomeando quem segura o projeto.
 
+## Rodada 14 — FECHADA
+
+**O botão de retry que eu construí na rodada 8 não funcionava para o caso que o
+justificou** (`b7cc9c4`). Três camadas, uma atrás da outra:
+1. o id era maiusculizado — `S02/000/trabalha` virava `TRABALHA`, inexistente;
+2. o reset não arrastava os dependentes — o merge ficava PASSED com dependência
+   pendente e o run seguinte abortava por integridade de DAG;
+3. e o retry rodava só o step nomeado: o item refazia o trabalho, o run dizia
+   `done`, e o merge não rodava. A story não chegava na branch, em silêncio.
+
+Mais a recusa para o item JÁ MERGEADO (worktree removida): nomeia a situação e o
+caminho (`--recompile`) em vez de falhar depois num diretório que não existe.
+
+**A lição, de novo:** construí o botão na rodada 8 com a justificativa do
+fan-out, escrevi teste para a RECUSA (run vivo) e nunca cliquei nele num item de
+fan-out. Teste de recusa não substitui exercitar o caminho feliz.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
