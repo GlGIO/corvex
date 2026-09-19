@@ -284,7 +284,10 @@ async function renderLogDetail(root, name) {
 // tool stopped being usable from the screen: the operating model is one worktree
 // per piece of work, so every run started with `git worktree add -b … main` in a
 // terminal, and only then did the UI have anywhere to dispatch into.
-async function dispatchForm() {
+async function dispatchForm(preset) {
+  // `onclick: dispatchForm` calls this with an Event. Anything that is not a
+  // string is not a recipe name.
+  const wanted = typeof preset === 'string' ? preset : '';
   // The repository comes FIRST, because everything under it depends on which one
   // is meant: which recipes exist, which worktree a project has, which checkout
   // the run writes into. The list is the one the inbox already aggregates —
@@ -326,7 +329,7 @@ async function dispatchForm() {
   worktree.addEventListener('change', loadRecipes);
   repo.addEventListener('change', async () => { await loadWorktrees(); loadRecipes(); });
 
-  const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list' });
+  const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list', value: wanted || null });
   // What the recipe says it needs (`requires: - env:`), asked for here instead of
   // being discovered as a preflight failure in a log. The fields are rebuilt
   // whenever the recipe changes, so switching recipes cannot leave the previous
@@ -417,7 +420,7 @@ async function dispatchForm() {
   view.prepend(box);
   // The checkout list first: the recipes are read from whichever checkout it
   // settles on.
-  loadWorktrees().then(loadRecipes);
+  loadWorktrees().then(loadRecipes).then(() => { if (wanted) { syncInputs(); target.focus(); } });
 }
 
 // ── leaving a detail screen ─────────────────────────────────────────────────
@@ -755,20 +758,153 @@ async function renderRecipes(root) {
   }
 }
 
-// ── ⌘K: the parity log (2h) ─────────────────────────────────────────────────
-async function openPalette() {
-  const list = $('#palette-list');
-  list.replaceChildren();
-  const actions = await api.get('/api/actions?limit=50').catch(() => []);
-  if (!actions || !actions.length) list.append(el('li', { class: 'dim' }, 'Nothing yet. Every action you take here shows up as the command that does the same thing.'));
-  for (const a of actions || []) {
-    list.append(el('li', {},
-      el('span', { class: a.result === 'ok' ? 'pill det' : 'pill bad', text: a.result === 'ok' ? 'ok' : 'failed' }),
-      el('code', { class: 'grow', text: a.command }),
-      el('span', { class: 'dim', text: new Date(a.at).toLocaleTimeString() }),
-    ));
+// ── ⌘K: the commands (2h) ───────────────────────────────────────────────────
+//
+// This panel started as the parity LOG — what the UI had done, written as the
+// CLI lines that do the same thing — and the log stays, because that is the
+// promise: no button does anything a person could not have typed. What it now
+// also does is let you type one.
+//
+// The two halves are the same list on purpose. Every entry here is a command
+// the server already knows how to record; running one from the keyboard writes
+// the same audit line a click writes, so the launcher cannot become a private
+// back channel into the runner.
+//
+// WHAT IS DELIBERATELY NOT HERE: approving or rejecting a gate.
+//
+// The gate screen holds a reading lock — evidence marked `required_reading` has
+// to be opened before Approve enables, and the acknowledgement is written with
+// a timestamp. That lock is the single most load-bearing guard in this product,
+// and the dogfood round that found the sliding evidence anchor is why. A ⌘K
+// entry reading `gate approve run_0575` would be a hole straight through it:
+// one keystroke, no evidence, and the ledger would record a reading that never
+// happened. So the palette takes you TO the gate and stops there.
+
+const palette = { items: [], shown: [], at: 0 };
+
+// paletteItems builds the candidate set from what is on screen right now. It is
+// derived, never stored: a run that ended while the panel was closed must not
+// be offered a `pause` that the server would refuse.
+function paletteItems(recipes) {
+  const d = state.data || {};
+  const out = [
+    { cmd: 'corvex gate list', why: 'waiting on you', go: () => gotoView('inbox') },
+    { cmd: 'corvex run list', why: 'history', go: () => gotoView('runs') },
+    { cmd: 'corvex recipe list', why: 'recipes', go: () => gotoView('recipes') },
+  ];
+  for (const r of recipes || []) {
+    // A recipe that declares inputs cannot be started from a text box: the
+    // values are the point (`INCIDENT_ID`), and a run dispatched without them
+    // dies in its own preflight. So it opens the form that asks, with the
+    // recipe already chosen — the palette hands over instead of pretending.
+    if ((r.inputs || []).length) {
+      out.push({ cmd: `corvex run start ${r.name}`, why: `asks for ${r.inputs.map((i) => i.name).join(', ')}`, go: async () => { await gotoView('runs'); dispatchForm(r.name); } });
+      continue;
+    }
+    out.push({ cmd: `corvex run start ${r.name}`, why: `${r.stages} step(s)`, go: () => startFromPalette(r.name) });
   }
+  for (const g of (d.inbox && d.inbox.gates) || []) {
+    out.push({ cmd: `corvex gate show ${g.gate.run_id} --step ${g.gate.step_id}`, why: g.gate.label || 'waiting on you', go: () => openGate(g.gate.run_id, g.gate.step_id) });
+  }
+  for (const r of d.runs || []) {
+    const name = r.recipe || r.project || '';
+    out.push({ cmd: `corvex run show ${r.run_id}`, why: `${r.status} · ${name}`, go: () => openRun(r.run_id) });
+    if (r.status === 'paused') out.push({ cmd: `corvex run resume ${r.run_id}`, why: name, go: () => resumeRun(r.run_id) });
+    else if (r.liveness === 'alive') out.push({ cmd: `corvex run pause ${r.run_id}`, why: `${name} · keeps work in flight`, go: () => pauseRun(r.run_id) });
+    // killRun asks before it signals, and that confirmation is why `run kill`
+    // may be on a list Enter acts on at all.
+    if (r.liveness === 'alive') out.push({ cmd: `corvex run kill ${r.run_id}`, why: `${name} · LOSES work in flight`, hot: true, go: () => killRun(r.run_id) });
+  }
+  return out;
+}
+
+async function startFromPalette(target) {
+  try {
+    const res = await api.post('/api/runs', { target });
+    status(`started in ${res.dir} — ${res.command}`, 'ok');
+    gotoView('runs');
+  } catch (e) { status(e.message, 'bad'); }
+}
+
+function gotoView(view) {
+  closePalette();
+  state.view = view;
+  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.view === view);
+  // Handed back, not fired and forgotten: a caller that wants to open the
+  // dispatch form has to wait for the screen the form attaches to.
+  return leaveDetail();
+}
+
+// match is substring over the words typed, in any order: "kill 0575" and
+// "0575 kill" find the same line. Not fuzzy — a fuzzy match on a list whose
+// Enter stops a running job earns its recall by also matching things you did
+// not mean.
+function matches(item, query) {
+  const hay = (item.cmd + ' ' + (item.why || '')).toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
+
+function drawPalette() {
+  const list = $('#palette-list');
+  const query = $('#palette-input').value.trim();
+  palette.shown = query ? palette.items.filter((i) => matches(i, query)) : palette.items;
+  if (palette.at >= palette.shown.length) palette.at = Math.max(0, palette.shown.length - 1);
+
+  list.replaceChildren();
+  if (!palette.shown.length) {
+    list.append(el('li', { class: 'dim' }, query ? `Nothing here matches “${query}”.` : 'Nothing to do yet.'));
+  }
+  palette.shown.forEach((item, i) => {
+    list.append(el('li', { class: i === palette.at ? 'on' : '', onclick: () => runPaletteItem(i) },
+      item.hot ? el('span', { class: 'pill bad', text: 'stops' }) : null,
+      el('code', { class: 'cmd', text: item.cmd }),
+      el('span', { class: 'why', text: item.why || '' }),
+    ));
+  });
+  const on = list.querySelector('li.on');
+  if (on) on.scrollIntoView({ block: 'nearest' });
+  drawPaletteLog(query);
+}
+
+// The log stays, under the results, and only when nothing is typed: it is the
+// answer to "what did this UI do", not a search result.
+async function drawPaletteLog(query) {
+  const foot = $('#palette-hint');
+  if (query) { foot.textContent = `${palette.shown.length} of ${palette.items.length} · enter runs · ↑↓ moves · esc closes`; return; }
+  const actions = await api.get('/api/actions?limit=6').catch(() => []);
+  foot.textContent = (actions && actions.length)
+    ? `last: ${actions[0].command}`
+    : 'every button here has a CLI equivalent — what you do shows up as that line';
+}
+
+function runPaletteItem(i) {
+  const item = palette.shown[i];
+  if (!item) return;
+  // Closed BEFORE the action, not after: `run kill` opens a confirm dialog, and
+  // a panel still on screen behind it made the question look like it belonged
+  // to whatever was underneath.
+  closePalette();
+  item.go();
+}
+
+function closePalette() {
+  $('#palette').classList.add('hidden');
+}
+
+async function openPalette() {
+  const input = $('#palette-input');
+  input.value = '';
+  palette.at = 0;
+  palette.items = paletteItems([]);
+  drawPalette();
   $('#palette').classList.remove('hidden');
+  input.focus();
+  // The recipes are a second request, so the panel opens NOW with what the page
+  // already has and fills in when they land. A palette that waits on the
+  // network before showing anything is a palette people stop reaching for.
+  const recipes = await api.get('/api/recipes').catch(() => []);
+  palette.items = paletteItems(recipes || []);
+  drawPalette();
 }
 
 // ── the stream, and the poll under it ───────────────────────────────────────
@@ -907,10 +1043,16 @@ function boot() {
   });
   paintNotify();
   $('#palette-open').addEventListener('click', openPalette);
-  $('#palette-close').addEventListener('click', () => $('#palette').classList.add('hidden'));
+  $('#palette-close').addEventListener('click', closePalette);
+  $('#palette-input').addEventListener('input', () => { palette.at = 0; drawPalette(); });
+  $('#palette-input').addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); palette.at = Math.min(palette.at + 1, palette.shown.length - 1); drawPalette(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); palette.at = Math.max(palette.at - 1, 0); drawPalette(); }
+    else if (e.key === 'Enter') { e.preventDefault(); runPaletteItem(palette.at); }
+  });
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
-    if (e.key === 'Escape') $('#palette').classList.add('hidden');
+    if (e.key === 'Escape') closePalette();
   });
   refresh();
   startStream();

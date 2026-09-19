@@ -205,10 +205,17 @@ label.check{display:flex; gap:7px; align-items:center; color:var(--dim); cursor:
 .palette{position:fixed; inset:0; background:rgba(10,13,18,.5); display:flex; align-items:flex-start; justify-content:center; padding-top:12vh; backdrop-filter:blur(2px)}
 .palette.hidden{display:none}
 .palette-box{background:var(--panel); border:1px solid var(--line); border-radius:10px; width:min(760px,92vw); padding:16px; box-shadow:var(--shadow)}
-.palette-head{display:flex; flex-direction:column; margin-bottom:10px}
+#palette-input{width:100%; font-family:var(--mono); font-size:15px; padding:9px 11px; margin-bottom:10px}
 #palette-list{list-style:none; margin:0 0 10px; padding:0; max-height:50vh; overflow:auto; font-family:var(--mono); font-size:12.5px}
-#palette-list li{padding:7px 8px; border-bottom:1px solid var(--line); display:flex; gap:12px}
+#palette-list li{padding:7px 9px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; border-radius:5px}
 #palette-list li:last-child{border-bottom:0}
+/* The selected row, and it has to be unmistakable: this is the line Enter is
+   about to run. */
+#palette-list li.on{background:var(--sunk); border-bottom-color:transparent; box-shadow:inset 2px 0 0 var(--acc)}
+#palette-list li .cmd{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#palette-list li .why{color:var(--faint); font-size:11.5px; white-space:nowrap}
+.palette-foot{display:flex; align-items:center; gap:var(--gap)}
+.palette-foot .dim{flex:1; font-family:var(--mono); font-size:11.5px}
 
 /* The cost bar is deliberately one colour: the question it answers is
    proportion, and colouring each phase differently would invite reading the

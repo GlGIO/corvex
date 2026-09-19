@@ -177,6 +177,38 @@ próprio botão, então `textContent === 'history'` deixou de ser igualdade. As
 asserções viraram insensíveis a caixa e a `startsWith` — elas afirmam qual tela
 está no ar e que ela reporta a falha, não a caixa das letras.
 
+## Rodada 23 — FECHADA (o ⌘K que só olhava)
+
+O dono abriu o ⌘K esperando digitar um comando. Não dava: o painel nasceu como
+**log de paridade** — o que esta UI fez, escrito como as linhas de CLI que fazem
+o mesmo — e nunca teve campo. Conferi o histórico: um único commit tocou nele
+desde que nasceu (`7cf19eb`), e ali já era o que era hoje. A memória dele era da
+frase do documento do rebrand ("o ⌘K mostra comandos"), que descreve o log.
+
+Agora digita. As duas metades são a mesma lista de propósito: toda entrada é um
+comando que o servidor já sabe gravar, então rodar pelo teclado escreve a mesma
+linha de auditoria que o clique escreve — o lançador não pode virar um canal
+privado para dentro do runner.
+
+**O que NÃO entrou, e é a decisão que importa:** aprovar ou rejeitar gate. A
+tela de gate tem a trava de leitura — evidência marcada `required_reading`
+precisa ser aberta antes de o Approve destravar, e o reconhecimento é gravado
+com carimbo de hora. Uma entrada `gate approve run_0575` seria uma tecla
+atravessando isso pelo meio: sem evidência, e o ledger registrando uma leitura
+que não houve. O painel leva ATÉ o gate e para ali. Tem teste que segura isso
+para quando alguém achar que aprovar pelo teclado seria conveniente — controle
+positivo medido: acrescentar a linha deixa o teste vermelho.
+
+Duas outras regras que valem registro:
+
+- **Receita que declara `env:` não dispara pelo painel.** Os valores são o ponto
+  (`INCIDENT_ID`), e um run sem eles morre no próprio preflight. Então ela abre
+  o formulário com a receita já escolhida — o painel entrega em vez de fingir.
+- **Casamento por substring, não fuzzy.** Numa lista cujo Enter para um job em
+  execução, recall comprado com fuzzy se paga casando coisa que ninguém quis.
+  `run kill` também é o único item com pill vermelha, e continua passando pelo
+  `confirm` que o botão Stop já usava.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

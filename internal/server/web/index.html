@@ -17,19 +17,19 @@
   <span class="spacer"></span>
   <span class="repo" id="repo"></span>
   <button id="notify-toggle" class="ghost" title="Avisar no sistema quando algo esperar por você">Notify</button>
-  <button id="palette-open" class="ghost" title="Command log (⌘K)">⌘K</button>
+  <button id="palette-open" class="ghost" title="Commands (⌘K)">⌘K</button>
 </header>
 
 <main id="view"></main>
 
 <div id="palette" class="palette hidden">
   <div class="palette-box">
-    <div class="palette-head">
-      <strong>Everything this UI did, as commands</strong>
-      <span class="dim">every button has a CLI equivalent — these lines are it</span>
-    </div>
+    <input id="palette-input" placeholder="type a command — run start, pause, show…" autocomplete="off" spellcheck="false">
     <ul id="palette-list"></ul>
-    <button class="ghost" id="palette-close">close</button>
+    <div class="palette-foot">
+      <span class="dim" id="palette-hint">enter runs · ↑↓ moves · esc closes</span>
+      <button class="ghost" id="palette-close">close</button>
+    </div>
   </div>
 </div>
 
