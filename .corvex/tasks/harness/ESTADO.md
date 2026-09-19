@@ -104,6 +104,22 @@ Faltava uma aresta. Ninguém tinha rodado o step type desde que ele foi escrito.
 Mais o README, que não documentava `wave_by`, `isolate`, `max_parallel`,
 `on_item_failure` nem `{{ item.field }}` — tudo entregue nas rodadas anteriores.
 
+## Rodada 8 — FECHADA
+
+**A sonda pós-deploy existe** (`sonda.yaml`, smartcare `0a1dd3b9`): reconsulta o
+dado que provou a causa e compara com um número. Três desfechos medidos — ainda
+falha (run FALHA com a contagem), parou (gate humano com a reconsulta como
+leitura obrigatória), query sem número (exit 2).
+
+**E ela achou um defeito de produto** (`cc3216b`): na SEGUNDA execução, o corvex
+pulou o step que já havia passado e foi direto ao gate anunciando sucesso — **com
+a query nunca executada**. Resumabilidade é certa para construir e errada para
+medir. Agora existe `always: true`: o step e tudo que depende dele voltam a
+PENDING em todo run.
+
+**Retry pela UI** na mesma leva: re-executar UM step do card do run ou do detalhe
+dele, com recusa 409 se o run está vivo.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
