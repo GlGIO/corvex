@@ -51,7 +51,20 @@ const (
 	// waiting for a human, the run is on its way out.
 	StatusCanceling Status = "canceling"
 
-	StatusDone     Status = "done"
+	StatusDone Status = "done"
+	// StatusPartial is a run that ended with nothing failing and work still
+	// PENDING: `--task S03`, `--single`, a resume that ran the two steps that
+	// were left of nine.
+	//
+	// It exists because `done` is the word a person scanning the history reads
+	// as "this recipe finished". MEASURED on the first real run of the incident
+	// recipe: `run start incident --task S01` executed one step of nine, wrote
+	// `done`, and the history said `incident · done` — the detail screen knew it
+	// was 1/9 and the line everybody reads first did not. `partial` was already
+	// the word this codebase used for the same idea in the post-run hook
+	// (CORVEX_STATUS), so it is a vocabulary the tool already had and the record
+	// did not.
+	StatusPartial  Status = "partial"
 	StatusFailed   Status = "failed"
 	StatusCanceled Status = "canceled"
 )
@@ -59,7 +72,7 @@ const (
 // IsTerminal reports whether the run reached an end state on its own.
 func (s Status) IsTerminal() bool {
 	switch s {
-	case StatusDone, StatusFailed, StatusCanceled:
+	case StatusDone, StatusPartial, StatusFailed, StatusCanceled:
 		return true
 	default:
 		return false

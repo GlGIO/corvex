@@ -26,6 +26,7 @@ import (
 	"github.com/giovannialves/corvex/internal/orchestrator"
 	"github.com/giovannialves/corvex/internal/run"
 	"github.com/giovannialves/corvex/internal/task"
+	"github.com/giovannialves/corvex/internal/types"
 )
 
 // Runner is one assembled run: the scheduler, plus the identity that outlives
@@ -184,7 +185,7 @@ func (r *Runner) Execute(ctx context.Context, body func(context.Context) error) 
 	// would be evaluated after the SetStatus call, not before it.
 	cancelErr := stopWatching()
 	r.StatusErr = firstErr(
-		r.handle.SetStatus(finalStatus(ctx, err)),
+		r.handle.SetStatus(r.finalStatus(ctx, err)),
 		cancelErr,
 		hb.LastErr(),
 		r.handle.MaintenanceErr(),
@@ -270,14 +271,39 @@ func (r *Runner) Record() run.Record {
 // whatever error the interrupted step happened to produce: recording that as
 // `failed` would blame the work for the operator's Ctrl-C, and the difference
 // matters to anyone deciding whether to resume.
-func finalStatus(ctx context.Context, err error) run.Status {
+func (r *Runner) finalStatus(ctx context.Context, err error) run.Status {
 	if ctx != nil && ctx.Err() != nil {
 		return run.StatusCanceled
 	}
 	if err != nil {
 		return run.StatusFailed
 	}
+	// Nothing failed — but did everything RUN? A pinned run (`--task S03`), a
+	// `--single`, or a resume that only had two of nine steps left all reach
+	// here having done exactly what they were asked and left the recipe
+	// unfinished. Calling that `done` is the screen saying something rosier
+	// than the state, which this tool has spent a lot of commits not doing.
+	if r != nil && r.pendingTasks() > 0 {
+		return run.StatusPartial
+	}
 	return run.StatusDone
+}
+
+// pendingTasks counts the steps this run left unexecuted. A tasks file that
+// cannot be read reports zero: the status is a summary, and a summary must not
+// invent a worse answer than it can support.
+func (r *Runner) pendingTasks() int {
+	view, err := ReadProject(r.Repo, r.Project)
+	if err != nil || view == nil {
+		return 0
+	}
+	pending := 0
+	for _, t := range view.Tasks {
+		if t.Status == types.StatusPending {
+			pending++
+		}
+	}
+	return pending
 }
 
 // startIdentity registers the run and returns its writable handle.

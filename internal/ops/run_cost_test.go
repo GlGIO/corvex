@@ -9,6 +9,8 @@ package ops
 // somebody optimises one of the two.
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,5 +213,59 @@ func TestResetTask_CascadesAndRefusesAVanishedWorktree(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal is missing %q: %v", want, err)
 		}
+	}
+}
+
+// A run that left work PENDING is `partial`, not `done`.
+//
+// MEASURED on the first real run of the incident recipe against the SmartCare
+// board: `run start incident --task S01` executed one step of nine, finished
+// with nothing failing, and wrote `done`. The detail screen knew it was 1/9; the
+// status — the word on the history card, the one somebody scanning reads first —
+// said the recipe had finished. `partial` was already this codebase's word for
+// the same idea in the post-run hook; the record simply never used it.
+func TestFinalStatus_PendingWorkIsPartial(t *testing.T) {
+	tests := []struct {
+		name     string
+		statuses []string
+		want     run.Status
+	}{
+		{name: "everything ran", statuses: []string{"✅ PASSED", "✅ PASSED"}, want: run.StatusDone},
+		{name: "one step of two", statuses: []string{"✅ PASSED", "⬜ PENDING"}, want: run.StatusPartial},
+		{name: "nothing ran", statuses: []string{"⬜ PENDING", "⬜ PENDING"}, want: run.StatusPartial},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := t.TempDir()
+			dir := filepath.Join(repo, ".corvex", "tasks", "pilot")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			body := "---\ngenerated_by: t\ndag:\n  S01: []\n  S02: [S01]\n---\n\n"
+			for i, st := range tt.statuses {
+				body += "## S0" + string(rune('1'+i)) + " — x " + st + "\n\n```yaml\ntype: general\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n\n"
+			}
+			if err := os.WriteFile(filepath.Join(dir, "tasks.md"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			r := &Runner{Repo: repo, Project: "pilot"}
+			if got := r.finalStatus(context.Background(), nil); got != tt.want {
+				t.Errorf("finalStatus = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	// A failure still says failed, and a cancellation still says canceled: the
+	// new status answers "was everything run", never "did it go well".
+	repo := t.TempDir()
+	r := &Runner{Repo: repo, Project: "pilot"}
+	if got := r.finalStatus(context.Background(), errors.New("boom")); got != run.StatusFailed {
+		t.Errorf("a failed run = %q, want failed", got)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := r.finalStatus(ctx, nil); got != run.StatusCanceled {
+		t.Errorf("a cancelled run = %q, want canceled", got)
 	}
 }

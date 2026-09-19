@@ -181,7 +181,10 @@ function renderInbox(root, data) {
 
 // ── runs (2e) ───────────────────────────────────────────────────────────────
 function runCard(r) {
-  const cls = r.status === 'failed' ? 'bad' : r.status === 'parked' ? 'warn' : '';
+  // `partial` reads as a warning, not as an ending: the recipe did not finish,
+  // and the line somebody scans has to carry that.
+  const cls = r.status === 'failed' ? 'bad'
+    : r.status === 'parked' || r.status === 'partial' ? 'warn' : '';
   return el('div', { class: 'card' },
     el('div', { class: 'row' },
       el('span', { class: 'mono-id', text: r.run_id }),
