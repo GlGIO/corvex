@@ -184,6 +184,19 @@ nomeia e diz como limpar.
 O golden de caracterização pegou o check novo e foi regravado no mesmo commit,
 com dois passes (`-count=2`), como a regra daquela rede manda.
 
+## Rodada 13 — FECHADA
+
+**Pausar no meio de um fan-out isolado: VERDE**, medido e congelado em teste. O
+pause drena o que está em voo (contrato documentado), segura entre o trabalho do
+item e o merge dele, e a retomada traz tudo para casa sem deixar worktree.
+
+**E o clique duplo mata o run** (`308faee`): dois runs do MESMO projeto no mesmo
+repo. O segundo lia o `RUNNING` do primeiro, achava que era sobra de run morto,
+resetava para PENDING e reexecutava — dois agentes num checkout, estado final por
+quem gravasse por último. A proteção que existia era acidental (o guard de árvore
+suja, que só pega se o primeiro já sujou algo). Agora há porta, antes de o
+segundo run existir, nomeando quem segura o projeto.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
@@ -192,9 +205,7 @@ com dois passes (`-count=2`), como a regra daquela rede manda.
    comentado já está lá). Sem ele a `incident` recusa no preflight — de propósito.
 3. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
    por construção: o deploy é humano. Candidata natural a `corvex` agendado.
-4. **Pausar um run no meio de um fan-out** — ainda não medido (kill e rejeição já
-   foram).
-5. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
+4. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
    agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
 ## Regras desta obra
