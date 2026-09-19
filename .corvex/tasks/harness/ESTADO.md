@@ -131,6 +131,52 @@ runs, então a segunda execução vê as linhas da primeira. É defeito de isola
 do próprio suite, não do produto — mas é a regra desta obra rodar `-count=2`, e
 hoje ela não é verdade aqui.
 
+## Rodada 22 — FECHADA (a tela estava feia, e não era gosto)
+
+O dono mandou a captura: "a UI ta toda cagada, nao ta seguindo os padroes do
+nosso mockup". Fui ler o mockup (artifact "Rebrand do corvex") e ele diz, no
+próprio CSS, que **a UI da F7 usa exatamente aqueles tokens**. Não usava mais.
+
+Montei um fotógrafo descartável — um teste que sobe a UI com conteúdo real,
+dirige o Chrome por CDP e grava PNG de cada tela — e olhei. O que eu vi:
+
+- **Tudo em monospace**, inclusive parágrafos. Uma frase em mono lê como despejo
+  de log, não como o produto falando. Mono é para texto de máquina: id de run,
+  caminho, status, dinheiro, id de step — o que alguém compara caractere a
+  caractere ou cola em outro lugar.
+- **Tema claro não existia** (`color-scheme: dark`, sem tokens claros). O mockup
+  é claro primeiro, escuro pelo `prefers-color-scheme`. Agora os dois existem, e
+  o escuro é praticamente o que já era — a diferença visível é tipografia,
+  espaço e hierarquia.
+- **Nomes de token divergentes**: `--bg` contra `--ground`, e nada de `--sunk`,
+  `--faint`, `--shadow`, `--ai`. Produto cujos textos e cujas telas usam cinzas
+  diferentes lê como dois produtos.
+- **Pills fora do padrão**: cada variante com a própria cor de borda, que podia
+  discordar do texto. Agora é uma forma só, `border:1px solid currentColor`.
+- **O formulário de dispatch sem hierarquia**: seis caixas sem rótulo, e a que
+  nomeia a branch — a que roteia o PR — indistinguível das outras. Agora cada
+  campo tem rótulo, e o criador de worktree é visivelmente um painel dentro do
+  painel: cortar branch é barato e reversível, disparar run não é.
+
+Três defeitos de verdade achados pela foto, não pela leitura:
+
+1. **O motivo que o autor da receita escreve saía em CAIXA ALTA monoespaçada** —
+   `.field > span` pegava todo span do campo, inclusive a frase. `:first-child`.
+2. **`direction:rtl` reordenava o caminho.** Serve para pôr a reticência na
+   frente, mas embaralha a corrida de barras em volta: `/private/var/…/repo`
+   renderizava `private/var/…/repo/` — um caminho que não é o caminho, no único
+   lugar onde a pessoa está comparando dois checkouts. A cabeça é cortada em JS
+   agora.
+3. **`done` era pill neutra**, do mesmo cinza de `finished`. Um fim bom e um
+   fato sem cor liam igual.
+
+Quatro testes e2e quebraram e **os quatro estavam certos em quebrar**:
+`innerText` respeita `text-transform`, então `includes('failed')` deixou de
+casar quando a pill virou `FAILED`; e o `h2` da história passou a carregar o
+próprio botão, então `textContent === 'history'` deixou de ser igualdade. As
+asserções viraram insensíveis a caixa e a `startsWith` — elas afirmam qual tela
+está no ar e que ela reporta a falha, não a caixa das letras.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

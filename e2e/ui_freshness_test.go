@@ -285,8 +285,12 @@ func TestUI_ComingBackFromADetailScreenIsNeverStale(t *testing.T) {
 	// The other exit, and a change of a different kind: an escalation appearing
 	// on disk, which is how a step that could not decide reaches this screen.
 	clickTab(t, c, "runs")
+	// startsWith, not equality: the heading carries its own action button now
+	// ("Dispatch a run"), so its textContent is the title plus the button's
+	// label. The assertion is about which screen is up, not about what else the
+	// heading holds.
 	c.waitFor(t, 10*time.Second, "the run history",
-		"[...document.querySelectorAll('h2')].some(h => h.textContent === 'history')")
+		"[...document.querySelectorAll('h2')].some(h => h.textContent.startsWith('history'))")
 	click(t, c, "Open")
 	c.waitFor(t, 10*time.Second, "the run screen", "document.querySelector('.steps')")
 

@@ -81,12 +81,12 @@ func TestUI_AFailedStepSaysWhatItPrinted(t *testing.T) {
 
 	// Get to the run the way a person does: the history tab, then the card.
 	c.eval(t, `[...document.querySelectorAll('.tab')].find(t => t.dataset.view === 'runs').click()`, nil)
-	c.waitFor(t, 15*time.Second, "the failed run to be listed", `document.body.innerText.includes('failed')`)
+	c.waitFor(t, 15*time.Second, "the failed run to be listed", `document.body.innerText.toLowerCase().includes('failed')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Open').click()`, nil)
 
 	// The run screen names WHERE it failed rather than leaving it to be found.
 	c.waitFor(t, 15*time.Second, "the run to name the failed step",
-		`document.body.innerText.includes('failed at') && document.body.innerText.includes('S02')`)
+		`document.body.innerText.toLowerCase().includes('failed at') && document.body.innerText.includes('S02')`)
 
 	// And one click gets the sentence the step actually printed.
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Why').click()`, nil)
@@ -134,9 +134,9 @@ func TestUI_RetryReExecutesOnlyTheFailedStep(t *testing.T) {
 	c.navigate(t, url)
 	c.waitFor(t, 20*time.Second, "the app to boot", "typeof el === 'function'")
 	c.eval(t, `[...document.querySelectorAll('.tab')].find(t => t.dataset.view === 'runs').click()`, nil)
-	c.waitFor(t, 15*time.Second, "the failed run to be listed", `document.body.innerText.includes('failed')`)
+	c.waitFor(t, 15*time.Second, "the failed run to be listed", `document.body.innerText.toLowerCase().includes('failed')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Open').click()`, nil)
-	c.waitFor(t, 15*time.Second, "the run screen", `document.body.innerText.includes('failed at')`)
+	c.waitFor(t, 15*time.Second, "the run screen", `document.body.innerText.toLowerCase().includes('failed at')`)
 
 	// `confirm` is a modal in a headless browser: answer it before clicking.
 	c.eval(t, `window.confirm = () => true`, nil)

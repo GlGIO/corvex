@@ -86,6 +86,10 @@ function human(ns) {
 }
 const money = (v) => `$${(Number(v) || 0).toFixed(2)}`;
 
+// The END of a path is what distinguishes two worktrees of one repository, so a
+// path too long for its line loses its head, not its tail.
+const tail = (p, max = 64) => (String(p || '').length <= max ? String(p || '') : '…' + String(p).slice(-max));
+
 // A step that an agent wrote and a step a script ran are the product's central
 // distinction, so they never look alike: inference is purple, determinism green.
 function kindPill(kind) {
@@ -183,8 +187,9 @@ function renderInbox(root, data) {
 function runCard(r) {
   // `partial` reads as a warning, not as an ending: the recipe did not finish,
   // and the line somebody scans has to carry that.
-  const cls = r.status === 'failed' ? 'bad'
-    : r.status === 'parked' || r.status === 'partial' ? 'warn' : '';
+  const cls = r.status === 'failed' || r.status === 'canceled' ? 'bad'
+    : r.status === 'parked' || r.status === 'partial' || r.status === 'paused' ? 'warn'
+    : r.status === 'done' ? 'det' : '';
   return el('div', { class: 'card' },
     el('div', { class: 'row' },
       el('span', { class: 'mono-id', text: r.run_id }),
@@ -197,7 +202,7 @@ function runCard(r) {
       // actually have about an agent runner. The number is the same one the run
       // screen shows — one rule, in ops, so the two cannot drift.
       r.cost_usd ? el('span', { class: 'pill', text: money(r.cost_usd) }) : null,
-      el('span', { class: 'dim', text: `${human(r.age_ns)} ago` }),
+      el('span', { class: 'when', text: `${human(r.age_ns)} ago` }),
       el('button', { onclick: () => openRun(r.run_id) }, 'Open'),
       // Two controls, and they are not the same control: pause holds the run at
       // its next wave and keeps the work, stop signals it and loses whatever is
@@ -209,19 +214,18 @@ function runCard(r) {
     // Which repository this run belongs to, by name, because the point of one
     // screen over several repositories is that a row says which one it is
     // without the reader parsing a path.
-    el('div', { class: 'dim' },
+    el('div', { class: 'row' },
       el('span', { class: 'pill', text: (r.repo || '').split('/').filter(Boolean).pop() || '?' }),
-      ' ',
-      r.repo || '',
+      el('span', { class: 'path grow', text: tail(r.repo) }),
     ),
   );
 }
 
 function renderRuns(root, data) {
-  root.append(el('div', { class: 'row' },
-    el('h2', { class: 'grow', text: 'history' }),
-    el('button', { class: 'primary', onclick: dispatchForm }, 'Dispatch a run'),
-  ));
+  // The action belongs to the heading it acts on. As its own row it read as a
+  // second, unrelated control floating above the list.
+  root.append(el('h2', {}, 'history',
+    el('button', { class: 'primary', onclick: dispatchForm }, 'Dispatch a run')));
   renderDeadDispatches(root, data);
   const runs = data.runs || [];
   if (!runs.length) root.append(el('p', { class: 'empty', text: 'No runs in the last 7 days.' }));
@@ -336,7 +340,10 @@ async function dispatchForm() {
     inputsBox.replaceChildren(...r.inputs.map((inp) => {
       const field = el('input', { placeholder: inp.name });
       inputFields.set(inp.name, field);
-      return el('label', { class: 'field' }, el('span', { class: 'dim', text: inp.why || inp.name }), field);
+      return el('label', { class: 'field' },
+        el('span', { text: inp.name }),
+        field,
+        inp.why ? el('span', { class: 'dim', text: inp.why }) : null);
     }));
   }
   target.addEventListener('change', syncInputs);
@@ -355,8 +362,10 @@ async function dispatchForm() {
   const wtName = el('input', { placeholder: 'name (73960)' });
   const wtBranch = el('input', { placeholder: 'branch (feat/<name>)' });
   const wtBase = el('input', { placeholder: 'base', value: 'main' });
-  const maker = el('div', { class: 'row hidden' },
-    wtName, wtBranch, wtBase,
+  const maker = el('div', { class: 'maker hidden' },
+    el('label', { class: 'field' }, el('span', { text: 'name' }), wtName),
+    el('label', { class: 'field' }, el('span', { text: 'branch' }), wtBranch),
+    el('label', { class: 'field' }, el('span', { text: 'from' }), wtBase),
     el('button', {
       onclick: async () => {
         try {
@@ -373,17 +382,17 @@ async function dispatchForm() {
     }, 'Create'),
   );
 
-  const box = el('div', { class: 'card' },
+  const box = el('div', { class: 'card dispatch' },
     el('div', { class: 'row' },
-      repo,
-      worktree,
+      el('label', { class: 'field where' }, el('span', { text: 'repository' }), repo),
+      el('label', { class: 'field where grow' }, el('span', { text: 'checkout' }), worktree),
       el('button', { onclick: () => maker.classList.toggle('hidden') }, '+ worktree'),
     ),
     maker,
     el('div', { class: 'row' },
-      target,
+      el('label', { class: 'field what' }, el('span', { text: 'recipe' }), target),
       recipeList,
-      env,
+      el('label', { class: 'field' }, el('span', { text: 'environment' }), env),
       el('label', { class: 'check' }, here, ' run here'),
       el('button', {
         class: 'primary',
@@ -402,7 +411,7 @@ async function dispatchForm() {
       }, 'Run'),
     ),
     inputsBox,
-    el('div', { class: 'dim', text: 'The run is detached: closing this page does not stop it. It runs in the checkout selected above; "+ worktree" cuts a new branch from a base and adds it to that list.' }),
+    el('p', { class: 'note', text: 'The run is detached: closing this page does not stop it. It runs in the checkout selected above; "+ worktree" cuts a new branch from a base and adds it to that list.' }),
   );
   const view = $('#view');
   view.prepend(box);
@@ -636,11 +645,12 @@ async function renderGateDetail(root, id, step) {
     el('button', { class: 'ghost', onclick: leaveDetail }, '← back'),
     el('span', { class: 'mono-id', text: g.run_id }),
     kindPill(g.nature),
-    el('span', { class: 'grow', text: g.label || g.title }),
+    el('span', { class: 'grow' }),
     el('span', { class: 'pill warn', text: `waiting ${human(view.waiting_ns)}` }),
     el('span', { class: 'pill', text: `run is ${view.liveness}` }),
   ));
-  if (g.prompt) root.append(el('div', { class: 'card' }, g.prompt));
+  root.append(el('h1', { class: 'ask', text: g.label || g.title }));
+  if (g.prompt) root.append(el('div', { class: 'card prompt' }, g.prompt));
 
   for (const e of g.evidence || []) {
     const body = el('pre', { text: e.content || '' });
@@ -824,7 +834,8 @@ async function render() {
     if (state.detail?.kind === 'step') return await renderStepDetail(root, state.detail.id, state.detail.step);
     if (state.view === 'recipes') return await renderRecipes(root);
     const data = state.data || (await api.get('/api/state'));
-    $('#repo').textContent = data.repo || '';
+    $('#repo').textContent = tail(data.repo, 44);
+    $('#repo').title = data.repo || '';
     if (state.view === 'runs') return renderRuns(root, data);
     return renderInbox(root, data);
   } catch (e) {

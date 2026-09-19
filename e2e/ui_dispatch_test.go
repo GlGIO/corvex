@@ -42,7 +42,7 @@ func TestUI_ADispatchThatDiesSaysSoOnTheScreen(t *testing.T) {
 	// neither the run list nor the inbox on disk, so it is in the fingerprint
 	// precisely because nothing else about it moves.
 	c.waitFor(t, 20*time.Second, "the screen to admit the run died",
-		`document.body.innerText.includes('died')`)
+		`document.body.innerText.toLowerCase().includes('died')`)
 
 	text := c.evalString(t, "document.body.innerText")
 	if !strings.Contains(text, "exit ") {
