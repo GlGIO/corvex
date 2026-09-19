@@ -61,13 +61,26 @@ func openMaker(t *testing.T, url string) *chrome {
 	return c
 }
 
-func paste(t *testing.T, c *chrome, line string) {
+// paste fires a REAL ClipboardEvent carrying a DataTransfer, on the element
+// given — which is what a person's ⌘V produces and what the handler reads.
+//
+// The first version of this helper set the field's value and fired `change`.
+// That is not a paste: it proved the parser and proved nothing about the path
+// a person actually takes, and it would have gone on passing after the handler
+// stopped reading the clipboard at all.
+// It returns whether the handler CLAIMED the paste. A synthetic event runs no
+// default action, so "the text ended up in the box" is not observable here —
+// what is, and what actually separates the two cases, is whether the page
+// cancelled the paste to handle it itself or let the browser insert it.
+func paste(t *testing.T, c *chrome, selector, line string) bool {
 	t.Helper()
-	c.eval(t, `(() => {
-		const n = document.querySelector('input[placeholder^="paste"]');
-		n.value = `+jsString(line)+`;
-		n.dispatchEvent(new Event('change'));
-	})()`, nil)
+	return c.evalBool(t, `(() => {
+		const dt = new DataTransfer();
+		dt.setData('text', `+jsString(line)+`);
+		const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+		document.querySelector(`+jsString(selector)+`).dispatchEvent(ev);
+		return ev.defaultPrevented;
+	})()`)
 }
 
 func TestUI_PastedBoardLineFillsTheForm(t *testing.T) {
@@ -75,7 +88,9 @@ func TestUI_PastedBoardLineFillsTheForm(t *testing.T) {
 		t.Skip("spawns real processes and a browser")
 	}
 	c := openMaker(t, startUI(t, setupPasteRepo(t)))
-	paste(t, c, "Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)")
+	if !paste(t, c, `input[placeholder^="paste"]`, "Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)") {
+		t.Fatal("the board line was not claimed: the whole line would have been inserted as the name")
+	}
 
 	// The name is the id alone, because it becomes a directory beside the repo.
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="paste"]').value`); got != "73607" {
@@ -101,7 +116,7 @@ func TestUI_PastedFeatureGetsTheFeaturePrefix(t *testing.T) {
 		t.Skip("spawns real processes and a browser")
 	}
 	c := openMaker(t, startUI(t, setupPasteRepo(t)))
-	paste(t, c, "Feature 59440: Distribuição de vendedor principal")
+	paste(t, c, `input[placeholder^="paste"]`, "Feature 59440: Distribuição de vendedor principal")
 	got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`)
 	if want := "feature/59440-distribuicao-de-vendedor-principal"; got != want {
 		t.Errorf("branch = %q, want %q", got, want)
@@ -118,7 +133,7 @@ func TestUI_PasteNeverOverwritesWhatWasTyped(t *testing.T) {
 	c := openMaker(t, startUI(t, setupPasteRepo(t)))
 	c.eval(t, `document.querySelector('input[placeholder^="branch"]').value = 'hotfix/73607-o-nome-que-eu-quero'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value = '11111'`, nil)
-	paste(t, c, "Incident 73607: Pedido duplicado na aba Financeiro")
+	paste(t, c, `input[placeholder^="paste"]`, "Incident 73607: Pedido duplicado na aba Financeiro")
 
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "hotfix/73607-o-nome-que-eu-quero" {
 		t.Errorf("the branch typed by hand became %q", got)
@@ -135,11 +150,58 @@ func TestUI_ABareIdIsLeftAlone(t *testing.T) {
 		t.Skip("spawns real processes and a browser")
 	}
 	c := openMaker(t, startUI(t, setupPasteRepo(t)))
-	paste(t, c, "73607")
-	if got := c.evalString(t, `document.querySelector('input[placeholder^="paste"]').value`); got != "73607" {
-		t.Errorf("name = %q", got)
+	// The handler does NOT claim it: there is nothing to spread, so the browser
+	// inserts the text the ordinary way and the field ends up with the id.
+	if paste(t, c, `input[placeholder^="paste"]`, "73607") {
+		t.Error("a bare id was swallowed by the parser — nothing would land in the box")
 	}
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "" {
 		t.Errorf("a bare id invented the branch %q — there is no title to slug", got)
+	}
+	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "" {
+		t.Errorf("a bare id reached INCIDENT_ID as %q without anyone asking", got)
+	}
+}
+
+// ⌘V anywhere on the form, with the worktree panel still closed.
+//
+// This is the shape the ask had: "I should be able to paste this and have it
+// fill itself." A handler bolted to one field inside a collapsed panel asks the
+// person to find the field first, which is most of the work it was supposed to
+// remove. The card listens, and it opens the panel it needs.
+func TestUI_PasteLandsAnywhereOnTheFormAndOpensThePanel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns real processes and a browser")
+	}
+	url := startUI(t, setupPasteRepo(t))
+	c := openRunsTab(t, url)
+	c.waitFor(t, 15*time.Second, "the history screen",
+		`[...document.querySelectorAll('button')].some(b => b.textContent === 'Dispatch a run')`)
+	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Dispatch a run').click()`, nil)
+	c.waitFor(t, 15*time.Second, "the form", `document.querySelector('input[list="recipe-list"]')`)
+	c.eval(t, `(() => { const t = document.querySelector('input[list="recipe-list"]'); t.value = 'incident'; t.dispatchEvent(new Event('input')); })()`, nil)
+	c.waitFor(t, 15*time.Second, "the recipe's own field", `document.querySelector('input[placeholder="INCIDENT_ID"]')`)
+
+	// The worktree panel was never opened.
+	if !c.evalBool(t, `document.querySelector('.maker').classList.contains('hidden')`) {
+		t.Fatal("the worktree panel was already open — this test is about it opening itself")
+	}
+	// ⌘V over the recipe box, which is where the cursor happens to be.
+	paste(t, c, `input[list="recipe-list"]`, "Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)")
+
+	if c.evalBool(t, `document.querySelector('.maker').classList.contains('hidden')`) {
+		t.Error("the worktree panel stayed closed, so the fields it filled are invisible")
+	}
+	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "hotfix/73607-pedido-duplicado-na-aba-financeiro-visao" {
+		t.Errorf("branch = %q", got)
+	}
+	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "73607" {
+		t.Errorf("INCIDENT_ID = %q", got)
+	}
+	// And the recipe box the paste landed on was NOT filled with the board
+	// line: the default action is prevented, so the text does not also end up
+	// as the recipe name.
+	if got := c.evalString(t, `document.querySelector('input[list="recipe-list"]').value`); got != "incident" {
+		t.Errorf("the recipe box became %q — the pasted line was inserted as well as parsed", got)
 	}
 }

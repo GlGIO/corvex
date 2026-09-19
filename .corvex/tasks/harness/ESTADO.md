@@ -234,6 +234,24 @@ sobrescritos depois que alguém digitou: um parse que apaga a branch que a pesso
 corrigiu é pior que nenhum parse, porque a correção é a única parte disso que a
 máquina não sabe conferir.
 
+**Rodada 24b — o colar que não colava.** O dono voltou dizendo "eu deveria poder
+colar isso e ele autopreencher". Duas causas, e a segunda é falha minha de teste:
+
+1. A UI dele tinha subido às 19:59 e o binário era de 20:18 — rodava o de antes.
+2. **Meu teste provava o parser e nada do caminho da pessoa.** Ele setava o
+   `value` do campo e disparava `change`; isso não é um paste. O handler lia o
+   campo DEPOIS, esperando que o navegador já tivesse inserido o texto — e teria
+   continuado passando mesmo se ele parasse de olhar a área de transferência.
+
+Agora o handler lê `e.clipboardData` direto, e quem escuta é o **card inteiro**:
+⌘V em qualquer lugar do formulário preenche, e o painel do worktree se abre
+sozinho se estava fechado. Um handler preso a um campo dentro de um painel
+fechado pede que a pessoa ache o campo primeiro — que é a maior parte do
+trabalho que ele deveria tirar. O teste dispara um `ClipboardEvent` de verdade
+com `DataTransfer` e afirma pelo `defaultPrevented`: linha do board é
+reivindicada, id sozinho não é (e o navegador insere normalmente). Controle
+positivo: tirar o listener do card deixa os dois testes vermelhos.
+
 Mais dois consertos pequenos:
 
 - **`stack (database)` era uma promessa que a opção não cumpre.** O que o

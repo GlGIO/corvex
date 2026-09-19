@@ -424,25 +424,42 @@ async function dispatchForm(preset) {
   const wtName = el('input', { placeholder: 'paste the board line, or a name' });
   const wtBranch = el('input', { placeholder: 'branch (feat/<name>)' });
   const wtBase = el('input', { placeholder: 'base', value: 'main' });
-  // Paste and input both, not just paste: a person may also drag the text in,
-  // or type the id and tab away, and the same parse has to serve all three.
-  // The fields are only ever FILLED, never cleared, and never overwritten once
-  // something has been typed into them — a parse that wipes a branch name
-  // somebody corrected by hand is worse than no parse.
-  const spread = () => {
-    const item = workItem(wtName.value);
-    if (!item) return;
+  // fill spreads one work item across the form. The fields are only ever
+  // FILLED, never cleared, and never overwritten once something has been typed
+  // into them — a parse that wipes a branch name somebody corrected by hand is
+  // worse than no parse, because that correction is the one part of this the
+  // machine cannot check.
+  const fill = (item) => {
+    maker.classList.remove('hidden');
     wtName.value = item.id;
     const branch = branchFor(item);
     if (branch && !wtBranch.value.trim()) wtBranch.value = branch;
-    // The recipe's own id field, when it has one and it is empty.
     inputFields.forEach((field, name) => {
       if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = item.id;
     });
     status(branch ? `${item.id} · ${branch}` : `${item.id} — this kind has no branch convention here, name the branch yourself`, branch ? 'ok' : 'warn');
   };
-  wtName.addEventListener('change', spread);
-  wtName.addEventListener('paste', () => setTimeout(spread, 0));
+
+  // The paste is read from the CLIPBOARD, not from the field afterwards.
+  //
+  // Both halves of that matter. Reading `e.clipboardData` means the handler
+  // works wherever the paste lands — the whole card listens, so a person who
+  // pressed ⌘V over the recipe box gets the same result as one who aimed at a
+  // particular field, and the worktree panel opens itself if it was closed.
+  // And it means the value is in hand immediately instead of being read back
+  // after the browser inserts it, which is the part the first version got
+  // wrong: it waited for an insertion, and the test that "proved" it worked
+  // fired a `change` event, which is not a paste at all.
+  const onPaste = (e) => {
+    const text = (e.clipboardData || window.clipboardData || {}).getData
+      ? (e.clipboardData || window.clipboardData).getData('text') : '';
+    const item = workItem(text);
+    if (!item) return; // not a board line — let it paste normally
+    e.preventDefault();
+    fill(item);
+  };
+  // `change` as well, for the id typed by hand or a line dragged in.
+  wtName.addEventListener('change', () => { const item = workItem(wtName.value); if (item) fill(item); });
 
   const maker = el('div', { class: 'maker hidden' },
     el('label', { class: 'field' }, el('span', { text: 'work item' }), wtName),
@@ -470,7 +487,7 @@ async function dispatchForm(preset) {
     }, 'Create'),
   );
 
-  const box = el('div', { class: 'card dispatch' },
+  const box = el('div', { class: 'card dispatch', onpaste: onPaste },
     el('div', { class: 'row' },
       el('label', { class: 'field where' }, el('span', { text: 'repository' }), repo),
       el('label', { class: 'field where grow' }, el('span', { text: 'checkout' }), worktree),
