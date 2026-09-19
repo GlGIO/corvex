@@ -153,6 +153,23 @@ disco com o trabalho dela. A retomada é barata (o DAG guarda o que passou).
 Direção importa: um número baixo demais é o que faz alguém subir um teto achando
 que tem folga.
 
+## Rodada 11 — FECHADA
+
+**Exercitei o review reprovando até o teto** — o caminho do dia um. Três defeitos
+silenciosos (`158814e`):
+1. a ÚLTIMA tentativa reprovada não ia para o ledger (a condição era
+   `attempt < maxRetries`): dois workers pagos, um registrado;
+2. a tela do run descartava a review de quem nunca completou — e as barras por
+   fase, NA MESMA TELA, mostravam o que o cabeçalho não mostrava;
+3. a categoria do review sumia por formatação (só era procurada ANTES do
+   veredito, e `**CATEGORY:** x` devolvia `** x`) — e categoria vazia significa
+   política de escalação nenhuma, em silêncio.
+
+**E a minha prosa estava mentindo**: a `pilot.yaml` prometia "bounce humano" que
+dependia de uma seção de config que o smartcare não tinha. Ligada
+(`63313378`): `correctness after 2` e `wrong-approach after 1` → `human-prompt`,
+medido chegando à caixa de entrada.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
