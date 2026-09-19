@@ -170,6 +170,20 @@ dependia de uma seção de config que o smartcare não tinha. Ligada
 (`63313378`): `correctness after 2` e `wrong-approach after 1` → `human-prompt`,
 medido chegando à caixa de entrada.
 
+## Rodada 12 — FECHADA
+
+**Rejeitar um gate**: o comportamento é certo (o passo irreversível NÃO roda, os
+dependentes são pulados) — mas a RAZÃO não sobrevivia: o detalhe do step dizia
+`refused by gate` e a frase digitada pela pessoa ficava no terminal que fecha.
+Agora vai nas duas linhas do ledger (`fa1a311`).
+
+**Matar um run no meio de um fan-out**: deixa as worktrees em disco, o que é
+certo — e o `doctor` dizia `7 checks, 7 passed` com três delas lá. Agora avisa,
+nomeia e diz como limpar.
+
+O golden de caracterização pegou o check novo e foi regravado no mesmo commit,
+com dois passes (`-count=2`), como a regra daquela rede manda.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
@@ -178,7 +192,9 @@ medido chegando à caixa de entrada.
    comentado já está lá). Sem ele a `incident` recusa no preflight — de propósito.
 3. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
    por construção: o deploy é humano. Candidata natural a `corvex` agendado.
-4. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
+4. **Pausar um run no meio de um fan-out** — ainda não medido (kill e rejeição já
+   foram).
+5. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
    agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
 ## Regras desta obra
