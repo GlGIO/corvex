@@ -268,6 +268,27 @@ Com isto, **todo verbo da UI tem exercício de navegador**: despachar, aprovar,
 rejeitar com motivo, responder, declinar, abrir step, ver log, re-executar step,
 pausar, retomar e parar.
 
+## Rodada 19 — FECHADA (a mais importante para o primeiro run real)
+
+Fui exercitar o caminho que o dono vai andar — declarar o MCP de PRD e rodar a
+`incident.yaml` — e medi o argv passado ao agente (`7825080`):
+
+1. **O worker local recebia ZERO servidores MCP.** `ExecuteWithProgress` (o
+   caminho do sandbox LOCAL, que é o padrão e o que o SmartCare usa) montava os
+   próprios argumentos e deixava o `--mcp-config` de fora; só o caminho
+   containerizado o acrescentava. O preflight dizia "satisfeito" porque estava
+   DECLARADO, e o diagnóstico rodaria cego — a falha de 85k tokens, reintroduzida
+   pela distância entre declarar e entregar.
+2. **E consertar isso deu produção ao REVIEWER** — medido: duas invocações com a
+   flag, a segunda era o juiz. A regra "só o worker recebe MCP" existia na
+   documentação e não tinha ponto de aplicação. Agora o pedido carrega
+   `AllowMCP`, só o worker marca, e o provider decide.
+
+Mais dois ajustes na `incident.yaml` do smartcare (`9fbf2048`): o `requires:`
+pedia `mcp: prd` e o servidor existente chama-se `SmartCarePRD` (recusaria um
+ambiente correto), e o repro virou `${REPRO_CMD:-npm test}` para não rodar a
+suíte inteira duas vezes.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
