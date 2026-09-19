@@ -5,10 +5,10 @@ Project: alpha
 Tasks:   0/3 done
 
   ⬜ S01 — First Task                              
-  ❌ S02 — Second Task                              ← [S01]
+  ⬜ S02 — Second Task                              ← [S01]
   ⬜ S03 — Título muito comprido com acentuação…    ← [S01, S02]
 
-2 task(s) pending — run: corvex run alpha
+3 task(s) pending — run: corvex run alpha
 
 --- stderr ---
 (empty)

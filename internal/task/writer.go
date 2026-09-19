@@ -60,9 +60,20 @@ func UpdateTaskStatus(path string, taskID string, status types.TaskStatus) error
 		return err
 	}
 
+	// Case-insensitive, because the id a PERSON types and the id a fan-out
+	// MINTED are different shapes of the same thing.
+	//
+	// The classic id is `S03`, so every caller upper-cased what the user typed
+	// and the comparison was exact. Then fan-out started minting ids like
+	// `S02/000/trabalha`, whose template segment is written by a recipe author
+	// in whatever case they like — and upper-casing turned it into
+	// `S02/000/TRABALHA`, which matches nothing. Measured: `corvex run retry ri
+	// --step S02/000/trabalha` answered "task not found", and the UI's Retry
+	// button, built precisely for "one story of eight failed", was broken for
+	// every fan-out item it was meant to serve.
 	found := false
 	for i := range tasks {
-		if tasks[i].ID == taskID {
+		if strings.EqualFold(tasks[i].ID, taskID) {
 			tasks[i].Status = status
 			found = true
 			break

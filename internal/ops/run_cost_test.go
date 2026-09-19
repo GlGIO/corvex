@@ -11,10 +11,12 @@ package ops
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/giovannialves/corvex/internal/run"
+	"github.com/giovannialves/corvex/internal/types"
 )
 
 // writeCostLedger lays down a project whose ledger holds one worker line and one
@@ -146,5 +148,68 @@ func TestRunReport_CountsWhatTheFailedAttemptsCost(t *testing.T) {
 	// file exists to keep.
 	if got := f.lister.CostsByRun(repo, "pilot", []string{"run_0003"})["run_0003"]; got != rep.CostUSD {
 		t.Errorf("the list says %.2f and the run says %.2f", got, rep.CostUSD)
+	}
+}
+
+// Resetting a step resets what depends on it — and refuses when the step's own
+// checkout is gone.
+//
+// Two measurements, one after the other. Retrying a fan-out item left its merge
+// node PASSED with a dependency that was not, and the next run aborted with "DAG
+// integrity violation" pointing at two manual fixes. And an item that already
+// merged has no worktree any more: re-running it there would execute in a
+// directory that is not on disk.
+func TestResetTask_CascadesAndRefusesAVanishedWorktree(t *testing.T) {
+	repo := t.TempDir()
+	dir := filepath.Join(repo, ".corvex", "tasks", "pilot")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	live := filepath.Join(repo, ".corvex", "worktrees", "S02-000")
+	if err := os.MkdirAll(live, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(repo, ".corvex", "worktrees", "S02-001")
+
+	tasks := "---\ngenerated_by: t\ndag:\n  S02/000/trabalha: []\n  S02/000/merge: [S02/000/trabalha]\n  S02/001/trabalha: []\n  S02/001/merge: [S02/001/trabalha]\n  S03: [S02/000/merge]\n---\n\n" +
+		"## S02/000/trabalha — a ✅ PASSED\n\n```yaml\ntype: general\nworkdir: " + live + "\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n\n" +
+		"## S02/000/merge — merge a ✅ PASSED\n\n```yaml\ntype: general\ndepends_on: [S02/000/trabalha]\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n\n" +
+		"## S02/001/trabalha — b ✅ PASSED\n\n```yaml\ntype: general\nworkdir: " + gone + "\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n\n" +
+		"## S02/001/merge — merge b ✅ PASSED\n\n```yaml\ntype: general\ndepends_on: [S02/001/trabalha]\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n\n" +
+		"## S03 — junta ✅ PASSED\n\n```yaml\ntype: general\ndepends_on: [S02/000/merge]\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n"
+	if err := os.WriteFile(filepath.Join(dir, "tasks.md"), []byte(tasks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The item whose worktree is still on disk: it and everything downstream go
+	// back to PENDING; the sibling item is untouched.
+	if err := ResetTask(repo, "pilot", "S02/000/trabalha"); err != nil {
+		t.Fatalf("ResetTask: %v", err)
+	}
+	view, err := ReadProject(repo, "pilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]types.TaskStatus{
+		"S02/000/trabalha": types.StatusPending,
+		"S02/000/merge":    types.StatusPending, // the dependent, or the DAG check aborts the next run
+		"S03":              types.StatusPending, // and what depended on THAT
+		"S02/001/trabalha": types.StatusPassed,  // the sibling item is not this reset's business
+		"S02/001/merge":    types.StatusPassed,
+	} {
+		if got := view.ByID[id].Status; got != want {
+			t.Errorf("%s = %s, want %s", id, got, want)
+		}
+	}
+
+	// The item that already merged has no checkout to run in, and says so.
+	err = ResetTask(repo, "pilot", "S02/001/trabalha")
+	if err == nil {
+		t.Fatal("resetting an item whose worktree is gone was allowed")
+	}
+	for _, want := range []string{"worktree", "--recompile"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal is missing %q: %v", want, err)
+		}
 	}
 }

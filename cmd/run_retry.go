@@ -17,7 +17,10 @@ func runRunRetry(cmd *cobra.Command, args []string) error {
 	if strings.TrimSpace(runRetryStep) == "" {
 		return fmt.Errorf("--step is required: name the step to re-execute (e.g. --step S03)")
 	}
-	step := strings.ToUpper(strings.TrimSpace(runRetryStep))
+	// Not upper-cased: a fan-out mints `S02/000/trabalha`, and the template
+	// segment is whatever the recipe author wrote. The lookups downstream match
+	// case-insensitively, so `s03` still finds `S03`.
+	step := strings.TrimSpace(runRetryStep)
 
 	workDir, project, err := resolveRunTarget(args[0])
 	if err != nil {
@@ -32,10 +35,25 @@ func runRunRetry(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Hand over to the run path with the target pinned. Setting the flag
-	// variables rather than duplicating the flow is deliberate: a second copy of
-	// the preflight, the cost preview and the TUI switch would drift.
-	runTask, runSingle = step, false
+	// Hand over to the run path — NOT pinned to the step.
+	//
+	// `--task` was pinned here, and it made the retry stop one node short of
+	// useful. Resetting a step resets everything downstream of it (ops.ResetTask,
+	// and it has to: a dependent that stayed PASSED was computed from an output
+	// that no longer exists). A pinned run then executes ONLY the named step and
+	// reports `done` with those dependents still PENDING. Measured on a fan-out
+	// item: `run retry --step S02/001/trabalha` re-did the work, printed `done`,
+	// and the story never reached the branch — its merge node was left pending
+	// and nothing said so.
+	//
+	// Unpinned, the ordinary resume runs exactly what is PENDING: the step and
+	// what depends on it. The rest stays PASSED and is skipped, which is what
+	// "re-execute one stage without redoing the rest" always meant.
+	//
+	// Setting the flag variables rather than duplicating the flow is still
+	// deliberate: a second copy of the preflight, the cost preview and the TUI
+	// switch would drift.
+	runTask, runSingle = "", false
 	return runRun(cmd, []string{project})
 }
 

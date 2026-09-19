@@ -559,7 +559,7 @@ func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	step := strings.ToUpper(strings.TrimSpace(req.Step))
+	step := strings.TrimSpace(req.Step)
 	if step == "" {
 		fail(w, http.StatusBadRequest, fmt.Errorf("step is required: name the step to re-execute (e.g. S03)"))
 		return

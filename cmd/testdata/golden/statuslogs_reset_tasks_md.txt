@@ -28,7 +28,7 @@ First task does the setup.
 
 ---
 
-## S02 — Second Task ❌ FAILED
+## S02 — Second Task ⬜ PENDING
 
 ```yaml
 type: backend
