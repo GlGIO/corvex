@@ -54,6 +54,7 @@ func AllChecks(cfg *config.Config, workDir string) []CheckResult {
 	results := ConfigChecks(cfg)
 	results = append(results, CheckMCPGitignore(cfg, workDir))
 	results = append(results, CheckSkills(cfg, workDir))
+	results = append(results, CheckFanoutWorktrees(cfg, workDir))
 	return results
 }
 

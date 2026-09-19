@@ -8,7 +8,8 @@ $ corvex doctor
 ✓ cost: max_cost_usd=25.00 max_cost_per_task_usd=5.00
 ✓ mcp-secrets: no MCP servers configured
 ✓ skills: no repo skills (add .corvex/skills/<name>/SKILL.md to expose some to the worker)
-doctor: 7 checks, 6 passed, 0 warnings, 1 failed
+✓ worktrees: no git repository here
+doctor: 8 checks, 7 passed, 0 warnings, 1 failed
 
 --- stderr ---
 (empty)

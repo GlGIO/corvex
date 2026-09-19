@@ -37,9 +37,14 @@ $ corvex doctor --json
       "name": "skills",
       "status": "pass",
       "message": "no repo skills (add .corvex/skills/\u003cname\u003e/SKILL.md to expose some to the worker)"
+    },
+    {
+      "name": "worktrees",
+      "status": "pass",
+      "message": "no git repository here"
     }
   ],
-  "passed": 7,
+  "passed": 8,
   "warnings": 0,
   "failed": 0
 }

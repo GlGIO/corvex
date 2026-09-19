@@ -2,6 +2,9 @@ package step
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -275,4 +278,66 @@ func TestResolveDeclaredEvidence_EmptyOutputIsSaidOutLoud(t *testing.T) {
 	if !items[0].RequiredReading {
 		t.Error("required_reading was dropped when the evidence came back empty")
 	}
+}
+
+// The REASON a gate refused survives on the ledger.
+//
+// Measured: a person rejected a human gate with "a migration derruba a coluna
+// sem backfill", and the step detail — the canonical surface, the one the UI
+// draws — said `refused by gate` and nothing more. The sentence lived in the
+// terminal that happened to be running the run, which closes, and in the gate
+// file, which no screen joins. The person who refuses and the person who reads
+// the run later are routinely not the same person; when they are, they are not
+// the same hour.
+func TestGateRefused_TheReasonIsOnTheLine(t *testing.T) {
+	var evs []event.Event
+	e := gateExecutor(t, &mockProvider{}, &evs)
+	const reason = "a migration derruba a coluna sem backfill"
+
+	err := e.gateRefused(&types.Task{ID: "S02"}, types.Gate{Nature: types.GateHuman, Label: "Aprovar o irreversível"}, reason)
+	if err == nil {
+		t.Fatal("a refusal has to produce an error")
+	}
+	if !strings.Contains(err.Error(), reason) {
+		t.Errorf("the error dropped the reason: %v", err)
+	}
+
+	var found bool
+	for _, ev := range evs {
+		if ev.Type == event.GateFailed {
+			found = true
+			if !strings.Contains(ev.Message, reason) {
+				t.Errorf("the gate_failed line says %q — a reader of the run never sees why", ev.Message)
+			}
+			if !strings.Contains(ev.Message, "Aprovar o irreversível") {
+				t.Errorf("the gate_failed line stopped naming the gate: %q", ev.Message)
+			}
+		}
+	}
+	if !found {
+		t.Error("no gate_failed line was emitted at all")
+	}
+}
+
+// And the step's terminal line — the last thing a reader sees — carries it too.
+func TestMarkGateFailure_TheTerminalLineSaysWhy(t *testing.T) {
+	var evs []event.Event
+	e := gateExecutor(t, &mockProvider{}, &evs)
+	dir := t.TempDir()
+	tasksPath := filepath.Join(dir, "tasks.md")
+	if err := os.WriteFile(tasksPath, []byte("---\ndag:\n  S02: []\n---\n\n## S02 — x ⬜ PENDING\n\n### O que fazer\ny\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e.markGateFailure(&Run{TasksPath: tasksPath}, &types.Task{ID: "S02"}, errors.New("gate human: Aprovar refused: sem backfill"))
+
+	for _, ev := range evs {
+		if ev.Type == event.TaskComplete {
+			if !strings.Contains(ev.Message, "sem backfill") {
+				t.Errorf("task_complete says %q, which sends the reader looking for a sentence that lived in a closed terminal", ev.Message)
+			}
+			return
+		}
+	}
+	t.Error("no task_complete line was emitted")
 }

@@ -212,11 +212,25 @@ func (e *Executor) gateRefused(t *types.Task, g types.Gate, reason string) error
 	// or an independent judge produced the evidence; the judge's own spend has
 	// already accounted for itself on its review lines.
 	e.emit(event.Event{
-		Type:    event.GateFailed,
-		TaskID:  t.ID,
-		Status:  types.StatusFailed,
-		Phase:   event.PhaseGate,
-		Message: g.Describe(),
+		Type:   event.GateFailed,
+		TaskID: t.ID,
+		Status: types.StatusFailed,
+		Phase:  event.PhaseGate,
+		// The REASON rides on the line, not only in the error returned to the
+		// process that happened to be running the run.
+		//
+		// Measured: a person rejected a human gate with "a migration derruba a
+		// coluna sem backfill", and the step detail — the canonical surface, the
+		// one the UI draws — said `refused by gate` and nothing else. The
+		// sentence existed in the terminal that ran the run (gone when it
+		// closes) and in the gate file (which no screen joins). The person who
+		// refuses and the person who reads the run later are routinely not the
+		// same person, and when they are, they are not the same hour.
+		//
+		// The ledger redacts paths and $HOME from every message (internal/
+		// activity), which is the same protection the gate's own label already
+		// relies on.
+		Message: g.Describe() + ": " + reason,
 	})
 	charmbraceletlog.Warn("gate refused", "task", t.ID, "gate", g.Describe(), "reason", reason)
 	return fmt.Errorf("task %s: gate %s refused: %s", t.ID, g.Describe(), reason)

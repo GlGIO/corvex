@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/giovannialves/corvex/internal/config"
@@ -56,4 +57,45 @@ func CheckSkills(cfg *config.Config, workDir string) CheckResult {
 		return CheckResult{"skills", CheckPass, "no repo skills (add .corvex/skills/<name>/SKILL.md to expose some to the worker)"}
 	}
 	return CheckResult{"skills", CheckPass, fmt.Sprintf("%d repo skill(s) available to the worker: %s", len(names), strings.Join(names, ", "))}
+}
+
+// CheckFanoutWorktrees reports the checkouts a fan-out left behind.
+//
+// An isolated fan-out gives each item its own worktree and removes it when the
+// item's merge node lands. An item that FAILED keeps its worktree on purpose —
+// the work in it is the only copy — and so does a run that was killed or died
+// mid-wave. That is the right behaviour and the wrong silence: measured after
+// killing a run with three items in flight, `.corvex/worktrees/` held three
+// checkouts, `git worktree list` knew about all three, and `corvex doctor`
+// reported `7 checks, 7 passed`.
+//
+// A warning, never a failure: a leftover worktree is frequently the thing
+// somebody is about to open. What is wrong is not knowing it is there — after a
+// few killed runs, the directory is full of branches holding work nobody
+// remembers, and the disk is the only place that knows.
+func CheckFanoutWorktrees(_ *config.Config, workDir string) CheckResult {
+	root, err := FindGitRoot(workDir)
+	if err != nil {
+		// Not a git repository: there is no worktree to leak. The other checks
+		// already report what that means for a run.
+		return CheckResult{"worktrees", CheckPass, "no git repository here"}
+	}
+	dir := filepath.Join(root, ".corvex", "worktrees")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return CheckResult{"worktrees", CheckPass, "no fan-out worktrees left behind"}
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) == 0 {
+		return CheckResult{"worktrees", CheckPass, "no fan-out worktrees left behind"}
+	}
+	sort.Strings(names)
+	return CheckResult{"worktrees", CheckWarn, fmt.Sprintf(
+		"%d fan-out worktree(s) still on disk: %s — they hold the work of items that failed or were interrupted, and nothing else does. Inspect them, then `git worktree remove .corvex/worktrees/<name>`",
+		len(names), strings.Join(names, ", "))}
 }

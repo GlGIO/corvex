@@ -43,7 +43,7 @@ func (e *Executor) runAITaskGated(ctx context.Context, r *Run, t *types.Task, ac
 		return err
 	}
 	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
-		e.markGateFailure(r, t)
+		e.markGateFailure(r, t, err)
 		return err
 	}
 	return nil

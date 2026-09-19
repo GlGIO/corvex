@@ -7,6 +7,9 @@ package ops
 // TestDoctorJSONShape, TestDoctorJSONFailExitCode, TestDoctorJSONHumanUnchanged).
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
@@ -179,6 +182,48 @@ func TestCheckCostCeilings(t *testing.T) {
 			r := CheckCostCeilings(cfg)
 			if r.Status != tt.wantStatus {
 				t.Errorf("CheckCostCeilings() status = %v, want %v; msg = %q", r.Status, tt.wantStatus, r.Message)
+			}
+		})
+	}
+}
+
+// Leftover fan-out worktrees are REPORTED, because nothing else knows they are
+// there.
+//
+// Measured after killing a run with three isolated items in flight: three
+// checkouts under `.corvex/worktrees/`, `git worktree list` aware of all three,
+// and `corvex doctor` saying `7 checks, 7 passed`. Keeping them is right — the
+// work in a failed item's tree is the only copy — and the silence is not.
+func TestCheckFanoutWorktrees(t *testing.T) {
+	tests := []struct {
+		name    string
+		dirs    []string
+		status  CheckStatus
+		mention string
+	}{
+		{name: "nothing left behind", status: CheckPass, mention: "no fan-out worktrees"},
+		{name: "two items interrupted", dirs: []string{"S02-000", "S02-001"}, status: CheckWarn, mention: "S02-000, S02-001"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range tt.dirs {
+				if err := os.MkdirAll(filepath.Join(repo, ".corvex", "worktrees", d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := CheckFanoutWorktrees(config.Default(), repo)
+			if got.Status != tt.status {
+				t.Errorf("status = %v, want %v (%s)", got.Status, tt.status, got.Message)
+			}
+			if !strings.Contains(got.Message, tt.mention) {
+				t.Errorf("message = %q, want it to mention %q", got.Message, tt.mention)
+			}
+			if tt.status == CheckWarn && !strings.Contains(got.Message, "git worktree remove") {
+				t.Errorf("the warning does not say how to clean up: %q", got.Message)
 			}
 		})
 	}

@@ -186,7 +186,7 @@ func (e *Executor) Execute(ctx context.Context, r *Run, t *types.Task) error {
 	// main both belong here, and the difference from an after-gate is whether
 	// the side effect already exists when you say no.
 	if err := e.runGates(ctx, r, t, types.GateBefore, acc); err != nil {
-		e.markGateFailure(r, t)
+		e.markGateFailure(r, t, err)
 		return err
 	}
 
@@ -207,11 +207,18 @@ func (e *Executor) Execute(ctx context.Context, r *Run, t *types.Task) error {
 // markGateFailure records a step that a gate refused before or after its work.
 // Task-level, so the scheduler's existing cascade skips only what depended on
 // it and the independent branches of the DAG keep running.
-func (e *Executor) markGateFailure(r *Run, t *types.Task) {
+func (e *Executor) markGateFailure(r *Run, t *types.Task, cause error) {
 	if err := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); err != nil {
 		charmbraceletlog.Warn("updating gated task status to failed", "task", t.ID, "err", err)
 	}
-	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseGate, Status: types.StatusFailed, Message: "refused by gate"})
+	// The step's terminal line says WHY, because it is the last line a reader
+	// sees and `refused by gate` sends them looking for a sentence that used to
+	// live only in a terminal somebody has since closed.
+	message := "refused by gate"
+	if cause != nil {
+		message = cause.Error()
+	}
+	e.emit(event.Event{Type: event.TaskComplete, TaskID: t.ID, Phase: event.PhaseGate, Status: types.StatusFailed, Message: message})
 }
 
 // runShell runs a shell command in the workDir and returns combined output.

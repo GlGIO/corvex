@@ -124,7 +124,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 			}
 			acc.add(gate.FromCommandOutput(stageEvidenceLabel(t), out, true))
 			if gateErr := e.runGates(ctx, r, t, types.GateAfter, acc); gateErr != nil {
-				e.markGateFailure(r, t)
+				e.markGateFailure(r, t, gateErr)
 				return gateErr
 			}
 			summary := "ran command: " + t.Command
