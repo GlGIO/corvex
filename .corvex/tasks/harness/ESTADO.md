@@ -250,8 +250,23 @@ terminal, que é o oposto do que a UI existe para fazer.
 Melhora que saiu daí: declinar uma pergunta manda o texto da caixa como MOTIVO,
 em vez de descartá-lo.
 
-Verbos da UI que ainda não foram clicados num navegador: **pause, resume e
-kill** (exercitados só por CLI/API).
+
+
+## Rodada 18 — FECHADA
+
+**Pause, resume e stop clicados num navegador** (`12c5d6f`). Os testes pinam a
+DIFERENÇA entre os verbos — pausar preserva o que está em voo, parar não — e que
+a tela troca um botão pelo outro em vez de mostrar os dois.
+
+Nenhum defeito de produto nesta rodada: os três caminhos estavam certos. Dois
+enganos MEUS, do mesmo tipo (asserção no lugar errado): esperar a palavra no
+texto da página em vez do pill do card — eu esperava o eco do meu próprio clique
+—, e usar uma recipe de 3s no teste de Stop, que terminava enquanto o Chrome
+subia.
+
+Com isto, **todo verbo da UI tem exercício de navegador**: despachar, aprovar,
+rejeitar com motivo, responder, declinar, abrir step, ver log, re-executar step,
+pausar, retomar e parar.
 
 ## O que falta
 
