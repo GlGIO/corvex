@@ -240,6 +240,19 @@ vê a seção e o valor; no controle, zero ocorrências.
 Com isso o `nature: question` fica completo nos dois tipos de step — shell por
 `$CORVEX_GATE_ANSWER`, IA pelo prompt.
 
+## Rodada 17 — FECHADA
+
+**Os dois verbos de conversa, clicados num navegador** (`7b5d55d`): responder uma
+pergunta e rejeitar com motivo. Os dois existiam na tela e nunca tinham sido
+usados PELA tela — o caminho conversacional do produto só era alcançável pelo
+terminal, que é o oposto do que a UI existe para fazer.
+
+Melhora que saiu daí: declinar uma pergunta manda o texto da caixa como MOTIVO,
+em vez de descartá-lo.
+
+Verbos da UI que ainda não foram clicados num navegador: **pause, resume e
+kill** (exercitados só por CLI/API).
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
