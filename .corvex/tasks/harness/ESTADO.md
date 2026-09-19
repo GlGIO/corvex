@@ -230,6 +230,16 @@ O pin do ambiente dos steps reprovou a variável nova ("uma variável acrescenta
 é uma promessa nova para toda recipe") e foi atualizado no mesmo commit, com o
 porquê — não silenciado.
 
+## Rodada 16 — FECHADA
+
+**A resposta da pergunta chega ao agente** (`c62edf4`), fechando a dívida da 15.
+O prompt do worker carrega a pergunta e a resposta, com a instrução de tratá-la
+como decisão já tomada. Medido com o provider dublado gravando o prompt: o worker
+vê a seção e o valor; no controle, zero ocorrências.
+
+Com isso o `nature: question` fica completo nos dois tipos de step — shell por
+`$CORVEX_GATE_ANSWER`, IA pelo prompt.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
@@ -238,8 +248,9 @@ porquê — não silenciado.
    comentado já está lá). Sem ele a `incident` recusa no preflight — de propósito.
 3. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
    por construção: o deploy é humano. Candidata natural a `corvex` agendado.
-4. **A resposta de uma pergunta não chega a um step `code`** — só ao shell. O
-   prompt do worker é outra costura; registrado, não consertado.
+4. **Ligar o `question` na `incident.yaml`** (quando a release ativa não é
+   encontrada, perguntar o alvo em vez de parar) — é mudança de DESENHO do fluxo,
+   e a decisão é do dono.
 5. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
    agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
