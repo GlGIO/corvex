@@ -585,9 +585,14 @@ async function renderGateDetail(root, id, step) {
         leaveDetail();
       } catch (e) { status(e.message, 'bad'); }
     });
+    // Declining sends whatever is in the box as the REASON. Whoever declines a
+    // question usually has half an answer — "I do not know either, ask the
+    // release owner" — and that sentence is the most useful thing the next
+    // reader could have. It also means nothing typed is ever thrown away by
+    // pressing the other button.
     decline.addEventListener('click', async () => {
       try {
-        const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/reject`, { step: g.step_id, reason: '' });
+        const res = await api.post(`/api/gates/${encodeURIComponent(g.run_id)}/reject`, { step: g.step_id, reason: text.value });
         status(`declined — ${res.action.command}`, 'ok');
         leaveDetail();
       } catch (e) { status(e.message, 'bad'); }
