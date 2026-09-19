@@ -76,6 +76,43 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 	return rr, nil
 }
 
+// findCategory looks for the CATEGORY: line around the verdict: the five lines
+// before it (where the prompt asks for it), then the five after (where a model
+// that reordered them puts it). Nothing further away is accepted — a CATEGORY:
+// at the top of a long review is more likely to be the reviewer QUOTING the
+// instruction than answering it.
+func findCategory(lines []string, verdictIdx int) string {
+	look := func(from, to int) string {
+		if from < 0 {
+			from = 0
+		}
+		if to > len(lines) {
+			to = len(lines)
+		}
+		for i := from; i < to; i++ {
+			normalized := stripMarkup(lines[i])
+			if strings.HasPrefix(normalized, "CATEGORY:") {
+				// The markup is stripped from the VALUE too, not just from the
+				// label: `**CATEGORY:** flaky-test` — ordinary markdown from a
+				// model asked to emphasise a field — otherwise yields the
+				// category `** flaky-test`, which matches no policy and fails
+				// the same silent way a missing line does.
+				value := strings.TrimSpace(normalized[len("CATEGORY:"):])
+				value = strings.Trim(value, " *_`:")
+				return strings.ToLower(strings.TrimSpace(value))
+			}
+		}
+		return ""
+	}
+	if verdictIdx < 0 {
+		return look(0, len(lines))
+	}
+	if cat := look(verdictIdx-5, verdictIdx); cat != "" {
+		return cat
+	}
+	return look(verdictIdx+1, verdictIdx+6)
+}
+
 // stripMarkup strips leading markdown/quote markers (* _ # > ` and spaces)
 // and trailing punctuation/markup (. * _ ` and spaces), then uppercases the
 // result for tolerant verdict/category matching.
@@ -105,25 +142,21 @@ func ParseVerdict(output string) *ReviewResult {
 		}
 	}
 
-	// Category is only meaningful on FAIL. Search the last few lines for a
-	// CATEGORY: marker; tolerate markdown markup and casing.
+	// Category is only meaningful on FAIL. The prompt asks for the CATEGORY:
+	// line right before the verdict, so that is where it is looked for first —
+	// and then, if it is not there, in the lines just after.
+	//
+	// The second look is not tolerance for its own sake. The category is what
+	// selects an escalation policy (upgrade the model, spawn an investigation,
+	// hand the task to a person), so a model that puts the line one position
+	// lower does not produce a worse category: it produces NO category, and the
+	// policy then never fires, in silence, on the path that exists for when
+	// things are going badly. Found while driving the escalation with a stub
+	// that emitted `VERDICT: FAIL` then `CATEGORY: correctness` — a shape the
+	// prompt does not ask for and a model can easily produce.
 	category := ""
 	if verdict == VerdictFail {
-		start := verdictIdx - 5
-		if start < 0 {
-			start = 0
-		}
-		end := verdictIdx
-		if end < 0 {
-			end = len(lines)
-		}
-		for i := end - 1; i >= start; i-- {
-			normalized := stripMarkup(lines[i])
-			if strings.HasPrefix(normalized, "CATEGORY:") {
-				category = strings.ToLower(strings.TrimSpace(normalized[len("CATEGORY:"):]))
-				break
-			}
-		}
+		category = findCategory(lines, verdictIdx)
 	}
 
 	summary := strings.TrimSpace(output)

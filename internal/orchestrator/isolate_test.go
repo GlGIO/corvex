@@ -282,3 +282,52 @@ func TestAlways_LeavesOrdinaryPassedStepsAlone(t *testing.T) {
 		t.Error("the pending step did not run")
 	}
 }
+
+// Every attempt a reviewer rejected is on the ledger — including the LAST one.
+//
+// The recording condition was `attempt < maxRetries`, which billed every
+// rejected attempt except the one after which the task fails: the attempt no
+// other line will ever cover, and the one a person reading a failed task looks
+// at first. Measured against a reviewer that rejects twice with a cap of two:
+// two worker calls happened, $0.20 was paid, and the ledger carried $0.10.
+//
+// The assertion reads the LEDGER FILE rather than the event stream: the event is
+// only worth something if it survives the hop to disk, and that hop is a
+// different package.
+func TestLedger_BillsEveryRejectedAttempt(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "reprova"
+	tasks := "---\ngenerated_by: t\ndag:\n    S01: []\n---\n\n" +
+		"## S01 — O reviewer nunca aceita ⬜ PENDING\n\n```yaml\nkind: code\ntype: general\n```\n\n" +
+		"### O que fazer\nescreva algo\n\n### Critérios de sucesso\n- [ ] x\n"
+	setupProject(t, dir, project, tasks)
+	gitCommitAll(t, dir, "add task")
+
+	events := make(chan Event, 300)
+	go func() {
+		for range events {
+		}
+	}()
+	mock := &mockProvider{executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		if strings.Contains(req.Prompt, "code reviewer") {
+			return &types.ExecuteResult{Output: "Faltou o caso nulo.\nVERDICT: FAIL\nCATEGORY: correctness", CostUSD: 0.10}, nil
+		}
+		return &types.ExecuteResult{Output: "feito" + taskReportBlock, CostUSD: 0.10}, nil
+	}}
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.MaxRetries = 1 // two attempts in total
+	cfg.Execution.AutoCommit = false
+
+	_ = New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: events}).Run(context.Background(), project)
+	close(events)
+
+	ledger, err := os.ReadFile(filepath.Join(dir, ".corvex", "tasks", project, "activity.jsonl"))
+	if err != nil {
+		t.Fatalf("no ledger: %v", err)
+	}
+	if got := strings.Count(string(ledger), `"type":"attempt_cost"`); got != 2 {
+		t.Errorf("the ledger carries %d attempt_cost line(s) for two paid attempts:\n%s", got, ledger)
+	}
+}

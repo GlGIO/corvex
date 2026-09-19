@@ -327,3 +327,54 @@ func TestReview_ProviderError(t *testing.T) {
 		t.Errorf("error %q should mention task ID S01", err)
 	}
 }
+
+// The CATEGORY: line is found on either side of the verdict.
+//
+// It is not tolerance for its own sake: the category is what SELECTS an
+// escalation policy — upgrade the model, spawn an investigation, hand the task
+// to a person. A reviewer that writes the line one position lower does not
+// produce a worse category, it produces none, and the policy then never fires,
+// silently, on the path that exists for when things are going badly.
+//
+// Found while driving the escalation with a reviewer that emitted the verdict
+// first: the run failed with "failed review after 2 attempts" and nothing ever
+// reached the inbox, with the config declaring `correctness → human-prompt`.
+func TestParseReview_FindsTheCategoryOnEitherSideOfTheVerdict(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{
+			name:   "before, which is what the prompt asks for",
+			output: "Faltou o caso nulo.\n\nCATEGORY: correctness\nVERDICT: FAIL",
+			want:   "correctness",
+		},
+		{
+			name:   "after, which a model produces anyway",
+			output: "Faltou o caso nulo.\n\nVERDICT: FAIL\nCATEGORY: correctness",
+			want:   "correctness",
+		},
+		{
+			name:   "markdown around it does not hide it",
+			output: "Faltou o caso nulo.\n\n**VERDICT: FAIL**\n**CATEGORY:** flaky-test",
+			want:   "flaky-test",
+		},
+		{
+			name:   "far away is not an answer, it is a quote of the instruction",
+			output: "CATEGORY: correctness (é isso que devo emitir)\n" + strings.Repeat("blá\n", 20) + "VERDICT: FAIL",
+			want:   "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseVerdict(tt.output)
+			if got.Verdict != VerdictFail {
+				t.Fatalf("verdict = %q, want FAIL", got.Verdict)
+			}
+			if got.Category != tt.want {
+				t.Errorf("category = %q, want %q", got.Category, tt.want)
+			}
+		})
+	}
+}

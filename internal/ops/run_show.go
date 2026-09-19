@@ -241,12 +241,16 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 		}
 		metrics[id] = &RunTaskRow{ID: t.ID, Title: t.Title, Status: t.Status, DependsOn: t.DependsOn}
 	}
-	// lastReviewCost mirrors internal/activity's aggregate(): task_complete only
-	// carries the worker's own spend, so the row's total is read back off the
-	// review_result line that shares its attempt. Consumed on use so an
-	// after-gate's later review_result (same task_id, no row of its own) is
-	// never folded in.
-	lastReviewCost := make(map[string]float64)
+	// task_complete carries the WORKER's own spend and nothing else, so every
+	// other line that costs money accumulates. This was a hold-the-last-review
+	// map, consumed by task_complete — which counted one review per task and
+	// dropped the rest. Measured on a task the reviewer rejected twice: two
+	// reviews were paid, the row carried one, and the per-phase bars on the SAME
+	// screen showed the money the header did not.
+	//
+	// Accumulating is also what `corvex inspect` has always done. Two readers of
+	// one ledger disagreeing about a number is the defect; the rule they share
+	// is the fix.
 	// Same two-accumulator rule as BuildInspectReport: task_complete assigns,
 	// the split-out lines accumulate, and mixing them into one field lets the
 	// assignment erase the others.
@@ -257,16 +261,15 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 			continue
 		}
 		switch e.Type {
-		case "review_result":
-			lastReviewCost[e.TaskID] = e.CostUSD
 		case "task_complete":
-			reviewCost := lastReviewCost[e.TaskID]
-			delete(lastReviewCost, e.TaskID)
+			// Assignment, not accumulation: task_complete is written once per
+			// task and last-write-wins is what makes a retried task's WORKER
+			// spend count once.
 			row.DurationMs = e.DurationMs
-			row.CostUSD = e.CostUSD + reviewCost
+			row.CostUSD = e.CostUSD
 			row.TokensIn = e.TokensIn
 			row.TokensOut = e.TokensOut
-		case "attempt_cost":
+		case "review_result", "attempt_cost":
 			// The spend of an attempt that did NOT end in a task_complete: a
 			// worker call that failed, a review that failed, and the call that
 			// tripped a ceiling. It accumulates — there is one line per attempt

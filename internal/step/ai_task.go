@@ -207,9 +207,17 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, workerCost)
 	}
 
-	if reviewResult.Verdict != VerdictPass && attempt < st.maxRetries {
+	if reviewResult.Verdict != VerdictPass {
 		// A rejected attempt is money spent on work that will be redone. It was
 		// charged against the ceiling all along; now it is visible.
+		//
+		// The condition was `attempt < st.maxRetries`, which recorded every
+		// rejected attempt EXCEPT the last one — the attempt after which the
+		// task fails and nothing else will ever write a cost line for it.
+		// Measured on a review that rejects twice with a cap of two: two worker
+		// calls happened, $0.20 was paid, and the ledger carried $0.10. The
+		// final attempt is the one a person is most likely to look at, and it
+		// was the one nobody billed.
 		e.emitAttemptCost(st, t, attempt, result, "worker attempt rejected by review")
 	}
 
