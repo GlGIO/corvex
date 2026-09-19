@@ -90,7 +90,7 @@ func TestUI_CutsAWorktreeAndRunsInIt(t *testing.T) {
 	// incident, the branch is the repository's own convention — the two are different on purpose, because a form that
 	// derived one from the other would be choosing where the PR lands.
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === '+ worktree').click()`, nil)
-	c.eval(t, `document.querySelector('input[placeholder^="name"]').value = '73960'`, nil)
+	c.eval(t, `document.querySelector('input[placeholder^="paste"]').value = '73960'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder^="branch"]').value = 'hotfix/73960-carrinho'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder="base"]').value = 'fluxo'`, nil)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Create').click()`, nil)

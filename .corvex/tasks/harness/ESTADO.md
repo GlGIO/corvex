@@ -209,6 +209,42 @@ Duas outras regras que valem registro:
   `run kill` também é o único item com pill vermelha, e continua passando pelo
   `confirm` que o botão Stop já usava.
 
+## Rodada 24 — FECHADA (uma linha colada, três campos)
+
+"Tá meio chato preencher tudo." A linha que a pessoa tem na mão quando um
+incidente começa é a do board — `Incident 73607: Pedido duplicado na aba
+Financeiro (Visão 360°)` — e o formulário pedia que ela redigitasse três pedaços
+dela: o id duas vezes (nome do diretório e o `INCIDENT_ID` da receita) e um slug
+do título, à mão, dentro do campo que decide para onde o PR vai.
+
+Esse último é o motivo disto existir em vez de ser conveniência. Digitar nome de
+branch de memória no começo de um incidente é de onde vem `hotfix/Incident-73607`
+— git válido, e fora da convenção que o `ship-target.sh` lê para rotear. Medido
+na tela do dono, antes de eu escrever uma linha.
+
+Agora o campo aceita a linha inteira e tira os pedaços. Nada é buscado: o texto
+já está na área de transferência, e uma leitura do board daqui seria chamada de
+rede, credencial e discussão de custódia para algo que a pessoa já tem.
+
+O prefixo sai da convenção **deste** repositório, conferida no origin
+(`hotfix/61761-…`, `feature/59101-…`): Incident e Bug → `hotfix`, Feature →
+`feature`, e um tipo que o mapa não conhece **não ganha branch nenhuma** em vez
+de ganhar um palpite. Os campos são só PREENCHIDOS — nunca limpos, nunca
+sobrescritos depois que alguém digitou: um parse que apaga a branch que a pessoa
+corrigiu é pior que nenhum parse, porque a correção é a única parte disso que a
+máquina não sabe conferir.
+
+Mais dois consertos pequenos:
+
+- **`stack (database)` era uma promessa que a opção não cumpre.** O que o
+  `stack` sobe é o que o bloco `validate:` do repositório declara, e o smartcare
+  tem `database: {type: none}` — sobe servidor de app e nenhum banco. O rótulo
+  passou a nomear o bloco em vez de adivinhar o conteúdo.
+- **`waitFor` do `dispatch_test.go` tinha prazo de 5s** e ficava vermelho só
+  quando o resto da suíte rodava junto. O prazo não é o que o teste afirma — a
+  alegação é que o filho reporta o diretório, não que reporta em cinco segundos.
+  Teste que falha só sob carga ensina a re-rodar em vez de ler.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

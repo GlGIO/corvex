@@ -276,6 +276,59 @@ async function renderLogDetail(root, name) {
   root.append(el('pre', { class: 'log', text: log.content || '(empty)' }));
 }
 
+
+// ── one pasted line, three fields ───────────────────────────────────────────
+//
+// The line a person has in hand when an incident starts is the board's own:
+//
+//   Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)
+//
+// and the form was asking them to retype three pieces of it — the id twice
+// (directory name and the recipe's own INCIDENT_ID) and a slug of the title,
+// by hand, into the field that decides where the pull request goes. Typing a
+// branch name from memory at the start of an incident is where `hotfix/Incident-
+// 73607` comes from: valid git, and off the convention that routes it.
+//
+// So the name field takes the whole line and pulls the pieces out. Nothing is
+// fetched: the text is already on the clipboard, and a board read from here
+// would be a network call, a credential and a custody argument for something
+// the person already has.
+
+// workItem reads the id, the kind and the title out of a board line. It returns
+// null when there is no id to find, which is also the case for "73607" typed on
+// its own — a bare id needs no parsing.
+function workItem(line) {
+  const raw = String(line || '').trim();
+  const id = (raw.match(/\b(\d{4,7})\b/) || [])[1];
+  if (!id || raw === id) return null;
+  const kind = (raw.match(/\b(incident|bug|feature|story|task)\b/i) || [])[1] || '';
+  // The title is what follows the colon, or what is left once the id and the
+  // kind word are taken out.
+  let title = raw.includes(':') ? raw.slice(raw.indexOf(':') + 1) : raw.replace(id, '').replace(new RegExp(kind, 'i'), '');
+  return { id, kind: kind.toLowerCase(), title: title.trim() };
+}
+
+// slug is the branch-safe half of a title: accents folded, punctuation gone,
+// and short enough that the branch stays readable in a PR list.
+function slug(title, max = 42) {
+  const flat = String(title || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (flat.length <= max) return flat;
+  // Cut on a word boundary: a slug ending mid-word reads like a truncation bug.
+  return flat.slice(0, max).replace(/-[^-]*$/, '');
+}
+
+// branchFor applies THIS repository's routing, which is not decoration: the
+// prefix is what ship-target.sh reads to decide where the pull request goes —
+// `hotfix/*` to main, `feature/*` to the active release. A kind the mapping does
+// not know gets no branch at all rather than a guessed one.
+function branchFor(item) {
+  const prefix = { incident: 'hotfix', bug: 'hotfix', feature: 'feature' }[item.kind];
+  if (!prefix) return '';
+  return `${prefix}/${item.id}-${slug(item.title)}`;
+}
+
 // ── dispatch (2c) ─────────────────────────────────────────────
 // The form is the whole flow, in the order a person does it: which repository,
 // which checkout (or make one), which recipe, what the recipe needs to know.
@@ -352,7 +405,13 @@ async function dispatchForm(preset) {
   target.addEventListener('change', syncInputs);
   target.addEventListener('input', syncInputs);
 
-  const env = el('select', {}, el('option', { value: 'simple' }, 'simple'), el('option', { value: 'stack' }, 'stack (database)'));
+  // "stack (database)" was a promise the option cannot keep: what `stack`
+  // brings up is whatever the repository's `validate:` block declares, and a
+  // repository with `database: {type: none}` gets an app server and no database
+  // at all. The label names the block instead of guessing its contents.
+  const env = el('select', { title: 'stack brings up this repository\'s validate: block for the life of the run' },
+    el('option', { value: 'simple' }, 'simple'),
+    el('option', { value: 'stack' }, 'stack (the validate: block)'));
   // A project with a worktree runs IN its worktree (spawn.go), which is the
   // whole point of one worktree per feature. The box is the way to say "no,
   // this checkout" — the CLI's --here, on the surface where the person can see
@@ -362,11 +421,31 @@ async function dispatchForm(preset) {
   // Making the checkout. Separate button, separate request: creating a branch is
   // cheap and reversible, starting a run spends money, and a person setting up
   // three of these before starting any must be able to do the first half alone.
-  const wtName = el('input', { placeholder: 'name (73960)' });
+  const wtName = el('input', { placeholder: 'paste the board line, or a name' });
   const wtBranch = el('input', { placeholder: 'branch (feat/<name>)' });
   const wtBase = el('input', { placeholder: 'base', value: 'main' });
+  // Paste and input both, not just paste: a person may also drag the text in,
+  // or type the id and tab away, and the same parse has to serve all three.
+  // The fields are only ever FILLED, never cleared, and never overwritten once
+  // something has been typed into them — a parse that wipes a branch name
+  // somebody corrected by hand is worse than no parse.
+  const spread = () => {
+    const item = workItem(wtName.value);
+    if (!item) return;
+    wtName.value = item.id;
+    const branch = branchFor(item);
+    if (branch && !wtBranch.value.trim()) wtBranch.value = branch;
+    // The recipe's own id field, when it has one and it is empty.
+    inputFields.forEach((field, name) => {
+      if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = item.id;
+    });
+    status(branch ? `${item.id} · ${branch}` : `${item.id} — this kind has no branch convention here, name the branch yourself`, branch ? 'ok' : 'warn');
+  };
+  wtName.addEventListener('change', spread);
+  wtName.addEventListener('paste', () => setTimeout(spread, 0));
+
   const maker = el('div', { class: 'maker hidden' },
-    el('label', { class: 'field' }, el('span', { text: 'name' }), wtName),
+    el('label', { class: 'field' }, el('span', { text: 'work item' }), wtName),
     el('label', { class: 'field' }, el('span', { text: 'branch' }), wtBranch),
     el('label', { class: 'field' }, el('span', { text: 'from' }), wtBase),
     el('button', {
@@ -379,6 +458,12 @@ async function dispatchForm(preset) {
           await loadWorktrees();
           worktree.value = res.path;
           await loadRecipes();
+          // The recipe's fields are rebuilt by loadRecipes, so the id is
+          // carried over AFTER them: a value put in before would have been
+          // replaced by the empty field that just took its place.
+          inputFields.forEach((field, name) => {
+            if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = wtName.value.trim();
+          });
           status(`${res.branch} at ${res.path}${res.warning ? ' — ' + res.warning : ''} — ${res.command}`, res.warning ? 'warn' : 'ok');
         } catch (e) { status(e.message, 'bad'); }
       },

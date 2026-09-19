@@ -50,9 +50,16 @@ func itoa(n int) string {
 
 // waitFor polls until cond says yes or the deadline passes. The child is a real
 // detached process, so everything it does is observed, never assumed.
+//
+// Twenty seconds and not five. The deadline is not part of what these tests
+// assert — the claim is that the child reports its working directory, not that
+// it does so within a particular second — and five was short enough to go red
+// on a loaded machine while passing every time the test ran on its own. A test
+// that fails only when the rest of the suite is running teaches people to
+// re-run instead of to read.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
