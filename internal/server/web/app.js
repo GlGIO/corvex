@@ -303,14 +303,24 @@ async function dispatchForm() {
         w.main ? `${w.branch || 'detached'} (main checkout)` : `${w.branch || 'detached'} — ${w.path.split('/').pop()}`)));
   };
 
+  // The recipes are read from the CHECKOUT, not from the repository.
+  //
+  // A worktree is the repository on another branch, and `.corvex/recipes` is
+  // tracked: the checkout where the run happens can carry recipes the main one
+  // has never seen. Reading the catalogue from the repository would offer a list
+  // that does not match what will execute, and — because the declared inputs
+  // come from that same catalogue — would silently stop asking for the values
+  // the recipe needs.
   const recipeList = el('datalist', { id: 'recipe-list' });
   let recipes = [];
   const loadRecipes = async () => {
-    recipes = await api.get(`/api/recipes?repo=${encodeURIComponent(repoPath())}`).catch(() => []) || [];
+    const where = worktree.value || repoPath();
+    recipes = await api.get(`/api/recipes?repo=${encodeURIComponent(where)}`).catch(() => []) || [];
     recipeList.replaceChildren(...recipes.map((r) => el('option', { value: r.name })));
     syncInputs();
   };
-  repo.addEventListener('change', () => { loadRecipes(); loadWorktrees(); });
+  worktree.addEventListener('change', loadRecipes);
+  repo.addEventListener('change', async () => { await loadWorktrees(); loadRecipes(); });
 
   const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list' });
   // What the recipe says it needs (`requires: - env:`), asked for here instead of
@@ -356,6 +366,7 @@ async function dispatchForm() {
           });
           await loadWorktrees();
           worktree.value = res.path;
+          await loadRecipes();
           status(`${res.branch} at ${res.path}${res.warning ? ' — ' + res.warning : ''} — ${res.command}`, res.warning ? 'warn' : 'ok');
         } catch (e) { status(e.message, 'bad'); }
       },
@@ -395,8 +406,9 @@ async function dispatchForm() {
   );
   const view = $('#view');
   view.prepend(box);
-  loadRecipes();
-  loadWorktrees();
+  // The checkout list first: the recipes are read from whichever checkout it
+  // settles on.
+  loadWorktrees().then(loadRecipes);
 }
 
 // ── leaving a detail screen ─────────────────────────────────────────────────

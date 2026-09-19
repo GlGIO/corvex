@@ -21,6 +21,12 @@ import (
 	"time"
 )
 
+// The recipe exists only on the branch the worktree is cut from. That is the
+// real shape in the repository this tool is being built for: `.corvex/recipes`
+// is tracked, the flow's recipes live on their own branch, and the main checkout
+// has never seen them. A form reading the catalogue from the repository would
+// offer a list that does not match what executes — and would stop asking for the
+// values the recipe declares, because those come from the same catalogue.
 const inputRecipeYAML = `name: incidente
 description: |
   Um passo que só sabe o que fazer se lhe disserem qual é o incidente.
@@ -44,10 +50,18 @@ func setupWorktreeRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, ".corvex", "config.yaml"), identityConfigYAML)
-	writeFile(t, filepath.Join(dir, ".corvex", "recipes", "incidente.yaml"), inputRecipeYAML)
 	for _, args := range [][]string{
 		{"init", "-b", "main"}, {"config", "user.email", "e2e@corvex"}, {"config", "user.name", "e2e"},
-		{"add", "-A"}, {"commit", "-m", "recipe"},
+		{"add", "-A"}, {"commit", "-m", "config"},
+	} {
+		if out, err := gitIn(dir, args...); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	// The recipe lands on `fluxo`, and `main` never gets it.
+	writeFile(t, filepath.Join(dir, ".corvex", "recipes", "incidente.yaml"), inputRecipeYAML)
+	for _, args := range [][]string{
+		{"checkout", "-b", "fluxo"}, {"add", "-A"}, {"commit", "-m", "recipe"}, {"checkout", "main"},
 	} {
 		if out, err := gitIn(dir, args...); err != nil {
 			t.Fatalf("git %v: %s: %v", args, out, err)
@@ -72,12 +86,13 @@ func TestUI_CutsAWorktreeAndRunsInIt(t *testing.T) {
 	c.waitFor(t, 15*time.Second, "the checkout list to fill",
 		`document.querySelectorAll('select')[1] && document.querySelectorAll('select')[1].options.length >= 1`)
 
-	// Cut the branch. The name is the incident, the branch is the repository's
-	// own convention — the two are different on purpose, because a form that
+	// Cut the branch, from `fluxo` — where the recipe is. The name is the
+	// incident, the branch is the repository's own convention — the two are different on purpose, because a form that
 	// derived one from the other would be choosing where the PR lands.
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === '+ worktree').click()`, nil)
 	c.eval(t, `document.querySelector('input[placeholder^="name"]').value = '73960'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder^="branch"]').value = 'hotfix/73960-carrinho'`, nil)
+	c.eval(t, `document.querySelector('input[placeholder="base"]').value = 'fluxo'`, nil)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Create').click()`, nil)
 
 	worktree := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"-73960")
