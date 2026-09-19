@@ -214,6 +214,22 @@ caminho (`--recompile`) em vez de falhar depois num diretório que não existe.
 fan-out, escrevi teste para a RECUSA (run vivo) e nunca cliquei nele num item de
 fan-out. Teste de recusa não substitui exercitar o caminho feliz.
 
+## Rodada 15 — FECHADA
+
+Método novo, saído da lição da 14: procurar guardas com teste de RECUSA e nenhum
+exercício do caminho feliz. Duas encontradas (`2d61642`):
+
+1. **Despachar para outro repositório** nunca tinha rodado. Medido: UI no repoA
+   despacha para o repoB, o run executa lá, o repoA fica intocado, o histórico
+   mostra. VERDE — congelado em teste.
+2. **`nature: question`**: o run perguntava, a pessoa respondia, e o step rodava
+   o comando que rodaria sem perguntar. A resposta era evidência que um leitor
+   via e o trabalho não usava. Agora chega como `$CORVEX_GATE_ANSWER`.
+
+O pin do ambiente dos steps reprovou a variável nova ("uma variável acrescentada
+é uma promessa nova para toda recipe") e foi atualizado no mesmo commit, com o
+porquê — não silenciado.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
@@ -222,7 +238,9 @@ fan-out. Teste de recusa não substitui exercitar o caminho feliz.
    comentado já está lá). Sem ele a `incident` recusa no preflight — de propósito.
 3. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
    por construção: o deploy é humano. Candidata natural a `corvex` agendado.
-4. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
+4. **A resposta de uma pergunta não chega a um step `code`** — só ao shell. O
+   prompt do worker é outra costura; registrado, não consertado.
+5. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
    agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
 ## Regras desta obra
