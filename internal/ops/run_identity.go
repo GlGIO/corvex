@@ -299,11 +299,56 @@ func startIdentity(req RunRequest) (*run.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := refuseIfAlreadyRunning(reg, repo, req.Project); err != nil {
+		return nil, err
+	}
 	return reg.Start(run.StartOptions{
 		Project:     req.Project,
 		Recipe:      recipeFromTasks(req.WorkDir, req.Project),
 		Environment: string(env),
 	})
+}
+
+// refuseIfAlreadyRunning is the door in front of the one collision the runner
+// cannot survive: two runs of the SAME project, in the SAME repository, at the
+// same time.
+//
+// MEASURED, and it is worse than "both run". The second process reads a tasks.md
+// whose step the FIRST one is executing, sees it as RUNNING, and — correctly for
+// the case that rescue was written for — treats it as the leftover of a run that
+// died: it resets the step to PENDING and executes it again. So two agents write
+// one checkout, two processes rewrite one tasks.md, and the final state is
+// whichever wrote last. Nothing reports it.
+//
+// The rescue cannot tell "died" from "running right now", and it does not have
+// to: the run index does, with the same pid probe `corvex run list` prints. So
+// the check happens HERE, before a second run exists at all.
+//
+// The refusal names the run that holds the project and the two ways forward,
+// because "already running" without an id is a message that sends somebody
+// hunting through `run list` for something the tool already knew.
+func refuseIfAlreadyRunning(reg run.Registry, repo, project string) error {
+	resolver := run.Resolver{Home: reg.Home, Machine: reg.Machine}
+	views, err := resolver.ListRepo(repo)
+	if err != nil {
+		// A listing that cannot be read is not a reason to refuse work: the
+		// index is machine-local scratch, and a run refused because of it would
+		// be a tool that stops working when its own bookkeeping is damaged.
+		return nil
+	}
+	for _, v := range views {
+		if v.Record.Project != project {
+			continue
+		}
+		if v.Liveness != run.LivenessAlive && v.Liveness != run.LivenessCanceling {
+			continue
+		}
+		return fmt.Errorf("run %s is already running %q in this repository (pid %d).\n"+
+			"Two runs of one project share its tasks.md and its checkout: the second would re-execute the step the first is running.\n"+
+			"  → wait for it, or stop it:  corvex run kill %s",
+			v.Record.RunID, project, v.Record.PID, v.Record.RunID)
+	}
+	return nil
 }
 
 // recipeName is the frontmatter prefix recipe.Compile stamps on generated_by.

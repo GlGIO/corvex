@@ -15,9 +15,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/giovannialves/corvex/internal/activity"
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/run"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -329,5 +333,76 @@ func TestLedger_BillsEveryRejectedAttempt(t *testing.T) {
 	}
 	if got := strings.Count(string(ledger), `"type":"attempt_cost"`); got != 2 {
 		t.Errorf("the ledger carries %d attempt_cost line(s) for two paid attempts:\n%s", got, ledger)
+	}
+}
+
+// Pause holds an ISOLATED fan-out between an item's work and its merge — and
+// resuming brings every item home.
+//
+// Measured by hand before it was frozen here: a pause requested mid-wave let the
+// steps in flight finish (the documented contract — `run kill` is the verb that
+// stops now), held before the merge nodes, and left two worktrees with committed
+// work unmerged. That is the correct hold point and the interesting one: a pause
+// that landed AFTER the merges would be indistinguishable from not pausing, and
+// one that killed the work in flight would be `kill` wearing another name.
+func TestPause_HoldsAnIsolatedFanoutBeforeTheMergeAndResumes(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	const project, runID = "pause-isolado", "run_0f0a"
+	tasks := "---\ngenerated_by: corvex-recipe:pause\ndag:\n    S01: []\n    S02:\n        - S01\n---\n\n" +
+		"## S01 — Discover ⬜ PENDING\n\n```yaml\nkind: tool\ncommand: \"echo '[\\\"a\\\",\\\"b\\\"]'\"\nproduces: items\n```\n\n### O que fazer\nx\n\n---\n\n" +
+		"## S02 — Per item ⬜ PENDING\n\n```yaml\ndepends_on: [S01]\nfanout:\n    over: S01\n    isolate: worktree\n    template:\n" +
+		"        - id: trabalha\n          kind: tool\n          command: \"echo {{ item }} > story-{{ item }}.txt\"\n```\n\n### O que fazer\ny\n"
+	setupProject(t, dir, project, tasks)
+	gitCommitAll(t, dir, "add tasks")
+
+	events := make(chan Event, 300)
+	paused := make(chan struct{})
+	var once sync.Once
+	go func() {
+		for ev := range events {
+			// The pause is requested the moment the first item's work is done,
+			// which is the window where the merge would otherwise follow.
+			if ev.Type == EventTaskComplete && strings.HasSuffix(ev.TaskID, "/trabalha") {
+				once.Do(func() {
+					if err := run.RequestPause(dir, runID, time.Now()); err != nil {
+						t.Errorf("RequestPause: %v", err)
+					}
+					close(paused)
+				})
+			}
+		}
+	}()
+
+	// The resumer stands in for the person: it waits for the pause to be on
+	// disk, then clears it, exactly as `corvex run resume` does.
+	go func() {
+		<-paused
+		time.Sleep(200 * time.Millisecond)
+		if err := run.ClearPause(dir, runID); err != nil {
+			t.Errorf("ClearPause: %v", err)
+		}
+	}()
+
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+	if err := New(Options{
+		Config: cfg, Provider: &mockProvider{}, WorkDir: dir, Events: events,
+		Repo: dir, Identity: activity.Identity{RunID: runID}, PausePoll: time.Millisecond,
+	}).Run(context.Background(), project); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	close(events)
+
+	// Resumed, both items came home and no worktree was left behind: a pause is
+	// a hold, not a loss.
+	for _, item := range []string{"a", "b"} {
+		if _, err := os.Stat(filepath.Join(dir, "story-"+item+".txt")); err != nil {
+			t.Errorf("story %s did not land after the resume: %v", item, err)
+		}
+	}
+	if out := gitIn(t, dir, "worktree", "list"); strings.Count(out, "\n") != 1 {
+		t.Errorf("worktrees survived a paused-then-resumed run:\n%s", out)
 	}
 }

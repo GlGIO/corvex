@@ -387,10 +387,14 @@ func TestExhaustedIDSpaceRefusesTheRunAndWritesNoLedgerLine(t *testing.T) {
 	repo, home := t.TempDir(), t.TempDir()
 	gen := opsHexCycle(1) // a 16-id space, so exhaustion is affordable
 
+	// One project per run, on purpose: the id space is global to the home, so
+	// exhausting it does not need them to share a project — and sharing one is
+	// now refused before the id is even asked for (two live runs of one project
+	// would rewrite each other's tasks.md). The subject here is the id space.
 	const space = 16
 	for i := 0; i < space; i++ {
 		if _, err := (run.Registry{Repo: repo, Home: home, NewID: gen}).Start(
-			run.StartOptions{Project: "alpha"}); err != nil {
+			run.StartOptions{Project: fmt.Sprintf("filler-%02d", i)}); err != nil {
 			t.Fatalf("filling the id space, run %d: %v", i+1, err)
 		}
 	}
@@ -513,5 +517,47 @@ func gitInitBare(t *testing.T, dir string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
+	}
+}
+
+// Two live runs of one project in one repository are refused — before the second
+// one exists.
+//
+// MEASURED, and the outcome is worse than "both run": the second process reads a
+// tasks.md whose step the first is executing, sees it RUNNING, and — correctly
+// for the case that rescue exists for — treats it as the leftover of a run that
+// died, resets it to PENDING and executes it again. Two agents in one checkout,
+// two processes rewriting one file, final state decided by whoever wrote last,
+// and nothing anywhere reporting it. With a UI whose dispatch is a button, this
+// is one double-click away.
+func TestStartIdentity_RefusesASecondLiveRunOfTheSameProject(t *testing.T) {
+	repo, home := t.TempDir(), t.TempDir()
+	reg := run.Registry{Repo: repo, Home: home, Machine: "test-machine"}
+	first, err := reg.Start(run.StartOptions{Project: "pilot"})
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	req := identityRequest(t, repo, "pilot")
+	req.Registry.Home = home
+	req.Registry.Machine = "test-machine"
+
+	_, err = NewRunner(req)
+	if err == nil {
+		t.Fatal("a second run of a live project was allowed to start")
+	}
+	for _, want := range []string{first.RunID(), "already running", "run kill"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal is missing %q: %v", want, err)
+		}
+	}
+
+	// A DIFFERENT project in the same repository is untouched: the collision is
+	// about sharing one tasks.md and one checkout, not about the repository.
+	other := identityRequest(t, repo, "outra")
+	other.Registry.Home = home
+	other.Registry.Machine = "test-machine"
+	if _, err := NewRunner(other); err != nil {
+		t.Errorf("a run of another project was refused: %v", err)
 	}
 }
