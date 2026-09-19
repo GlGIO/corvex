@@ -184,6 +184,25 @@ func (e *Executor) questionGate(ctx context.Context, r *Run, t *types.Task, g ty
 		return e.gateRefused(t, g, reason)
 	}
 	acc.add(gate.Note(gateLabel(g, "question"), decided.Answer))
+	// And the answer reaches the WORK, not only the screen.
+	//
+	// The type's own contract says approving a question means "continue, and
+	// here is the answer". Measured before this line existed: a recipe asked
+	// "which branch should receive this PR?", a person typed `release/1.8.0`,
+	// the run resumed — and the step ran exactly the command it would have run
+	// without asking. The answer was evidence a reader could see and the step
+	// could not use, which makes a question a note with extra steps.
+	//
+	// It travels in the context rather than on the task: it is scoped to this
+	// execution, it dies with the call, and it never touches tasks.md — an
+	// answer is free text a person typed about their own systems, and the same
+	// argument that keeps it out of the committed ledger keeps it out of the
+	// committed task file.
+	//
+	// Unambiguous by construction: the recipe validator refuses more than one
+	// gate that parks a run on a person per stage (they would collide on one
+	// gate file), so a stage has at most one answer.
+	acc.setAnswer(decided.Answer)
 	return nil
 }
 

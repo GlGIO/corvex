@@ -93,7 +93,7 @@ func (e *Executor) runComputationalStage(ctx context.Context, r *Run, t *types.T
 		}
 		e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &types.StreamEvent{Type: types.EventToolUse, Tool: "command", Content: label}})
 
-		out, runErr := e.runShellForTask(cmdCtx, r, t, t.Command)
+		out, runErr := e.runShellForStep(cmdCtx, r, t, acc, t.Command)
 		if trimmed := strings.TrimSpace(out); trimmed != "" {
 			ev := types.StreamEvent{Type: types.EventToolResult, Content: trimmed}
 			e.emit(event.Event{Type: event.TaskStream, TaskID: t.ID, Phase: event.PhaseValidate, Stream: &ev})

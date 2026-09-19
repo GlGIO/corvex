@@ -267,13 +267,29 @@ func (e *Executor) runShellForTask(ctx context.Context, r *Run, t *types.Task, c
 	return e.runShellIn(ctx, r, e.taskDir(t), command)
 }
 
-func (e *Executor) runShellIn(ctx context.Context, r *Run, dir, command string) (string, error) {
+// runShellForStep is runShellForTask plus the reply to this step's question
+// gate, exported as $CORVEX_GATE_ANSWER.
+//
+// It exists because a question that the work cannot read is a note. The type's
+// contract says approving a question means "continue, and here is the answer";
+// measured before this existed, a recipe asked "which branch should receive this
+// PR?", a person answered `release/1.8.0`, and the step then ran exactly the
+// command it would have run without asking.
+//
+// Empty when the step had no question gate, which is every step that did not ask
+// — so a recipe reading `${CORVEX_GATE_ANSWER:-}` gets the honest thing.
+func (e *Executor) runShellForStep(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet, command string) (string, error) {
+	return e.runShellIn(ctx, r, e.taskDir(t), command, "CORVEX_GATE_ANSWER="+acc.gateAnswer())
+}
+
+func (e *Executor) runShellIn(ctx context.Context, r *Run, dir, command string, extraEnv ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"CORVEX_RUN_BASE="+e.runBase(ctx),
 		"CORVEX_RUN_ID="+r.runID(),
 	)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

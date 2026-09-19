@@ -338,6 +338,12 @@ step that failed, with git's output on the screen where failures already live.
 Without it, items that WRITE are serialised on the run's single checkout: two
 agents editing one tree is how work gets swept away by the next checkpoint.
 
+A `question` gate parks the run until a person answers it in words, and the
+answer reaches the step as `$CORVEX_GATE_ANSWER` — empty on every step that did
+not ask, so a recipe reads it as `${CORVEX_GATE_ANSWER:-}`. Without that, a
+question would be a note: the run asks, somebody answers, and the step runs the
+command it would have run anyway.
+
 A stage can declare `always: true` when its value is in OBSERVING rather than in
 building — a post-deploy probe, a health check. Corvex does not redo what
 already passed, which is right for work and wrong for measurement: a probe

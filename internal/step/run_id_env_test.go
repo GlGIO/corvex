@@ -113,9 +113,16 @@ func TestRunShell_ExportsTheRunIDToStageAndGateAlike(t *testing.T) {
 		}
 	}
 
-	// Leakage: exactly the two CORVEX_ variables corvex adds, whatever the
-	// machine running the test already had in its own environment.
-	want := map[string]bool{"CORVEX_RUN_BASE": true, "CORVEX_RUN_ID": true}
+	// Leakage: exactly the CORVEX_ variables corvex adds, whatever the machine
+	// running the test already had in its own environment.
+	//
+	// `CORVEX_GATE_ANSWER` joined the list deliberately, and this line is where
+	// that deliberation is recorded: it carries the reply to a step's `question`
+	// gate, and without it a question is a note — the run asks, a person answers,
+	// and the step runs the command it would have run anyway. It is present on
+	// every step and empty on the ones that did not ask, so a recipe reads it as
+	// `${CORVEX_GATE_ANSWER:-}`.
+	want := map[string]bool{"CORVEX_RUN_BASE": true, "CORVEX_RUN_ID": true, "CORVEX_GATE_ANSWER": true}
 	for _, kv := range os.Environ() {
 		if name := strings.SplitN(kv, "=", 2)[0]; strings.HasPrefix(name, "CORVEX_") {
 			want[name] = true

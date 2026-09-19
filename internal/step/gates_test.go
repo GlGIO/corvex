@@ -341,3 +341,36 @@ func TestMarkGateFailure_TheTerminalLineSaysWhy(t *testing.T) {
 	}
 	t.Error("no task_complete line was emitted")
 }
+
+// The reply to a question gate reaches the step's command.
+//
+// The gate type's own contract says approving a question means "continue, and
+// here is the answer". Measured before this worked: a recipe asked "which branch
+// should receive this PR?", a person answered `release/1.8.0`, the run resumed —
+// and the step ran exactly the command it would have run without asking. The
+// answer was evidence a reader could see and the work could not use.
+func TestRunShellForStep_CarriesTheAnswerToTheCommand(t *testing.T) {
+	e := gateExecutor(t, &mockProvider{}, nil)
+	acc := newEvidenceSet()
+	acc.setAnswer("release/1.8.0")
+
+	out, err := e.runShellForStep(context.Background(), &Run{}, &types.Task{ID: "S01"}, acc,
+		`printf '%s' "${CORVEX_GATE_ANSWER:-<vazio>}"`)
+	if err != nil {
+		t.Fatalf("running the step: %v (%s)", err, out)
+	}
+	if out != "release/1.8.0" {
+		t.Errorf("the command saw %q, want the answer a person typed", out)
+	}
+
+	// A step that asked nothing gets the variable empty, not absent: a recipe
+	// that reads it unconditionally must not die under `set -u`.
+	out, err = e.runShellForStep(context.Background(), &Run{}, &types.Task{ID: "S02"}, newEvidenceSet(),
+		`set -u; printf '[%s]' "$CORVEX_GATE_ANSWER"`)
+	if err != nil {
+		t.Fatalf("a step with no question died reading the variable: %v (%s)", err, out)
+	}
+	if out != "[]" {
+		t.Errorf("a step that asked nothing saw %q, want an empty answer", out)
+	}
+}

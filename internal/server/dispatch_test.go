@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/giovannialves/corvex/internal/ops"
+	"github.com/giovannialves/corvex/internal/run"
 	"github.com/giovannialves/corvex/internal/server"
 )
 
@@ -359,5 +361,64 @@ func TestRetryRun_RefusesWhileTheRunIsAlive(t *testing.T) {
 
 	if _, err := os.Stat(argv); err == nil {
 		t.Error("a refused retry still spawned the binary")
+	}
+}
+
+// Dispatching into ANOTHER repository — the feature, not its refusal.
+//
+// The refusal had a test from the day it was written; the half that does the
+// work did not, and "one screen over three repositories" is the reason the field
+// exists. Measured by hand against the real binary before it was frozen here: a
+// UI opened in one repo dispatched into a second, the run executed there, the
+// first repo was untouched, and the history showed it.
+func TestStartRun_RunsInAnotherKnownRepository(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	here := filepath.Join(root, "aqui")
+	other := filepath.Join(root, "outro")
+	for _, dir := range []string{here, other} {
+		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The other repository is KNOWN because a run of it is in the index — which
+	// is exactly how a repository joins the list the UI offers.
+	if _, err := (run.Registry{Repo: other, Home: home, Machine: "test-machine"}).Start(
+		run.StartOptions{Project: "marca"}); err != nil {
+		t.Fatalf("registering the other repo: %v", err)
+	}
+	t.Setenv("CORVEX_HOME", home)
+
+	argv := filepath.Join(root, "argv")
+	srv, err := server.New(server.Options{WorkDir: here, Binary: stubBinary(t, argv, "true", 0)})
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+	h := srv.Handler()
+
+	// The answer comes back CANONICAL — absolute, symlinks resolved — because
+	// that is the one spelling the runner compares repositories by, and on
+	// darwin /var is a symlink to /private/var. Asserting the path as typed
+	// would be asserting the spelling, not the behaviour.
+	other = ops.CanonicalRepo(other)
+
+	rec, body := post(t, h, srv, "/api/runs", `{"target":"marca","repo":"`+other+`"}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202: %s", rec.Code, rec.Body)
+	}
+	if dir, _ := body["dir"].(string); dir != other {
+		t.Errorf("dispatch dir = %q, want the other repository %q", dir, other)
+	}
+	if command, _ := body["command"].(string); !strings.HasPrefix(command, "cd "+other+" && corvex run start marca") {
+		t.Errorf("the parity line does not cd into the other repository: %q", command)
+	}
+
+	waitFor(t, "the child to run in the other repository", func() bool {
+		data, err := os.ReadFile(argv)
+		return err == nil && strings.Contains(string(data), other)
+	})
+	data, _ := os.ReadFile(argv)
+	if cwd := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)[0]; cwd != other {
+		t.Errorf("the run executed in %q, want %q", cwd, other)
 	}
 }

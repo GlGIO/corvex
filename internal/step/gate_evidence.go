@@ -18,6 +18,16 @@ import (
 type evidenceSet struct {
 	mu    sync.Mutex
 	items []types.Evidence
+	// answer is what a person typed at this step's question gate, if it had
+	// one. It lives HERE, and not on the Run, because a Run is shared by every
+	// task of a run — including the ones executing in parallel — and one
+	// story's answer appearing in another story's environment is the kind of
+	// bug that would be found months later by somebody reading a diff.
+	//
+	// At most one: the recipe validator refuses more than one gate that parks
+	// the run on a person per stage, because two of them collide on one gate
+	// file.
+	answer string
 }
 
 func newEvidenceSet() *evidenceSet { return &evidenceSet{} }
@@ -29,6 +39,26 @@ func (s *evidenceSet) add(e types.Evidence) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items = append(s.items, gate.Cap(e))
+}
+
+// setAnswer records the reply to this step's question gate.
+func (s *evidenceSet) setAnswer(a string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answer = a
+}
+
+// gateAnswer is what the step's command receives as $CORVEX_GATE_ANSWER.
+func (s *evidenceSet) gateAnswer() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.answer
 }
 
 func (s *evidenceSet) all() []types.Evidence {
