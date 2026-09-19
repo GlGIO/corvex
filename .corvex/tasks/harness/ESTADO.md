@@ -74,6 +74,63 @@ ausência de links, e é o que a skill manda perguntar ao humano). **Um `--dry-r
 seguido de um GET de leitura numa Feature real fecha isso em um minuto — precisa
 do dono, porque é a identidade dele no Azure.**
 
+## Rodada 21 — FECHADA (o passo que a UI não sabia dar)
+
+O dono apontou a falha de desenho: a tela dispara runs, mas o **worktree** em
+que a run acontece tinha de ser criado à mão, num terminal, com
+`git worktree add -b hotfix/73960 ../smartcare-73960 main`. O primeiro passo do
+modelo de operação — um worktree por trabalho, todos coordenados de uma página —
+acontecia fora do produto. E é o passo em que se escolhe o nome da branch, que é
+o que roteia o PR depois.
+
+Agora a tela faz os dois lados:
+
+- **`POST /api/worktrees`** corta o checkout com a branch que o chamador nomeia
+  (`ops.SetupWorktreeOn`), recusa nome que seja caminho, devolve a frase do
+  próprio git quando ele recusa, e avisa quando a base local está atrás do
+  upstream — o `git pull` que a versão manual desse fluxo sempre inclui e esta
+  não pode fazer sozinha.
+- **Os campos que a receita declarou** (`requires: - env:`) aparecem no
+  formulário, com o motivo que o autor escreveu. Viajam no **ambiente** do
+  processo, nunca no argv (`ps -Ao args` é legível por qualquer processo da
+  máquina), e um nome listado em `security.runner_only_env` é recusado ali.
+
+Quatro defeitos medidos no caminho, cada um com controle positivo:
+
+1. **A regra de `runner_only_env` era lida do diretório do PROCESSO**, não do
+   repositório em que a run vai acontecer. Uma UI fala por vários checkouts; um
+   dispatch para outro era julgado pela lista errada — e para uma lista de nomes
+   que nunca devem passar, ser julgado pela lista errada é passar. Medido: a URL
+   de produção aceita como campo de formulário.
+2. **A linha gravada punha a atribuição antes do `cd`**:
+   `INCIDENT_ID=73960 cd /path && corvex run start incident` define a variável
+   para o `cd` e entrega nada ao corvex. Colada, morre no preflight que o campo
+   existe para satisfazer — e só quando há `cd`, que é todo dispatch para
+   worktree.
+3. **Um worktree recém-criado não era um repositório válido para dispatch.** O
+   índice só conhece um checkout depois que algo rodou nele, então a tela recusava
+   o checkout que ela mesma acabara de criar. Agora um worktree de um repositório
+   conhecido é conhecido — perguntando ao git, não casando o padrão do caminho.
+4. **Medido no navegador:** o formulário criava o worktree, a branch aparecia na
+   lista, e ele não conseguia selecioná-la — o create respondia `/var/…` e o
+   `git worktree list` dizia `/private/var/…`. Atribuir um valor que nenhuma
+   opção carrega não seleciona nada, em silêncio, e o clique seguinte despacharia
+   para o que estivesse selecionado antes. Duas grafias de um diretório bastam
+   para mandar uma run para o checkout errado.
+
+O exercício de navegador (`e2e/ui_worktree_test.go`) anda o caminho inteiro:
+abrir o formulário, cortar `hotfix/73960-carrinho` a partir de `main`, escolher a
+receita, digitar o `INCIDENT_ID`, rodar — e conferir que o step escreveu **no
+worktree**, na branch certa, com o valor digitado, e **nada** no checkout
+principal.
+
+**Achado que não consertei:** `go test ./e2e/ -count=2` já falhava antes desta
+rodada (`TestRunSurface_BareCorvexAnswersWithState`,
+`TestUI_PauseAndResumeFromTheScreen`). Os testes compartilham o índice global de
+runs, então a segunda execução vê as linhas da primeira. É defeito de isolamento
+do próprio suite, não do produto — mas é a regra desta obra rodar `-count=2`, e
+hoje ela não é verdade aqui.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

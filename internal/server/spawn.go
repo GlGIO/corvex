@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -29,6 +30,14 @@ type startRequest struct {
 	// from an abandoned experiment, and the person looking at the screen is the
 	// one who knows.
 	Here bool `json:"here,omitempty"`
+	// Inputs are the values for the variables the recipe declared
+	// (`requires: - env:`), typed by the person dispatching.
+	//
+	// They travel in the ENVIRONMENT of the spawned run, never in its argv: a
+	// value on a command line is readable by every process on the machine
+	// (`ps -Ao args`), which is the same reason the flow tools here pass tokens
+	// through a curl config instead of a header flag.
+	Inputs map[string]string `json:"inputs,omitempty"`
 	// Repo dispatches into a repository other than the one the UI opened. Empty
 	// means the local one.
 	//
@@ -68,11 +77,78 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, repoErr)
 		return
 	}
+	inputs, inputErr := s.acceptInputs(repo, req)
+	if inputErr != nil {
+		fail(w, http.StatusBadRequest, inputErr)
+		return
+	}
 	dir := s.dispatchDir(repo, req)
 	args := startArgs(req)
-	command := dispatchCommand(dir, s.opts.WorkDir, args)
+	command := dispatchCommand(dir, s.opts.WorkDir, prefixInputs(inputs), args)
 
-	s.spawnDetached(w, dir, req.Target, args, command)
+	s.spawnDetached(w, dir, req.Target, args, command, inputs...)
+}
+
+// acceptInputs turns the typed values into environment assignments, refusing the
+// names the repository declared as the runner's own.
+//
+// `security.runner_only_env` is the list of variables that must never reach the
+// worker — credentials the runner holds and the agent does not. A UI field is
+// exactly where somebody would paste one, so this is where it is refused: a
+// secret typed into a browser form ends up in the action log, in the process
+// environment of a detached run and in whatever the person's clipboard does
+// next. Inputs are ids, branch names and commands; credentials come from the
+// environment corvex was started in.
+//
+// The list is read from the repository the run is DISPATCHED INTO, not from the
+// process working directory. One UI speaks for several repositories — that is
+// the point of the repo selector — and ops.LoadConfig answers for whichever
+// directory the server happens to have been started in. A dispatch into another
+// repository would then be judged by the wrong repository's rules, and for a
+// list of names that must never be let through, being judged by the wrong list
+// means being let through.
+func (s *Server) acceptInputs(dir string, req startRequest) ([]string, error) {
+	if len(req.Inputs) == 0 {
+		return nil, nil
+	}
+	cfg, err := ops.LoadConfigAt(dir)
+	var reserved map[string]bool
+	if err == nil && cfg != nil {
+		reserved = make(map[string]bool, len(cfg.Security.RunnerOnlyEnv))
+		for _, name := range cfg.Security.RunnerOnlyEnv {
+			reserved[strings.ToUpper(strings.TrimSpace(name))] = true
+		}
+	}
+	names := make([]string, 0, len(req.Inputs))
+	for name := range req.Inputs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		clean := strings.TrimSpace(name)
+		if clean == "" {
+			continue
+		}
+		if reserved[strings.ToUpper(clean)] {
+			return nil, fmt.Errorf("%s is declared in security.runner_only_env: it is the runner's own credential, not an input to type into a form. Export it in the shell that runs corvex", clean)
+		}
+		if strings.ContainsAny(clean, "= \t\n") {
+			return nil, fmt.Errorf("%q is not a variable name", name)
+		}
+		out = append(out, clean+"="+req.Inputs[name])
+	}
+	return out, nil
+}
+
+// prefixInputs renders the assignments the way a person would type them, which
+// is what makes the recorded line runnable: `INCIDENT_ID=73960 corvex run …`.
+func prefixInputs(inputs []string) string {
+	if len(inputs) == 0 {
+		return ""
+	}
+	return strings.Join(inputs, " ") + " "
 }
 
 // spawnDetached is the one place a run is started from the UI: resolve the
@@ -83,7 +159,7 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 // part that is easy to get subtly wrong and invisible when wrong — the reaping,
 // the pid read before Release, the outcome line — and the second copy is always
 // the one that misses the fix.
-func (s *Server) spawnDetached(w http.ResponseWriter, dir, label string, args []string, command string) {
+func (s *Server) spawnDetached(w http.ResponseWriter, dir, label string, args []string, command string, extraEnv ...string) {
 	bin, err := s.binary()
 	if err != nil {
 		action := s.actions.Record(command, err)
@@ -102,6 +178,9 @@ func (s *Server) spawnDetached(w http.ResponseWriter, dir, label string, args []
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	// The run must not inherit this server's controlling terminal or process
 	// group: with Setsid, Ctrl-C in the shell that started `corvex ui` cannot
@@ -198,20 +277,46 @@ func (s *Server) dispatchRepo(req startRequest) (string, error) {
 	if want == local {
 		return s.opts.WorkDir, nil
 	}
-	for _, ws := range s.gates().Workspaces(s.opts.WorkDir) {
+	workspaces := s.gates().Workspaces(s.opts.WorkDir)
+	for _, ws := range workspaces {
 		if ws.Path == want {
 			return ws.Path, nil
 		}
 	}
-	return "", fmt.Errorf("%q is not a repository this machine has run: the list is the repository this UI opened plus the ones in the run index — run corvex there once, or open a UI in it", asked)
+	// A worktree of a repository on the list IS on the list.
+	//
+	// The index only knows a checkout after something has run in it, so a
+	// worktree created a second ago — by the button on this very screen — would
+	// otherwise be refused as "a repository this machine has never run", which
+	// is both true and useless: the machine has run its repository, and a
+	// worktree is that repository with a different branch checked out. git is
+	// asked rather than the path convention being matched, so the answer is
+	// about a real checkout and not about a directory whose name looks right.
+	for _, ws := range append([]ops.Workspace{{Path: local}}, workspaces...) {
+		list, err := ops.ListWorktrees(ws.Path)
+		if err != nil {
+			continue
+		}
+		for _, wt := range list {
+			if ops.CanonicalRepo(wt.Path) == want {
+				return wt.Path, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%q is not a repository this machine has run, nor a worktree of one: the list is the repository this UI opened plus the ones in the run index — run corvex there once, or open a UI in it", asked)
 }
 
 // dispatchCommand is the parity line for a spawn: what a person would have typed
 // to do the same thing, including the `cd` when the run does not happen where
 // the UI is. A recorded command that silently omits the directory is a command
 // that does something else when pasted.
-func dispatchCommand(dir, workDir string, args []string) string {
-	command := "corvex " + strings.Join(args, " ")
+// The assignments go on the corvex call and not on the whole line. MEASURED:
+// with the prefix in front, a dispatch into a worktree recorded
+// `INCIDENT_ID=73960 cd /path && corvex run start incident`, which sets the
+// variable for `cd` and hands corvex nothing — the pasted line dies in the
+// preflight the field exists to satisfy.
+func dispatchCommand(dir, workDir, prefix string, args []string) string {
+	command := prefix + "corvex " + strings.Join(args, " ")
 	if dir != "" && dir != workDir {
 		return "cd " + dir + " && " + command
 	}
@@ -593,5 +698,5 @@ func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
 		dir = s.opts.WorkDir
 	}
 	args := []string{"run", "retry", target, "--step", step, "--plain", "--yes"}
-	s.spawnDetached(w, dir, target+"-"+step, args, dispatchCommand(dir, s.opts.WorkDir, args))
+	s.spawnDetached(w, dir, target+"-"+step, args, dispatchCommand(dir, s.opts.WorkDir, "", args))
 }

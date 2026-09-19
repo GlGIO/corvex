@@ -45,6 +45,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/actions", s.handleActions)
 	s.mux.HandleFunc("GET /api/recipes", s.handleRecipes)
 	s.mux.HandleFunc("GET /api/repos", s.handleRepos)
+	s.mux.HandleFunc("GET /api/worktrees", s.handleWorktrees)
+	s.mux.HandleFunc("POST /api/worktrees", s.handleCreateWorktree)
 	s.mux.HandleFunc("GET /assets/", s.handleAsset)
 	s.mux.HandleFunc("GET /", s.handleIndex)
 }

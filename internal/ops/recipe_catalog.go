@@ -24,6 +24,22 @@ type RecipeSummary struct {
 	Path        string `json:"path"`
 	Compiled    bool   `json:"compiled"`
 	Problem     string `json:"problem,omitempty"`
+	// Inputs are the variables the recipe says it needs (`requires: - env:`).
+	//
+	// They are on the catalogue because a screen that offers to start a run has
+	// to be able to ASK for them. Without this, the UI could dispatch a recipe
+	// and the run would die in its own preflight saying `env INCIDENT_ID —
+	// missing`, and the person would go to a terminal to do what they had just
+	// tried to do on the screen.
+	Inputs []RecipeInput `json:"inputs,omitempty"`
+}
+
+// RecipeInput is one declared input: the NAME the runner needs set, and the
+// recipe author's one-line reason. Never a value — the catalogue reads a recipe,
+// and a recipe holds no values.
+type RecipeInput struct {
+	Name string `json:"name"`
+	Why  string `json:"why,omitempty"`
 }
 
 // RecipeStageView is one stage as the catalogue shows it: the shape of the work
@@ -85,6 +101,11 @@ func ListRecipes(workDir string) []RecipeSummary {
 		s.Description, s.Stages = r.Description, len(r.Stages)
 		for _, st := range r.Stages {
 			s.Gates += len(st.Gates)
+		}
+		for _, req := range r.Requires {
+			if name := strings.TrimSpace(req.Env); name != "" {
+				s.Inputs = append(s.Inputs, RecipeInput{Name: name, Why: req.Why})
+			}
 		}
 		out = append(out, s)
 	}

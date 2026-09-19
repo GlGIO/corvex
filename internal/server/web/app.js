@@ -272,7 +272,14 @@ async function renderLogDetail(root, name) {
   root.append(el('pre', { class: 'log', text: log.content || '(empty)' }));
 }
 
-// ── dispatch (2c) ───────────────────────────────────────────────────────────
+// ── dispatch (2c) ─────────────────────────────────────────────
+// The form is the whole flow, in the order a person does it: which repository,
+// which checkout (or make one), which recipe, what the recipe needs to know.
+//
+// The checkout half used to be missing, and its absence was the seam where the
+// tool stopped being usable from the screen: the operating model is one worktree
+// per piece of work, so every run started with `git worktree add -b … main` in a
+// terminal, and only then did the UI have anywhere to dispatch into.
 async function dispatchForm() {
   // The repository comes FIRST, because everything under it depends on which one
   // is meant: which recipes exist, which worktree a project has, which checkout
@@ -283,22 +290,86 @@ async function dispatchForm() {
   const current = (repos || []).find((r) => r.current) || { path: '' };
   const repo = el('select', {}, ...(repos || []).map((r) =>
     el('option', { value: r.path, selected: r.current ? 'selected' : null }, r.name)));
-  const recipeList = el('datalist', { id: 'recipe-list' });
-  const loadRecipes = async () => {
-    const list = await api.get(`/api/recipes?repo=${encodeURIComponent(repo.value || current.path)}`).catch(() => []);
-    recipeList.replaceChildren(...(list || []).map((r) => el('option', { value: r.name })));
+  const repoPath = () => repo.value || current.path;
+
+  // The checkout the run happens in. It defaults to the repository itself, which
+  // keeps the old behaviour intact: a project with a `<repo>-<project>` worktree
+  // is still redirected into it by the server.
+  const worktree = el('select', {});
+  const loadWorktrees = async () => {
+    const list = await api.get(`/api/worktrees?repo=${encodeURIComponent(repoPath())}`).catch(() => []);
+    worktree.replaceChildren(...(list || []).map((w) =>
+      el('option', { value: w.path },
+        w.main ? `${w.branch || 'detached'} (main checkout)` : `${w.branch || 'detached'} — ${w.path.split('/').pop()}`)));
   };
-  repo.addEventListener('change', loadRecipes);
+
+  const recipeList = el('datalist', { id: 'recipe-list' });
+  let recipes = [];
+  const loadRecipes = async () => {
+    recipes = await api.get(`/api/recipes?repo=${encodeURIComponent(repoPath())}`).catch(() => []) || [];
+    recipeList.replaceChildren(...recipes.map((r) => el('option', { value: r.name })));
+    syncInputs();
+  };
+  repo.addEventListener('change', () => { loadRecipes(); loadWorktrees(); });
+
   const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list' });
+  // What the recipe says it needs (`requires: - env:`), asked for here instead of
+  // being discovered as a preflight failure in a log. The fields are rebuilt
+  // whenever the recipe changes, so switching recipes cannot leave the previous
+  // one's values behind to be posted with the next.
+  const inputsBox = el('div', { class: 'inputs' });
+  const inputFields = new Map();
+  function syncInputs() {
+    const r = recipes.find((x) => x.name === target.value.trim());
+    inputFields.clear();
+    if (!r || !(r.inputs || []).length) { inputsBox.replaceChildren(); return; }
+    inputsBox.replaceChildren(...r.inputs.map((inp) => {
+      const field = el('input', { placeholder: inp.name });
+      inputFields.set(inp.name, field);
+      return el('label', { class: 'field' }, el('span', { class: 'dim', text: inp.why || inp.name }), field);
+    }));
+  }
+  target.addEventListener('change', syncInputs);
+  target.addEventListener('input', syncInputs);
+
   const env = el('select', {}, el('option', { value: 'simple' }, 'simple'), el('option', { value: 'stack' }, 'stack (database)'));
   // A project with a worktree runs IN its worktree (spawn.go), which is the
   // whole point of one worktree per feature. The box is the way to say "no,
   // this checkout" — the CLI's --here, on the surface where the person can see
   // which directory they are about to write into.
   const here = el('input', { type: 'checkbox' });
+
+  // Making the checkout. Separate button, separate request: creating a branch is
+  // cheap and reversible, starting a run spends money, and a person setting up
+  // three of these before starting any must be able to do the first half alone.
+  const wtName = el('input', { placeholder: 'name (73960)' });
+  const wtBranch = el('input', { placeholder: 'branch (feat/<name>)' });
+  const wtBase = el('input', { placeholder: 'base', value: 'main' });
+  const maker = el('div', { class: 'row hidden' },
+    wtName, wtBranch, wtBase,
+    el('button', {
+      onclick: async () => {
+        try {
+          const res = await api.post('/api/worktrees', {
+            repo: repo.value, name: wtName.value.trim(),
+            branch: wtBranch.value.trim(), base: wtBase.value.trim(),
+          });
+          await loadWorktrees();
+          worktree.value = res.path;
+          status(`${res.branch} at ${res.path}${res.warning ? ' — ' + res.warning : ''} — ${res.command}`, res.warning ? 'warn' : 'ok');
+        } catch (e) { status(e.message, 'bad'); }
+      },
+    }, 'Create'),
+  );
+
   const box = el('div', { class: 'card' },
     el('div', { class: 'row' },
       repo,
+      worktree,
+      el('button', { onclick: () => maker.classList.toggle('hidden') }, '+ worktree'),
+    ),
+    maker,
+    el('div', { class: 'row' },
       target,
       recipeList,
       env,
@@ -306,19 +377,26 @@ async function dispatchForm() {
       el('button', {
         class: 'primary',
         onclick: async () => {
+          const inputs = {};
+          inputFields.forEach((field, name) => { if (field.value.trim()) inputs[name] = field.value.trim(); });
           try {
-            const res = await api.post('/api/runs', { target: target.value.trim(), environment: env.value, here: here.checked, repo: repo.value });
+            const res = await api.post('/api/runs', {
+              target: target.value.trim(), environment: env.value, here: here.checked,
+              repo: worktree.value || repo.value, inputs,
+            });
             status(`started in ${res.dir} — ${res.command}`, 'ok');
             refresh();
           } catch (e) { status(e.message, 'bad'); }
         },
       }, 'Run'),
     ),
-    el('div', { class: 'dim', text: 'The run is detached: closing this page does not stop it. A project with a worktree runs inside it unless you tick "run here".' }),
+    inputsBox,
+    el('div', { class: 'dim', text: 'The run is detached: closing this page does not stop it. It runs in the checkout selected above; "+ worktree" cuts a new branch from a base and adds it to that list.' }),
   );
   const view = $('#view');
   view.prepend(box);
   loadRecipes();
+  loadWorktrees();
 }
 
 // ── leaving a detail screen ─────────────────────────────────────────────────
