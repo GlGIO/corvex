@@ -120,13 +120,31 @@ PENDING em todo run.
 **Retry pela UI** na mesma leva: re-executar UM step do card do run ou do detalhe
 dele, com recusa 409 se o run está vivo.
 
+## Rodada 9 — FECHADA
+
+**As recipes foram preflightadas contra o repositório REAL do SmartCare**, o que
+nunca tinha sido feito (elas só haviam passado por `recipe validate`, que não
+olha a máquina). A `pilot` compila e resolve todas as tools aqui; a `incident`
+também, com o repro expandido na ordem certa.
+
+**E isso achou o meu próprio erro**: o guard de acesso a PRD que eu escrevera na
+`incident.yaml` fazia `grep '^mcp:'` — e a chave do corvex é `mcp_servers:`,
+dentro de `sandbox:`. Ele teria RECUSADO um repo configurado certo e PASSADO num
+com a chave errada. Virou `requires: - mcp: prd` (`9bfca1e`), conferido contra a
+config resolvida — a porta da regra em vez de uma segunda grafia dela.
+
+**Runbook** em `smartcare/.corvex/recipes/README.md`: o que digitar, o que cada
+parada significa, o que fazer depois — para as cinco recipes.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
    identidade no Azure, e a medição do `Dependency-Reverse`.
-2. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
+2. **Declarar o MCP de PRD** no `smartcare/.corvex/config.yaml` (template
+   comentado já está lá). Sem ele a `incident` recusa no preflight — de propósito.
+3. **A sonda pós-deploy** da `/pilot-incident` (Fase 4) — não cabe dentro do run
    por construção: o deploy é humano. Candidata natural a `corvex` agendado.
-3. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
+4. **Conflito entre stories** — hoje o merge falha e para. A skill delega a um
    agente ("Sincronizar"); isso é decisão de produto, não dívida.
 
 ## Regras desta obra
