@@ -84,19 +84,45 @@ func mergeEnv(base []string, extra map[string]string, deny []string) []string {
 	return env
 }
 
-// BuildCommand implements provider.CommandBuilder.
-func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, map[string]string) {
+// argsFor is the ONE assembly of the CLI invocation: the request's own flags,
+// the MCP config when the repository declares servers, and whatever extra args
+// the sandbox config adds.
+//
+// It exists because there were two assemblies and only one of them was complete.
+// `BuildCommand` (the sandboxed path) added `--mcp-config` and the extra args;
+// `ExecuteWithProgress` — which is the path a LOCAL sandbox actually takes, and
+// local is the default — called buildArgs and stopped there. So a repository
+// that declared an MCP server got it materialised and passed in Docker and got
+// NOTHING locally: the preflight said the dependency was satisfied (it is
+// declared), the agent had no such tool, and the failure looked like a model
+// that would not use the database it was told to use.
+//
+// MEASURED before the fix, with a stub recording the argv: zero occurrences of
+// `--mcp-config` on a local run with one server declared, and no `mcp.json`
+// written anywhere.
+func (c *ClaudeCLI) argsFor(req types.ExecuteRequest) []string {
 	args := buildArgs(req)
-
-	if len(c.cfg.Sandbox.MCPServers) > 0 {
+	if c.cfg == nil {
+		return args
+	}
+	// `req.AllowMCP` is the enforcement point of a rule that had none: only the
+	// worker gets the declared servers. Fixing the missing `--mcp-config` on
+	// the local path without this would have handed the REVIEWER a production
+	// database connection it never needed — measured on the first run after
+	// that fix: two invocations carried the flag, and the second was the judge.
+	if req.AllowMCP && len(c.cfg.Sandbox.MCPServers) > 0 {
 		if err := writeMCPConfig(c.cfg.Sandbox.MCPServers); err != nil {
 			log.Warn("failed to write MCP config, continuing without MCP servers", "err", err)
 		} else {
 			args = append(args, "--mcp-config", mcpConfigRelPath)
 		}
 	}
+	return append(args, c.cfg.Sandbox.WorkerExtraArgs...)
+}
 
-	args = append(args, c.cfg.Sandbox.WorkerExtraArgs...)
+// BuildCommand implements provider.CommandBuilder.
+func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, map[string]string) {
+	args := c.argsFor(req)
 
 	env := make(map[string]string)
 	for k, v := range req.Env {

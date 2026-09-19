@@ -215,6 +215,22 @@ type ExecuteRequest struct {
 	// because that is the only place it is true — everywhere else it is a
 	// statement about a set nobody enforces.
 	DenyEnv []string
+	// AllowMCP says this request may receive the MCP servers the repository
+	// declared. Only the WORKER sets it.
+	//
+	// The rule is older than the field: "only the Worker receives MCP servers;
+	// the Planner and the Reviewer run without them" has been in the config
+	// documentation since MCP support landed. It had no enforcement point —
+	// the provider added the servers to every invocation it built, so a
+	// reviewer judging a diff was handed the same production database
+	// connection the worker uses. The judge does not need to query production
+	// to read a diff, and a credential handed to something that does not need
+	// it is the definition of the blast radius nobody measured.
+	//
+	// It lives on the REQUEST because the provider is where the command is
+	// assembled, and the only place the difference between the two roles is
+	// still visible at that point.
+	AllowMCP bool
 }
 
 type ExecuteResult struct {

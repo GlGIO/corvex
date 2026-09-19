@@ -108,9 +108,14 @@ func (w *Worker) buildRequest(t *types.Task, anchorCtx string, contextDocs []str
 		routedSkill = w.skillRouting[string(t.Type)]
 	}
 	return types.ExecuteRequest{
-		Prompt:  buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill, answered),
-		Model:   w.model,
-		WorkDir: w.workDir,
+		// The worker is the role the declared MCP servers exist for: the step
+		// that reads production to do the work. The reviewer and the planner
+		// build their requests without this, and the provider then leaves the
+		// servers out of their invocation.
+		AllowMCP: true,
+		Prompt:   buildWorkerPrompt(t, anchorCtx, contextDocs, agentPrompt, diagnosis, routedSkill, answered),
+		Model:    w.model,
+		WorkDir:  w.workDir,
 		// Hard block: the worker LLM cannot touch corvex state files
 		// (tasks.md, anchor.yaml, decisions.md, spec.md). Status transitions
 		// happen through the orchestrator, not through Edit/Write tool calls.

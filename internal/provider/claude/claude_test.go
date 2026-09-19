@@ -815,7 +815,10 @@ func TestBuildCommand_WithMCPServers(t *testing.T) {
 	}
 	cli := New(cfg)
 
-	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+	// AllowMCP is the worker's flag: the declared servers exist for the role
+	// that reads production to do the work, and the reviewer builds its request
+	// without it.
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 
 	// args should contain --mcp-config .corvex/mcp.json
 	var found bool
@@ -867,7 +870,10 @@ func TestBuildCommand_NoMCPServers_NoFlag(t *testing.T) {
 	cfg := config.Default()
 	cli := New(cfg)
 
-	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+	// AllowMCP is the worker's flag: the declared servers exist for the role
+	// that reads production to do the work, and the reviewer builds its request
+	// without it.
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 
 	for _, a := range args {
 		if a == "--mcp-config" {
@@ -893,7 +899,7 @@ func TestBuildCommand_MCPExpandsEnvVars(t *testing.T) {
 	}
 	cli := New(cfg)
 
-	cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+	cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 
 	data, err := os.ReadFile(filepath.Join(dir, ".corvex", "mcp.json"))
 	if err != nil {
@@ -926,7 +932,10 @@ func TestBuildCommand_InvalidMCPServer_SkipsFlag(t *testing.T) {
 	}
 	cli := New(cfg)
 
-	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet"})
+	// AllowMCP is the worker's flag: the declared servers exist for the role
+	// that reads production to do the work, and the reviewer builds its request
+	// without it.
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 
 	for _, a := range args {
 		if a == "--mcp-config" {
@@ -1086,5 +1095,58 @@ func TestWriteMCPConfig_Perms0600(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("mcp.json mode = %o, want 600 (secrets must not be world-readable)", perm)
+	}
+}
+
+// The MCP servers reach the WORKER and nobody else, on every path.
+//
+// Two defects met here, and the second was created by fixing the first:
+//
+//   - `ExecuteWithProgress` — the path a LOCAL sandbox takes, and local is the
+//     default — assembled its own args and left the MCP config out. A repository
+//     that declared a production database got it in Docker and got nothing
+//     locally, while the preflight reported the dependency satisfied because it
+//     was DECLARED. The failure then looked like a model refusing to use a tool
+//     it had never been given.
+//   - Handing both paths the same assembly gave the REVIEWER the servers too.
+//     The rule that only the worker gets them had been in the config
+//     documentation since MCP landed and had no enforcement point anywhere.
+func TestArgsFor_OnlyTheWorkerGetsTheDeclaredServers(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{{Name: "prd", Command: "/bin/echo"}}
+	cfg.Sandbox.WorkerExtraArgs = []string{"--fallback-model", "sonnet"}
+	cli := New(cfg)
+
+	carries := func(args []string, flag string) bool {
+		for _, a := range args {
+			if a == flag {
+				return true
+			}
+		}
+		return false
+	}
+
+	worker := cli.argsFor(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
+	if !carries(worker, "--mcp-config") {
+		t.Errorf("the worker did not receive the declared servers: %v", worker)
+	}
+	if !carries(worker, "--fallback-model") {
+		t.Errorf("the sandbox's extra args were dropped: %v", worker)
+	}
+
+	// The judge reads a diff. It does not need production, and a credential
+	// handed to something that does not need it is blast radius nobody measured.
+	reviewer := cli.argsFor(types.ExecuteRequest{Prompt: "you are a code reviewer", Model: "sonnet"})
+	if carries(reviewer, "--mcp-config") {
+		t.Errorf("the reviewer was handed the production servers: %v", reviewer)
+	}
+
+	// And both assemblies are the same one: the sandboxed path and the local
+	// path cannot disagree about what the agent was given.
+	_, built, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
+	if strings.Join(built, " ") != strings.Join(worker, " ") {
+		t.Errorf("the two paths build different commands:\n docker: %v\n local:  %v", built, worker)
 	}
 }

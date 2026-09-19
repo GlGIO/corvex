@@ -29,7 +29,10 @@ func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRe
 		return nil, err
 	}
 
-	args := buildArgs(req)
+	// The same assembly the sandboxed path uses — see argsFor. This line read
+	// `buildArgs(req)` and dropped both the MCP config and the sandbox's extra
+	// args on every LOCAL run, which is the default.
+	args := c.argsFor(req)
 	cmd := c.cmdRunner(ctx, c.binaryCmd, args...)
 	configureCmd(cmd, req)
 
@@ -118,7 +121,10 @@ func (c *ClaudeCLI) Stream(ctx context.Context, req types.ExecuteRequest) (<-cha
 		return nil, err
 	}
 
-	args := buildArgs(req)
+	// The same assembly the sandboxed path uses — see argsFor. This line read
+	// `buildArgs(req)` and dropped both the MCP config and the sandbox's extra
+	// args on every LOCAL run, which is the default.
+	args := c.argsFor(req)
 	cmd := c.cmdRunner(ctx, c.binaryCmd, args...)
 	configureCmd(cmd, req)
 
