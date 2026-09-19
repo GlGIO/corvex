@@ -356,7 +356,17 @@ requires:
     why: "az is how the ship stage opens the PR"
   - bin: scripts/deploy.sh       # a repo script, resolved against the workDir
     why: "renaming it should fail here, not in the last stage"
+  - env: FEATURE_ID              # set and non-empty in the runner's environment
+    why: "which feature this run delivers"
+  - mcp: prd                     # declared in sandbox.mcp_servers
+    why: "the diagnosis reads production; without it the run burns tokens to conclude it cannot"
 ```
+
+An `mcp:` requirement is checked against the config corvex RESOLVED, not by
+reading the file: a guard that greps for a key is a second spelling of the rule,
+and the version of this one that lived in a recipe grepped `mcp:` while the key
+is `mcp_servers:` — it would have refused a correctly configured repository and
+passed a misspelled one.
 
 A `bin:` with a separator is checked as a file — the same file the stage's
 command will resolve, since stages run with the workDir as their working

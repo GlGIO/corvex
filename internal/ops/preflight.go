@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/giovannialves/corvex/internal/config"
 	"github.com/giovannialves/corvex/internal/recipe"
 )
 
@@ -22,7 +23,7 @@ import (
 
 // RequirementCheck is one declared dependency and what was found.
 type RequirementCheck struct {
-	Kind string `json:"kind"` // "bin" or "env"
+	Kind string `json:"kind"` // "bin", "env" or "mcp"
 	Name string `json:"name"`
 	Why  string `json:"why,omitempty"`
 	OK   bool   `json:"ok"`
@@ -46,10 +47,22 @@ func PreflightRequirements(workDir, project string) ([]RequirementCheck, error) 
 		// to report: the compile step reports it with a better message.
 		return nil, nil
 	}
-	return checkRequirements(workDir, r.Requires), nil
+	var cfg config.Config
+	if loaded, _, cerr := LoadConfig(); cerr == nil && loaded != nil {
+		cfg = *loaded
+	}
+	// A config that cannot be read is the compile step's error to report, with a
+	// better message than this one could give. What must not happen is an `mcp:`
+	// requirement passing because nothing was read — the zero value declares no
+	// servers, so it refuses.
+	return checkRequirementsWithConfig(workDir, r.Requires, cfg), nil
 }
 
 func checkRequirements(workDir string, reqs []recipe.Requirement) []RequirementCheck {
+	return checkRequirementsWithConfig(workDir, reqs, config.Config{})
+}
+
+func checkRequirementsWithConfig(workDir string, reqs []recipe.Requirement, cfg config.Config) []RequirementCheck {
 	out := make([]RequirementCheck, 0, len(reqs))
 	for _, req := range reqs {
 		switch {
@@ -61,6 +74,17 @@ func checkRequirements(workDir string, reqs []recipe.Requirement) []RequirementC
 				c.OK, c.Detail = true, path
 			} else {
 				c.Detail = whyNotRunnable(req.Bin, target, err)
+			}
+			out = append(out, c)
+		case strings.TrimSpace(req.MCP) != "":
+			// Asked of the resolved config, never of the file: see the comment
+			// on recipe.Requirement.MCP for the spelling this avoids.
+			c := RequirementCheck{Kind: "mcp", Name: req.MCP, Why: req.Why, Detail: "not declared in mcp_servers:"}
+			for _, srv := range cfg.Sandbox.MCPServers {
+				if strings.EqualFold(strings.TrimSpace(srv.Name), strings.TrimSpace(req.MCP)) {
+					c.OK, c.Detail = true, "declared"
+					break
+				}
 			}
 			out = append(out, c)
 		case strings.TrimSpace(req.Env) != "":

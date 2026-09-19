@@ -45,6 +45,22 @@ type Requirement struct {
 	// environment. Only the name is ever read, never the value — and the value
 	// does not have to reach the worker at all (see security.runner_only_env).
 	Env string `yaml:"env"`
+	// MCP is an MCP server the run needs declared in `.corvex/config.yaml`
+	// (`mcp_servers:`), by name.
+	//
+	// It exists because "the agent has access to production data" is a
+	// dependency exactly like a CLI being installed, and it is the one that
+	// fails most expensively: the reference flow records an agent burning 85k
+	// tokens to conclude "I could not prove it, the database MCP does not exist
+	// in my environment". A recipe that needs a server says so, and the check
+	// runs before the first token.
+	//
+	// It is checked against the RESOLVED config, not by reading the YAML: a
+	// guard that greps for a key is a second spelling of the rule, and the first
+	// version of this one grepped `mcp:` while the key is `mcp_servers:` — it
+	// would have refused a correctly configured repo and passed a misspelled
+	// one.
+	MCP string `yaml:"mcp"`
 	// Why is the one-line reason, printed when the check fails. Optional, and
 	// worth writing: "az is how ship opens the PR" turns a missing binary from
 	// a puzzle into an instruction.
@@ -153,13 +169,25 @@ func (r *Recipe) Validate() error {
 		}
 	}
 
+	// One requirement names ONE thing. The rule is worth keeping as the kinds
+	// grow — `bin`, `env` and now `mcp` — because the whole value of a preflight
+	// is a failure that points at a single fix, and a requirement carrying two
+	// names reports the wrong one half the time.
 	for i, req := range r.Requires {
-		bin, env := strings.TrimSpace(req.Bin), strings.TrimSpace(req.Env)
+		var named []string
+		for _, f := range []struct{ key, value string }{
+			{"bin", req.Bin}, {"env", req.Env}, {"mcp", req.MCP},
+		} {
+			if strings.TrimSpace(f.value) != "" {
+				named = append(named, "`"+f.key+"`")
+			}
+		}
 		switch {
-		case bin == "" && env == "":
-			return fmt.Errorf("recipe %q: requires[%d] declares neither `bin` nor `env`", r.Name, i)
-		case bin != "" && env != "":
-			return fmt.Errorf("recipe %q: requires[%d] declares both `bin` and `env` — split it in two, so the failure names one thing", r.Name, i)
+		case len(named) == 0:
+			return fmt.Errorf("recipe %q: requires[%d] declares none of `bin`, `env` or `mcp`", r.Name, i)
+		case len(named) > 1:
+			return fmt.Errorf("recipe %q: requires[%d] declares %s — split it in two, so the failure names one thing",
+				r.Name, i, strings.Join(named, " and "))
 		}
 	}
 

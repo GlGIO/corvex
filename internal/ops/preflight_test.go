@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/recipe"
 )
 
 // The preflight (F9). What it has to get right is the order: it answers before
@@ -335,5 +338,71 @@ func TestPreflight_BinThatIsADirectorySaysSo(t *testing.T) {
 	}
 	if !strings.Contains(checks[0].Detail, "is a directory") {
 		t.Errorf("Detail is %q, want it to say the path is a directory instead of claiming it is not there", checks[0].Detail)
+	}
+}
+
+// `requires: - mcp: <name>` is checked against the RESOLVED config.
+//
+// "The agent can reach production data" is a dependency exactly like a CLI being
+// installed, and it is the one that fails most expensively: the reference flow
+// records an agent burning 85k tokens to conclude "I could not prove it, the
+// database MCP does not exist in my environment".
+//
+// The check asks the config corvex parsed, not the file. The first version of
+// this guard lived in a recipe and grepped `^mcp:` — while the key is
+// `mcp_servers:`. It would have refused a correctly configured repository and
+// passed a misspelled one, which is the whole failure mode of a control that
+// reimplements the rule instead of going through its door.
+func TestPreflight_MCPRequirementReadsTheResolvedConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		servers []config.MCPServerConfig
+		want    bool
+		detail  string
+	}{
+		{
+			name:    "declared",
+			servers: []config.MCPServerConfig{{Name: "prd"}},
+			want:    true,
+			detail:  "declared",
+		},
+		{
+			name:    "declared under another name",
+			servers: []config.MCPServerConfig{{Name: "stg"}},
+			want:    false,
+			detail:  "not declared in mcp_servers:",
+		},
+		{
+			name:    "nothing configured at all",
+			servers: nil,
+			want:    false,
+			detail:  "not declared in mcp_servers:",
+		},
+		{
+			name:    "case does not decide access to production",
+			servers: []config.MCPServerConfig{{Name: "PRD"}},
+			want:    true,
+			detail:  "declared",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg config.Config
+			cfg.Sandbox.MCPServers = tt.servers
+			checks := checkRequirementsWithConfig(t.TempDir(),
+				[]recipe.Requirement{{MCP: "prd", Why: "o diagnóstico lê PRD"}}, cfg)
+			if len(checks) != 1 {
+				t.Fatalf("got %d checks, want 1", len(checks))
+			}
+			if checks[0].OK != tt.want {
+				t.Errorf("OK = %v, want %v (%s)", checks[0].OK, tt.want, checks[0].Detail)
+			}
+			if checks[0].Detail != tt.detail {
+				t.Errorf("Detail = %q, want %q", checks[0].Detail, tt.detail)
+			}
+			if checks[0].Kind != "mcp" {
+				t.Errorf("Kind = %q, want mcp", checks[0].Kind)
+			}
+		})
 	}
 }
