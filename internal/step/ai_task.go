@@ -126,7 +126,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		workerCost = result.CostUSD
 	}
 	if err != nil {
-		if ceilErr := e.charge(r, t, st, workerCost); ceilErr != nil {
+		if ceilErr := e.charge(r, t, st, workerCost, event.PhaseWorker); ceilErr != nil {
 			return false, ceilErr
 		}
 		// The attempt is charged, so it is also RECORDED. Until a dogfood run
@@ -168,7 +168,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		reviewerCost = reviewResult.CostUSD
 	}
 	attemptCost := workerCost + reviewerCost
-	if ceilErr := e.charge(r, t, st, attemptCost); ceilErr != nil {
+	if ceilErr := e.charge(r, t, st, attemptCost, event.PhaseReview); ceilErr != nil {
 		return false, ceilErr
 	}
 	if reviewErr != nil {
@@ -295,8 +295,39 @@ func (st *aiTask) publishableReason() string {
 
 // charge adds an attempt's cost to the per-task and run totals and reports a
 // fatal error when either ceiling is breached.
-func (e *Executor) charge(r *Run, t *types.Task, st *aiTask, cost float64) error {
+//
+// A breach RECORDS the spend that caused it before it aborts, and that line is
+// the whole reason this function knows which phase it was charging.
+//
+// MEASURED on a fan-out of six expensive items against a $25 ceiling: the run
+// aborted saying `cumulative cost $27.00`, and `corvex run show` then reported
+// **$22.50** — the worker call and the review of the aborted item had both
+// happened, both been paid for, and neither had reached the ledger, because the
+// only lines that carry cost are written on the path where the task COMPLETES.
+// The screen that answers "where did the money go" was quietest about the most
+// expensive moment of the run, and it erred low, which is the direction that
+// makes somebody raise a ceiling they have already blown through.
+func (e *Executor) charge(r *Run, t *types.Task, st *aiTask, cost float64, phase string) error {
 	taskTotal, runTotal := e.book.AddCost(&st.costUSD, r.TotalCostUSD, cost)
+	if err := e.ceilingBreached(t, st, taskTotal, runTotal); err != nil {
+		if cost > 0 {
+			e.emit(event.Event{
+				Type:    event.AttemptCost,
+				TaskID:  t.ID,
+				Phase:   phase,
+				CostUSD: cost,
+				Message: "spend recorded at the ceiling abort",
+			})
+		}
+		return err
+	}
+	return nil
+}
+
+// ceilingBreached is the comparison half of charge, split out so the recording
+// above reads as one decision rather than as three returns with a copy of the
+// emit in each.
+func (e *Executor) ceilingBreached(t *types.Task, st *aiTask, taskTotal, runTotal float64) error {
 	// A policy gate's max_cost_usd replaces the global per-task default rather
 	// than stacking with it: the recipe knows which step is expensive, the
 	// config file only knows an average, and two ceilings where the looser one

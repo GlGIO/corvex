@@ -266,6 +266,26 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 			row.CostUSD = e.CostUSD + reviewCost
 			row.TokensIn = e.TokensIn
 			row.TokensOut = e.TokensOut
+		case "attempt_cost":
+			// The spend of an attempt that did NOT end in a task_complete: a
+			// worker call that failed, a review that failed, and the call that
+			// tripped a ceiling. It accumulates — there is one line per attempt
+			// — and it is kept apart from the assignment above for the reason
+			// the comment on `extra` gives: mixing them lets the assignment
+			// erase what the failures cost.
+			//
+			// This case is why `extra` exists, and until now it was declared,
+			// read at the bottom of this function, and written by NOBODY. The
+			// run screen therefore reported only the surviving attempt while
+			// `corvex inspect` reported every one of them — two screens over one
+			// ledger, disagreeing about money, with nothing saying so. Measured
+			// against a ceiling abort: the run screen said $22.50 for a run the
+			// runner had aborted at $27.00.
+			acc := extra[e.TaskID]
+			acc.CostUSD += e.CostUSD
+			acc.TokensIn += e.TokensIn
+			acc.TokensOut += e.TokensOut
+			extra[e.TaskID] = acc
 		case "retry":
 			row.Retries++
 		}

@@ -104,3 +104,47 @@ func TestCostsByRun_NoLedgerIsZeroNotAnError(t *testing.T) {
 		t.Errorf("an unpriced run got a price: %v", costs)
 	}
 }
+
+// What a FAILED attempt cost is on the run screen too.
+//
+// `attempt_cost` is the line written when an attempt does not end in a
+// task_complete — a worker call that failed, a review that failed, the call that
+// tripped a ceiling. `corvex inspect` has always accumulated it. The run report
+// declared an `extra` map for exactly this, read it at the bottom, and had
+// nobody writing to it: two screens over one ledger, disagreeing about money,
+// with nothing saying so.
+func TestRunReport_CountsWhatTheFailedAttemptsCost(t *testing.T) {
+	f := newRunFixture(t)
+	repo := f.add(t, "run_0003", "pilot", time.Hour, run.StatusFailed)
+	dir := filepath.Join(repo, ".corvex", "tasks", "pilot")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tasks := "---\ngenerated_by: t\ndag:\n  S01: []\n---\n\n" +
+		"## S01 — Caro ❌ FAILED\n\n```yaml\ntype: general\n```\n\n### O que fazer\nx\n\n### Critérios de sucesso\n- [ ] y\n"
+	if err := os.WriteFile(filepath.Join(dir, "tasks.md"), []byte(tasks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The shape of a ceiling abort: the attempt spent, and no task_complete ever
+	// came.
+	body := `{"timestamp":"2026-08-17T11:00:00Z","type":"task_start","run_id":"run_0003","task_id":"S01"}
+{"timestamp":"2026-08-17T11:01:00Z","type":"attempt_cost","run_id":"run_0003","task_id":"S01","phase":"worker","cost_usd":4.00,"message":"spend recorded at the ceiling abort"}
+{"timestamp":"2026-08-17T11:02:00Z","type":"attempt_cost","run_id":"run_0003","task_id":"S01","phase":"review","cost_usd":0.50}
+`
+	if err := os.WriteFile(filepath.Join(dir, "activity.jsonl"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := f.lister.LoadRunReport(repo, "run_0003", "")
+	if err != nil {
+		t.Fatalf("LoadRunReport: %v", err)
+	}
+	if rep.CostUSD != 4.50 {
+		t.Errorf("the run screen says $%.2f for a run that spent $4.50 and aborted: it errs LOW, which is how a ceiling gets raised by somebody who thinks they have room", rep.CostUSD)
+	}
+	// And the list agrees with it, which is the property the other test in this
+	// file exists to keep.
+	if got := f.lister.CostsByRun(repo, "pilot", []string{"run_0003"})["run_0003"]; got != rep.CostUSD {
+		t.Errorf("the list says %.2f and the run says %.2f", got, rep.CostUSD)
+	}
+}
