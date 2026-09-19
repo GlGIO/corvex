@@ -39,6 +39,17 @@ type RunTaskRow struct {
 	CostUSD    float64          `json:"cost_usd"`
 	TokensIn   int              `json:"tokens_in"`
 	TokensOut  int              `json:"tokens_out"`
+	// LastActivity is the most recent thing the ledger saw this step do — a
+	// tool name, a phase — and when.
+	//
+	// It exists because of what a `code` step looks like from the outside while
+	// it runs: a row that says RUNNING and nothing else, for as long as the
+	// model takes. MEASURED on the first real incident run: seven minutes on
+	// S02 with the screen saying `RUNNING` and `$0.00`, while the ledger beside
+	// it had 169 lines and was recording a production query every few seconds.
+	// The tool was working and the screen was the only thing that looked dead.
+	LastActivity   string    `json:"last_activity,omitempty"`
+	LastActivityAt time.Time `json:"last_activity_at,omitempty"`
 }
 
 // RunStepDetail is `--step`: the plan for one step plus everything the ledger
@@ -292,6 +303,13 @@ func buildRunTaskRows(view *ProjectView, entries []activity.Entry) []RunTaskRow 
 		case "retry":
 			row.Retries++
 		}
+		// Every line moves the clock, whatever its type: the question this
+		// answers is "is anything happening", and a step whose last ledger line
+		// is four minutes old is the answer either way.
+		if !e.Timestamp.IsZero() && !e.Timestamp.Before(row.LastActivityAt) {
+			row.LastActivityAt = e.Timestamp
+			row.LastActivity = activityLabel(e)
+		}
 	}
 	rows := make([]RunTaskRow, 0, len(view.Order))
 	for _, id := range view.Order {
@@ -340,4 +358,19 @@ func buildStepDetail(view *ProjectView, entries []activity.Entry, rows []RunTask
 		detail.Summary, detail.Decisions = c.Summary, c.Decisions
 	}
 	return detail, nil
+}
+
+// activityLabel names one ledger line the way a person watching would: the tool
+// if there is one, the phase if not, and the bare type as a last resort.
+func activityLabel(e activity.Entry) string {
+	if e.Tool != "" {
+		// `mcp__SmartCarePRD__query` is the server and the call, and both
+		// matter to somebody watching a diagnosis: it says the agent is reading
+		// production rather than guessing.
+		return e.Tool
+	}
+	if e.Phase != "" {
+		return e.Phase + " · " + e.Type
+	}
+	return e.Type
 }

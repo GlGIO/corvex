@@ -71,6 +71,9 @@ const state = { view: 'inbox', detail: null, data: null, timer: null, stream: nu
 function status(msg, kind = '') {
   const bar = $('#status');
   bar.textContent = msg || '';
+  // The bar is one line and clips. The full text has to stay reachable, and
+  // hovering is the cheapest way that does not cost a second line.
+  bar.title = msg || '';
   bar.style.color = kind === 'bad' ? 'var(--bad)' : kind === 'ok' ? 'var(--ok)' : 'var(--dim)';
 }
 
@@ -88,6 +91,14 @@ const money = (v) => `$${(Number(v) || 0).toFixed(2)}`;
 
 // The END of a path is what distinguishes two worktrees of one repository, so a
 // path too long for its line loses its head, not its tail.
+// ago is how long since a timestamp, for the one place that asks "is anything
+// still happening".
+const ago = (iso) => {
+  const t = Date.parse(iso || '');
+  if (!t) return '';
+  return human(Math.max(0, Date.now() - t) * 1e6) + ' ago';
+};
+
 const tail = (p, max = 64) => (String(p || '').length <= max ? String(p || '') : '…' + String(p).slice(-max));
 
 // A step that an agent wrote and a step a script ran are the product's central
@@ -615,6 +626,15 @@ async function renderRunDetail(root, id) {
       el('span', { class: `pill ${t.status === 'FAILED' ? 'bad' : t.status === 'PASSED' ? 'det' : ''}`, text: t.status }),
       el('span', { class: 'grow', text: t.title }),
       t.retries ? el('span', { class: 'pill warn', text: `${t.retries} retr${t.retries === 1 ? 'y' : 'ies'}` }) : null,
+      // What a running step is DOING, from the ledger. A `code` step is a row
+      // that says RUNNING for as long as the model takes, and with nothing
+      // beside it the only working part of the screen looks like the broken
+      // one. The tool name is also the answer to the question worth asking of a
+      // diagnosis: an `mcp__…__query` says the agent is reading the database it
+      // was given rather than guessing.
+      t.status === 'RUNNING' && t.last_activity
+        ? el('span', { class: 'doing', text: `${t.last_activity} · ${ago(t.last_activity_at)}` })
+        : null,
       t.duration_ms ? el('span', { class: 'dim', text: human(t.duration_ms * 1e6) }) : null,
       t.cost_usd ? el('span', { class: 'dim', text: money(t.cost_usd) }) : null,
     ));

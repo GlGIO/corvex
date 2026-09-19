@@ -56,7 +56,7 @@ func InitWorkspace(dir string) (string, error) {
 	// must never be committed. Drop a .corvex/.gitignore so it is ignored from
 	// the start.
 	gitignorePath := filepath.Join(corvexDir, ".gitignore")
-	if err := os.WriteFile(gitignorePath, []byte("mcp.json\n"), 0o644); err != nil {
+	if err := os.WriteFile(gitignorePath, []byte("mcp.json\nmcp-none.json\n"), 0o644); err != nil {
 		return "", fmt.Errorf("writing .corvex/.gitignore: %w", err)
 	}
 

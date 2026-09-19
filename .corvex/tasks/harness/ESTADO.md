@@ -263,6 +263,60 @@ Mais dois consertos pequenos:
   alegação é que o filho reporta o diretório, não que reporta em cinco segundos.
   Teste que falha só sob carga ensina a re-rodar em vez de ler.
 
+## Rodada 25 — FECHADA (a custódia de MCP era uma porta que nunca foi a entrada)
+
+O dono reclamou de duas coisas pequenas — o rodapé quebrando em duas linhas e
+"parece que não tá logando nada da run" — e ao ir medir o run real eu achei algo
+maior.
+
+**O defeito.** No ledger do primeiro incidente de verdade, o worker chamou
+`mcp__nb2bPRD__query` **28 vezes** e `mcp__SmartCarePRD__query` **4**. O
+repositório declarava exatamente UM servidor: SmartCarePRD. `nb2bPRD` e
+`CRMCorePRD` vêm do `~/.claude.json` do dono — **`--mcp-config` SOMA ao que a
+CLI já carrega para aquele diretório**, não substitui.
+
+Então a regra "só o worker alcança produção", que o `internal/step` aplica dando
+ao reviewer um pedido com `AllowMCP` falso, estava sendo aplicada contra uma
+porta que nunca foi a entrada. O planner e o reviewer não recebiam
+`--mcp-config` **justamente para não alcançar produção** — e alcançavam, pela
+configuração pessoal da máquina. Negar uma flag não é restringir quando o padrão
+é "carregue tudo". A rodada 19 consertou metade e escreveu que tinha consertado
+inteiro.
+
+**O conserto, sem inferência nenhuma:** toda chamada leva um `--mcp-config`
+explícito e `--strict-mcp-config`. Dois arquivos estáveis, nunca um reescrito por
+chamada — `mcp.json` com os servidores declarados para o worker, `mcp-none.json`
+vazio para todo o resto; num fan-out o worker e o reviewer rodam juntos, e um
+caminho compartilhado entregaria a lista de um ao outro.
+
+**E o caminho de falha era o próprio buraco.** A linha que tratava "não consegui
+escrever o config" dizia `continuing without MCP servers` e largava as duas
+flags — o que, agora que as flags são o que segura o agente, é continuar com
+todos os servidores da máquina. O ramo tomado quando a guarda quebra era o de
+maior acesso do programa. Agora falha FECHADO: sem config para ler, o mais largo
+que `--strict-mcp-config` pode ser é nada.
+
+Três testes viraram: um deles afirmava literalmente a crença refutada — "o
+reviewer está certo POR NÃO carregar a flag".
+
+**As duas queixas originais, também consertadas:**
+
+- **O rodapé** agora é uma linha que corta com reticência, e o texto inteiro fica
+  no `title`. Ele carrega o equivalente em CLI do que acabou de ser feito, e
+  essas linhas são longas — um dispatch para worktree é um `cd`, uma atribuição
+  e um comando. Solto, crescia para três linhas, subia por cima do conteúdo e
+  passava por baixo dos controles flutuantes do navegador.
+- **"Não tá logando nada"** era verdade na tela e falso no disco: o ledger tinha
+  169 linhas e gravava uma consulta a produção a cada poucos segundos, enquanto a
+  linha do S02 dizia `RUNNING` e `$0.00` por sete minutos. Custo não pode
+  preencher esse vazio por construção — ele é escrito quando o step COMPLETA. A
+  linha do step em execução agora mostra a última coisa que o ledger viu e há
+  quanto tempo.
+
+**Uma regra da casa que eu quebrei e o teste pegou:** `TestUI_CarriesNoDomain`
+recusa "azure", "smartcare" e "yandeh" nos assets da UI. Meu comentário citava um
+servidor pelo nome do cliente.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

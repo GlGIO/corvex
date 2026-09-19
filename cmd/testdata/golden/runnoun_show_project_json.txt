@@ -19,7 +19,9 @@ $ corvex run show alpha --json
       "retries": 0,
       "cost_usd": 0.25,
       "tokens_in": 0,
-      "tokens_out": 0
+      "tokens_out": 0,
+      "last_activity": "task_complete",
+      "last_activity_at": "<TS>"
     },
     {
       "id": "S02",
@@ -32,7 +34,8 @@ $ corvex run show alpha --json
       "retries": 0,
       "cost_usd": 0,
       "tokens_in": 0,
-      "tokens_out": 0
+      "tokens_out": 0,
+      "last_activity_at": "<TS>"
     }
   ],
   "per_phase": [

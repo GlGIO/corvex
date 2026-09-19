@@ -110,13 +110,48 @@ func (c *ClaudeCLI) argsFor(req types.ExecuteRequest) []string {
 	// the local path without this would have handed the REVIEWER a production
 	// database connection it never needed — measured on the first run after
 	// that fix: two invocations carried the flag, and the second was the judge.
-	if req.AllowMCP && len(c.cfg.Sandbox.MCPServers) > 0 {
-		if err := writeMCPConfig(c.cfg.Sandbox.MCPServers); err != nil {
-			log.Warn("failed to write MCP config, continuing without MCP servers", "err", err)
-		} else {
-			args = append(args, "--mcp-config", mcpConfigRelPath)
-		}
+	//
+	// `--strict-mcp-config`, and a config passed on EVERY call, is the other
+	// half of that rule — the half that was missing, and the half that made the
+	// first half nearly decorative.
+	//
+	// MEASURED on the first real incident run: the worker called
+	// `mcp__nb2bPRD__query` 28 times and `mcp__SmartCarePRD__query` 4 times,
+	// and corvex had declared exactly one server — SmartCarePRD. `--mcp-config`
+	// ADDS to whatever the Claude CLI already loads for that directory, and
+	// what it loads is the person's own `~/.claude.json`, which on a developer
+	// machine holds every production database they have ever connected to.
+	//
+	// So the custody story had a hole in the shape of the whole thing: the
+	// worker reached databases nobody declared, and the planner and the
+	// reviewer — which are given no `--mcp-config` precisely so they cannot
+	// reach production — were reaching it through the same door. Withholding a
+	// flag is not a restriction when the default is "load everything".
+	//
+	// The fix is one rule with no inference in it: every call gets an explicit
+	// config and `--strict-mcp-config`. The worker's config holds the declared
+	// servers; everyone else's holds none. "Only use the servers in this file"
+	// with an empty file is zero servers, stated rather than hoped for.
+	// Two files, never one rewritten per call. The worker and the reviewer of a
+	// fan-out run at the same time; a single path rewritten by whoever started
+	// last would hand the worker an empty config, and it would do so silently —
+	// the agent would simply not have the tool it was told to use, which is the
+	// exact failure this whole area already produced once.
+	path, servers := mcpNoneRelPath, []config.MCPServerConfig(nil)
+	if req.AllowMCP {
+		path, servers = mcpConfigRelPath, c.cfg.Sandbox.MCPServers
 	}
+	if err := writeMCPConfig(path, servers); err != nil {
+		// Fail CLOSED. The old line here said "continuing without MCP servers"
+		// and dropped both flags — which, now that the flags are what holds the
+		// agent to a declared set, means continuing with EVERY server on the
+		// machine. A guard whose failure path is the thing it guards against is
+		// not a guard. `--strict-mcp-config` still goes on: with no config to
+		// read from, the widest it can be is nothing.
+		log.Warn("could not write the MCP config: holding this call to no MCP servers at all", "path", path, "err", err)
+		return append(append(args, "--strict-mcp-config"), c.cfg.Sandbox.WorkerExtraArgs...)
+	}
+	args = append(args, "--mcp-config", path, "--strict-mcp-config")
 	return append(args, c.cfg.Sandbox.WorkerExtraArgs...)
 }
 
@@ -134,7 +169,7 @@ func (c *ClaudeCLI) BuildCommand(req types.ExecuteRequest) (string, []string, ma
 // writeMCPConfig materialises the Claude CLI `--mcp-config` JSON next to the
 // project root so it is reachable from both local execution and the Docker
 // sandbox (the project root is bind-mounted at the container workdir).
-func writeMCPConfig(servers []config.MCPServerConfig) error {
+func writeMCPConfig(path string, servers []config.MCPServerConfig) error {
 	type serverEntry struct {
 		Command string            `json:"command"`
 		Args    []string          `json:"args,omitempty"`
@@ -168,18 +203,18 @@ func writeMCPConfig(servers []config.MCPServerConfig) error {
 		return fmt.Errorf("marshal mcp config: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(mcpConfigRelPath), 0o755); err != nil {
-		return fmt.Errorf("create %s dir: %w", filepath.Dir(mcpConfigRelPath), err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create %s dir: %w", filepath.Dir(path), err)
 	}
 	// 0o600: the materialised MCP config carries env-expanded values that may
 	// include secrets (DB URLs, tokens). It must be readable only by the owner,
 	// never world-readable. Chmod explicitly in case the file pre-existed with
 	// looser perms (WriteFile does not tighten an existing file's mode).
-	if err := os.WriteFile(mcpConfigRelPath, data, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", mcpConfigRelPath, err)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
 	}
-	if err := os.Chmod(mcpConfigRelPath, 0o600); err != nil {
-		return fmt.Errorf("chmod %s: %w", mcpConfigRelPath, err)
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("chmod %s: %w", path, err)
 	}
 	return nil
 }

@@ -726,7 +726,10 @@ func TestBuildCommand_BasicArgs(t *testing.T) {
 		t.Errorf("bin = %q, want %q", bin, cli.binaryCmd)
 	}
 
-	want := []string{"-p", "do work", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
+	// The custody pair is on EVERY call, including one that asks for nothing:
+	// `--mcp-config` without `--strict-mcp-config` adds to the machine's own
+	// servers rather than replacing them, so "no servers" has to be stated.
+	want := []string{"-p", "do work", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions", "--mcp-config", mcpNoneRelPath, "--strict-mcp-config"}
 	if len(args) != len(want) {
 		t.Fatalf("args length: got %d, want %d\ngot:  %v\nwant: %v", len(args), len(want), args, want)
 	}
@@ -754,7 +757,7 @@ func TestBuildCommand_WithExtraArgs(t *testing.T) {
 
 	_, args, _ := cli.BuildCommand(req)
 
-	baseLen := 9 // -p, prompt, --model, sonnet, --output-format, stream-json, --verbose, --permission-mode, bypassPermissions
+	baseLen := 12 // the nine base args plus the custody pair (--mcp-config <file> --strict-mcp-config)
 	if len(args) != baseLen+1 {
 		t.Fatalf("args length: got %d, want %d\nargs: %v", len(args), baseLen+1, args)
 	}
@@ -784,6 +787,7 @@ func TestBuildCommand_WithAllowedTools(t *testing.T) {
 		"--permission-mode", "bypassPermissions",
 		"--allowedTools", "Read",
 		"--allowedTools", "Write",
+		"--mcp-config", mcpNoneRelPath, "--strict-mcp-config",
 	}
 	if len(args) != len(want) {
 		t.Fatalf("args = %v, want %v", args, want)
@@ -865,8 +869,14 @@ func TestBuildCommand_WithMCPServers(t *testing.T) {
 	}
 }
 
-func TestBuildCommand_NoMCPServers_NoFlag(t *testing.T) {
-	t.Parallel()
+// A repository that declares no servers still gets an explicit empty set.
+//
+// This used to assert the opposite — no servers, no flag — and that was the
+// hole: a repository with nothing declared was the case where the agent
+// silently inherited every MCP server on the machine. "Declared nothing" has to
+// mean "gets nothing", and only a file plus `--strict-mcp-config` says that.
+func TestBuildCommand_NoMCPServersStillMeansAnExplicitEmptySet(t *testing.T) {
+	t.Chdir(t.TempDir())
 	cfg := config.Default()
 	cli := New(cfg)
 
@@ -875,10 +885,21 @@ func TestBuildCommand_NoMCPServers_NoFlag(t *testing.T) {
 	// without it.
 	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 
-	for _, a := range args {
-		if a == "--mcp-config" {
-			t.Errorf("--mcp-config should not appear when MCPServers is empty; args = %v", args)
-		}
+	if !hasFlagValue(args, "--mcp-config", mcpConfigRelPath) || !hasFlag(args, "--strict-mcp-config") {
+		t.Fatalf("a repository that declares nothing must still be told it gets nothing: %v", args)
+	}
+	data, err := os.ReadFile(mcpConfigRelPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", mcpConfigRelPath, err)
+	}
+	var payload struct {
+		MCPServers map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("%s is not JSON: %s", mcpConfigRelPath, data)
+	}
+	if len(payload.MCPServers) != 0 {
+		t.Errorf("the config carries %d server(s) for a repository that declared none: %s", len(payload.MCPServers), data)
 	}
 }
 
@@ -1085,7 +1106,7 @@ func TestWriteMCPConfig_Perms0600(t *testing.T) {
 		Command: "npx",
 		Args:    []string{"-y", "@modelcontextprotocol/server-postgres", "postgres://localhost/db"},
 	}}
-	if err := writeMCPConfig(servers); err != nil {
+	if err := writeMCPConfig(mcpConfigRelPath, servers); err != nil {
 		t.Fatalf("writeMCPConfig() error = %v", err)
 	}
 
@@ -1136,10 +1157,24 @@ func TestArgsFor_OnlyTheWorkerGetsTheDeclaredServers(t *testing.T) {
 		t.Errorf("the sandbox's extra args were dropped: %v", worker)
 	}
 
+	if !carries(worker, "--strict-mcp-config") {
+		t.Errorf("the worker's declared servers are additive to the machine's own: %v", worker)
+	}
+
 	// The judge reads a diff. It does not need production, and a credential
 	// handed to something that does not need it is blast radius nobody measured.
+	//
+	// This check used to read `if carries(reviewer, "--mcp-config")` — the
+	// reviewer was correct precisely BY NOT carrying the flag. That was the
+	// belief the first real run refuted: the Claude CLI loads the machine's own
+	// MCP configuration when none is given, so the flagless reviewer had the
+	// widest access of anyone. The claim now is the one that holds: it is
+	// pointed at an empty set and told that set is the only one.
 	reviewer := cli.argsFor(types.ExecuteRequest{Prompt: "you are a code reviewer", Model: "sonnet"})
-	if carries(reviewer, "--mcp-config") {
+	if !hasFlagValue(reviewer, "--mcp-config", mcpNoneRelPath) || !carries(reviewer, "--strict-mcp-config") {
+		t.Errorf("the reviewer is not held to an empty server set: %v", reviewer)
+	}
+	if hasFlagValue(reviewer, "--mcp-config", mcpConfigRelPath) {
 		t.Errorf("the reviewer was handed the production servers: %v", reviewer)
 	}
 
@@ -1148,5 +1183,142 @@ func TestArgsFor_OnlyTheWorkerGetsTheDeclaredServers(t *testing.T) {
 	_, built, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: true})
 	if strings.Join(built, " ") != strings.Join(worker, " ") {
 		t.Errorf("the two paths build different commands:\n docker: %v\n local:  %v", built, worker)
+	}
+}
+
+// Withholding a flag is not a restriction when the default is "load
+// everything".
+//
+// MEASURED on the first real incident run, in the ledger: the worker called
+// `mcp__nb2bPRD__query` 28 times and `mcp__SmartCarePRD__query` 4 times — and
+// the repository had declared exactly ONE server, SmartCarePRD. `--mcp-config`
+// ADDS to whatever the Claude CLI already loads for that working directory, and
+// what it loads is the person's own `~/.claude.json`, which on a developer
+// machine holds every production database they have ever connected to.
+//
+// So the rule "only the worker reaches production" — which internal/step
+// enforces by giving the reviewer a request with AllowMCP false — was being
+// enforced against a door that was never the way in. The planner and the
+// reviewer got no `--mcp-config` and reached production anyway.
+//
+// The fix has no inference in it: every call carries an explicit config and
+// `--strict-mcp-config`. These two tests are the two halves of that sentence.
+func TestBuildCommand_TheReviewerIsGivenAnEmptyServerSetAndToldToUseOnlyIt(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{Name: "SmartCarePRD", Command: "mcp-server-postgres", Args: []string{"postgres://prod/db"}},
+	}
+	cli := New(cfg)
+
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "julgue", Model: "sonnet", AllowMCP: false})
+
+	if !hasFlagValue(args, "--mcp-config", mcpNoneRelPath) {
+		t.Fatalf("the reviewer was given no explicit config, so the CLI loads the machine's own servers: %v", args)
+	}
+	if !hasFlag(args, "--strict-mcp-config") {
+		t.Errorf("the reviewer's call does not say --strict-mcp-config, so the empty file is only one of the sources: %v", args)
+	}
+	// And the file it points at really is empty — the name is not the promise.
+	data, err := os.ReadFile(mcpNoneRelPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", mcpNoneRelPath, err)
+	}
+	var payload struct {
+		MCPServers map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("%s is not JSON: %s", mcpNoneRelPath, data)
+	}
+	if len(payload.MCPServers) != 0 {
+		t.Errorf("the reviewer's config carries %d server(s): %s", len(payload.MCPServers), data)
+	}
+	// The reviewer must not even be pointed at the worker's file.
+	if hasFlagValue(args, "--mcp-config", mcpConfigRelPath) {
+		t.Error("the reviewer was handed the worker's server list")
+	}
+}
+
+func TestBuildCommand_TheWorkerGetsTheDeclaredServersAndNothingElse(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{Name: "SmartCarePRD", Command: "mcp-server-postgres", Args: []string{"postgres://prod/db"}},
+	}
+	cli := New(cfg)
+
+	_, args, _ := cli.BuildCommand(types.ExecuteRequest{Prompt: "trabalhe", Model: "sonnet", AllowMCP: true})
+
+	if !hasFlagValue(args, "--mcp-config", mcpConfigRelPath) {
+		t.Fatalf("the worker did not get the declared servers: %v", args)
+	}
+	// Strict on the worker too, and for the same reason: `--mcp-config` adds,
+	// so without this the worker reaches every database on the machine and the
+	// `requires: - mcp:` preflight can be satisfied by a server nobody
+	// declared.
+	if !hasFlag(args, "--strict-mcp-config") {
+		t.Errorf("the worker's call does not say --strict-mcp-config, so it also reaches undeclared servers: %v", args)
+	}
+	// Two files, never one rewritten per call: a fan-out runs a worker and a
+	// reviewer at the same time, and a shared path would hand one of them the
+	// other's list.
+	if mcpNoneRelPath == mcpConfigRelPath {
+		t.Fatal("the worker and the reviewer share one config path")
+	}
+}
+
+// hasFlagValue reports whether `flag value` appear next to each other.
+func hasFlagValue(args []string, flag, value string) bool {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) && args[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// The failure path of the guard is not the thing the guard prevents.
+//
+// The line that handles "could not write the config" used to log
+// "continuing without MCP servers" and drop both flags. That sentence was true
+// of the old design and became a lie in the new one: without the flags the CLI
+// loads every server on the machine, so the branch taken when the guard breaks
+// was the branch with the widest access in the program.
+func TestArgsFor_AnUnwritableConfigStillHoldsTheCallToNothing(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// `.corvex` exists as a FILE, so creating the directory under it fails.
+	if err := os.WriteFile(".corvex", []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Sandbox.MCPServers = []config.MCPServerConfig{
+		{Name: "PRD", Command: "mcp-server-postgres", Args: []string{"postgres://prod/db"}},
+	}
+	cli := New(cfg)
+
+	for _, tc := range []struct {
+		name  string
+		allow bool
+	}{{"worker", true}, {"reviewer", false}} {
+		args := cli.argsFor(types.ExecuteRequest{Prompt: "x", Model: "sonnet", AllowMCP: tc.allow})
+		if !hasFlag(args, "--strict-mcp-config") {
+			t.Errorf("%s: the call that could not write its config was let out unrestricted: %v", tc.name, args)
+		}
+		if hasFlag(args, "--mcp-config") {
+			t.Errorf("%s: a config was named that does not exist: %v", tc.name, args)
+		}
 	}
 }
