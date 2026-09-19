@@ -136,6 +136,23 @@ config resolvida — a porta da regra em vez de uma segunda grafia dela.
 **Runbook** em `smartcare/.corvex/recipes/README.md`: o que digitar, o que cada
 parada significa, o que fazer depois — para as cinco recipes.
 
+## Rodada 10 — FECHADA
+
+**Exercitei o eixo dinheiro num fan-out** — seis stories caras contra um teto de
+$25 — que é o cenário do primeiro run de verdade e nunca tinha sido rodado. O
+teto funciona: abortou na sexta story, cinco mergeadas, o worktree da sexta em
+disco com o trabalho dela. A retomada é barata (o DAG guarda o que passou).
+
+**Dois defeitos de dinheiro, ambos errando para BAIXO** (`60a14cd`):
+1. o gasto que ESTOUROU o teto não ia para o ledger — a chamada aconteceu, foi
+   paga, e a tela que responde "para onde foi o dinheiro" era a mais silenciosa
+   no momento mais caro. O run abortava dizendo $27,00 e a tela dizia $22,50;
+2. a tela do run ignorava `attempt_cost`: o mapa `extra` era declarado, lido no
+   fim, e escrito por ninguém. O `inspect` contava; o run, não.
+
+Direção importa: um número baixo demais é o que faz alguém subir um teto achando
+que tem folga.
+
 ## O que falta
 
 1. **O primeiro run de VERDADE** — com board real e tokens. É seu: dinheiro, sua
