@@ -345,6 +345,55 @@ dispara um SEGUNDO run: isso move o conjunto que o stream observa, a página
 atualiza com uma tela de run aberta cujo run não mudou, e é aí que o nó ou
 sobrevive ou não. Controle positivo confirmado depois disso — não antes.
 
+## Rodada 27 — FECHADA (o fio parava de existir quando o run terminava)
+
+"Cadê o PR?" O run de incidente chegou a `done`, o hotfix ficou numa branch numa
+máquina, e o dono voltou uma hora depois perguntando. Nada tinha falhado: a
+`incident` não abre PR de propósito, e o último step **imprimia** `Próximo:
+corvex run start ship` num log que ninguém lê depois que o run deixa de ser
+interessante. A prosa era a única coisa segurando o fio.
+
+Estava assim nas três receitas — a mesma heurística, o mesmo jeito de se perder:
+
+```
+incident.yaml:214   printf 'Próximo: corvex run start ship …'
+pilot.yaml:237      printf 'Próximo passo, quando você quiser: corvex run start ship'
+sonda.yaml:93       printf 'Próximo passo, quando você decidir: corvex run start board'
+```
+
+Agora o trecho seguinte é **dado**: `next: [{recipe, why, when}]`. Um run que
+termina e declara o que vem depois é algo esperando por uma pessoa no mesmo
+sentido que um gate — o trabalho está feito e parado, e só falta alguém decidir
+pegar a próxima perna. Então mora na caixa de entrada, com um botão que dispara
+**no mesmo checkout** (a branch que o run deixou é onde a próxima receita tem
+que rodar; pedir para a pessoa achá-la de novo é onde se perde).
+
+Três decisões que valem registro:
+
+- **A linha some sozinha, e não tem botão de dispensar.** Ela sai quando um run
+  daquela receita começa naquele checkout depois deste ter terminado — derivado
+  do índice, sem estado próprio. Um fio que você dispensou e não pegou é
+  exatamente o estado que isto existe para tornar impossível.
+- **Só `done` encadeia por padrão.** `ship` depois de um incidente `partial`
+  publicaria um conserto cuja prova não terminou de rodar. `when: partial` existe
+  para quem quiser a outra perna, e `failed`/`canceled` não encadeiam nada.
+- **Nada dispara sozinho.** Todo `next` deste repositório cruza uma fronteira —
+  escreve no Azure, ou espera um deploy humano. O mecanismo segura o fio; quem
+  decide continua sendo a pessoa.
+
+Validação recusa o que quebraria no pior momento: `next` sem receita, apontando
+para si mesmo, com `when` inventado, **sem `why`** (é a linha ao lado do botão) e
+— com o diretório em mão — apontando para receita que não existe.
+
+**Uma falha de paridade que eu mesmo cometi e o run real expôs:** ensinei a UI e
+esqueci a CLI. `corvex gate list` continuava dizendo caixa vazia numa máquina com
+um fio caído. Duas leitoras de uma pergunta, discordando. As duas leem
+`ops.Inbox` agora.
+
+E um custo que eu ia deixar passar: a caixa é lida a cada refresh e essa varredura
+cobre todo run terminado da janela — 64 na máquina do dono, contra quatro
+receitas. Uma leitura por receita, não por run.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

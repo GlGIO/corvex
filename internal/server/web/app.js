@@ -155,12 +155,14 @@ function renderInbox(root, data) {
   // A dispatch that died needs a person exactly the way a parked gate does: the
   // run they asked for is not running, and nothing else on the screen says so.
   const dead = (data.dispatches || []).filter((d) => d.result && d.result !== 'ok');
-  $('#badge-inbox').textContent = gates.length + escalations.length + dead.length || '';
+  const handoffs = data.inbox.handoffs || [];
+  $('#badge-inbox').textContent = gates.length + escalations.length + dead.length + handoffs.length || '';
 
-  if (!gates.length && !escalations.length && !dead.length) {
+  if (!gates.length && !escalations.length && !dead.length && !handoffs.length) {
     root.append(el('p', { class: 'empty', text: 'Nothing is waiting on you.' }));
   }
   renderDeadDispatches(root, data);
+  renderHandoffs(root, handoffs);
   if (gates.length) root.append(el('h2', { text: `${gates.length} gate(s) waiting` }));
   for (const g of gates) {
     root.append(el('div', { class: 'card waiting' },
@@ -192,6 +194,49 @@ function renderInbox(root, data) {
     root.append(el('h2', { text: 'running now' }));
     for (const r of live) root.append(runCard(r));
   }
+}
+
+// ── the leg nobody took ─────────────────────────────────────────────────────
+//
+// A run that finished and declared what comes next is waiting on a person in
+// exactly the sense this box means: the work is done and parked, and the only
+// thing missing is somebody deciding to take the next leg. It used to be a line
+// PRINTED by the last step — `Próximo: corvex run start ship` — into a log that
+// stops being read the moment the run stops being interesting.
+//
+// The row disappears on its own when a run of that recipe starts in that
+// checkout. There is no dismiss button, deliberately: a thread you dismissed
+// and did not take is the state this exists to make impossible.
+function renderHandoffs(root, handoffs) {
+  if (!handoffs.length) return;
+  root.append(el('h2', { text: `${handoffs.length} run(s) waiting for the next leg` }));
+  for (const h of handoffs) {
+    root.append(el('div', { class: 'card waiting' },
+      el('div', { class: 'row' },
+        el('span', { class: 'mono-id', text: h.run_id }),
+        el('span', { class: `pill ${h.status === 'partial' ? 'warn' : 'det'}`, text: h.status }),
+        el('span', { class: 'grow', text: h.why || '' }),
+        el('span', { class: 'pill warn', text: `waiting ${human(h.waiting_ns)}` }),
+        el('button', { class: 'primary', onclick: () => takeHandoff(h) }, `Run ${h.next}`),
+      ),
+      el('div', { class: 'row' },
+        el('span', { class: 'dim', text: `${h.recipe} → ${h.next}` }),
+        el('span', { class: 'path grow', text: tail(h.repo) }),
+      ),
+    ));
+  }
+}
+
+// takeHandoff dispatches the next leg INTO THE SAME CHECKOUT. That is the whole
+// point: the branch the finished run left behind is where the next recipe has
+// to run, and asking the person to find it again is the step where it gets
+// lost.
+async function takeHandoff(h) {
+  try {
+    const res = await api.post('/api/runs', { target: h.next, repo: h.repo });
+    status(`started in ${res.dir} — ${res.command}`, 'ok');
+    refresh();
+  } catch (e) { status(e.message, 'bad'); }
 }
 
 // ── runs (2e) ───────────────────────────────────────────────────────────────

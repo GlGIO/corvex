@@ -19,6 +19,7 @@ func renderInbox(inbox ops.Inbox) {
 		return
 	}
 	renderGateList(inbox.Gates)
+	renderHandoffs(inbox.Handoffs)
 	if len(inbox.Escalations) == 0 {
 		return
 	}
@@ -29,6 +30,25 @@ func renderInbox(inbox ops.Inbox) {
 			fmt.Printf("      %s\n", line)
 		}
 		fmt.Printf("      → corvex gate show %s --step %s\n\n", e.Project, e.Step)
+	}
+}
+
+// renderHandoffs prints the runs that finished and whose next leg nobody took.
+//
+// It is in this box, and printed by this function, because of the parity rule:
+// the screen and the terminal read one ops.Inbox. The first version of this
+// feature taught only the browser about handoffs, and `corvex gate list` went
+// on reporting an empty box for a machine that had a dropped thread on it —
+// two readers of one question, disagreeing.
+func renderHandoffs(handoffs []ops.Handoff) {
+	if len(handoffs) == 0 {
+		return
+	}
+	fmt.Printf("%d run(s) waiting for the next leg:\n\n", len(handoffs))
+	for _, h := range handoffs {
+		fmt.Printf("  %s  %s → %s  ·  %s  ·  waiting %s\n", h.RunID, h.Recipe, h.Next, h.Status, humanWait(h.Waiting))
+		fmt.Printf("      %s\n", h.Why)
+		fmt.Printf("      → cd %s && corvex run start %s\n\n", h.Repo, h.Next)
 	}
 }
 

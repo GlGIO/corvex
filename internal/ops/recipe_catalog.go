@@ -152,7 +152,7 @@ func ShowRecipe(workDir, name string) (RecipeDetail, error) {
 // part of validation because a recipe can parse and still fail to become a DAG,
 // and finding that out at `run start` costs a run.
 func ValidateRecipe(workDir, name string) (int, error) {
-	r, err := loadRecipe(workDir, name)
+	r, err := validateRecipeIn(workDir, name)
 	if err != nil {
 		return 0, err
 	}
@@ -177,6 +177,21 @@ func loadRecipe(workDir, name string) (*recipe.Recipe, error) {
 		return nil, err
 	}
 	if err := r.Validate(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// validateRecipeIn is loadRecipe plus the checks that need the directory. It is
+// separate because loadRecipe is on the read path of the inbox — which walks
+// every recipe of every repository — and the cross-file check lists a directory
+// per call.
+func validateRecipeIn(workDir, name string) (*recipe.Recipe, error) {
+	r, err := loadRecipe(workDir, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckNextTargets(workDir, r); err != nil {
 		return nil, err
 	}
 	return r, nil

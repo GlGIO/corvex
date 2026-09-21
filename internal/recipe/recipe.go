@@ -32,6 +32,56 @@ type Recipe struct {
 	// arrives dressed as a task failure — the agent retries, fails again, and
 	// the retry budget is spent on a problem no model can solve.
 	Requires []Requirement `yaml:"requires"`
+
+	// Next is the leg that follows this one when the run ends clean.
+	//
+	// It exists because the handoff was prose. Every recipe in the field ends
+	// with a step that PRINTS the next command — `Próximo: corvex run start
+	// ship` — into a log nobody reads after the run stops being interesting.
+	// MEASURED: a real incident ran to `done`, the fix sat on a branch on one
+	// machine, and the owner came back with "cadê o PR?". Nothing was broken;
+	// the thread was simply dropped, because the only thing holding it was a
+	// sentence.
+	//
+	// So the chain is data. The runner records it when the run finishes, the
+	// inbox shows it as something waiting on a person — which is what it is —
+	// and it stays there until a run of that recipe actually starts in that
+	// checkout.
+	Next []NextStep `yaml:"next"`
+}
+
+// NextStep is one leg that may follow this recipe.
+type NextStep struct {
+	// Recipe is the name of the recipe to run next. It must exist in the same
+	// `.corvex/recipes/` directory: a chain pointing at nothing is a chain that
+	// breaks at the one moment nobody is watching, and `recipe validate`
+	// refuses it.
+	Recipe string `yaml:"recipe"`
+	// Why is the one line the person reads when deciding whether to take this
+	// leg now. It is shown beside the button.
+	Why string `yaml:"why"`
+	// When restricts the suggestion to an ending: `done` (the default — the
+	// recipe finished everything), `partial` (it left work pending), or `any`.
+	//
+	// The distinction is not decoration. `ship` after a `done` incident is the
+	// next leg; `ship` after a PARTIAL one would publish a fix whose proof did
+	// not finish running.
+	When string `yaml:"when"`
+}
+
+// EffectiveWhen is the ending this step applies to, with the default spelled
+// out. `done` is the default because a chain is a statement about success.
+func (n NextStep) EffectiveWhen() string {
+	if n.When == "" {
+		return "done"
+	}
+	return n.When
+}
+
+// AppliesTo reports whether this step is the one to offer for an ending.
+func (n NextStep) AppliesTo(status string) bool {
+	w := n.EffectiveWhen()
+	return w == "any" || w == status
 }
 
 // Requirement is one declared dependency. Exactly one field is set.
@@ -166,6 +216,28 @@ func (r *Recipe) Validate() error {
 		}
 		if d <= 0 {
 			return fmt.Errorf("recipe %q: stage %q has timeout %q — a non-positive timeout would kill the step before it started; omit it to inherit the run's", r.Name, s.ID, s.Timeout)
+		}
+	}
+
+	// A chain that points at nothing breaks at the one moment nobody is
+	// watching: the end of a run, when the person has stopped reading. The
+	// existence of the target is checked elsewhere (it needs the recipe
+	// directory); what is checked here is everything readable from this file
+	// alone.
+	for i, n := range r.Next {
+		if strings.TrimSpace(n.Recipe) == "" {
+			return fmt.Errorf("recipe %q: next[%d] names no recipe", r.Name, i)
+		}
+		if n.Recipe == r.Name {
+			return fmt.Errorf("recipe %q: next[%d] points at itself — a run that ends by suggesting itself is a loop with a person in it", r.Name, i)
+		}
+		switch n.EffectiveWhen() {
+		case "done", "partial", "any":
+		default:
+			return fmt.Errorf("recipe %q: next[%d] has when: %q — use `done` (the recipe finished everything), `partial` (it left work pending) or `any`", r.Name, i, n.When)
+		}
+		if strings.TrimSpace(n.Why) == "" {
+			return fmt.Errorf("recipe %q: next[%d] has no `why` — it is the line a person reads when deciding to take this leg, and without it the button says only a name", r.Name, i)
 		}
 	}
 

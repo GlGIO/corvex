@@ -33,10 +33,24 @@ type EscalationItem struct {
 type Inbox struct {
 	Gates       []GateView       `json:"gates"`
 	Escalations []EscalationItem `json:"escalations"`
+	// Handoffs are runs that FINISHED and whose declared next leg nobody took.
+	//
+	// They belong in this box and not in the history for the reason the box
+	// exists: it answers "what is blocked on me", and a fix sitting on a branch
+	// because the run that publishes it was never started is blocked on a
+	// person exactly the way an unapproved gate is.
+	Handoffs []Handoff `json:"handoffs,omitempty"`
 }
 
 // Empty reports an inbox with nothing in it.
-func (i Inbox) Empty() bool { return len(i.Gates) == 0 && len(i.Escalations) == 0 }
+func (i Inbox) Empty() bool {
+	return len(i.Gates) == 0 && len(i.Escalations) == 0 && len(i.Handoffs) == 0
+}
+
+// inboxWindow is how far back the box looks for a dropped thread. It matches
+// the window the run history and the event stream already use; one number, so
+// a handoff cannot be inside one and outside the other.
+const inboxWindow = 7 * 24 * time.Hour
 
 var escalationName = regexp.MustCompile(`^(.+)-([A-Za-z][A-Za-z0-9_]*)\.md$`)
 
@@ -75,6 +89,9 @@ func (g GateLister) LoadInbox(localRepo string) (Inbox, error) {
 		}
 		return inbox.Escalations[i].Waiting > inbox.Escalations[j].Waiting
 	})
+	// The same window the gates and the history use: a handoff older than that
+	// is not a dropped thread any more, it is history.
+	inbox.Handoffs = g.Handoffs(localRepo, inboxWindow)
 	return inbox, nil
 }
 
