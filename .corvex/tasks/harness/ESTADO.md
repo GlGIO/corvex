@@ -317,6 +317,34 @@ reviewer está certo POR NÃO carregar a flag".
 recusa "azure", "smartcare" e "yandeh" nos assets da UI. Meu comentário citava um
 servidor pelo nome do cliente.
 
+## Rodada 26 — FECHADA (a tela que assiste estava surda)
+
+"Parece que parou de novo, eu confirmei a causa e dei continue." O run não tinha
+parado: ele estava em 5/9, com o S06 rodando. **A tela é que estava congelada em
+3/9 — havia 37 horas.**
+
+A página fica surda enquanto uma tela de detalhe está aberta, e essa regra é
+carga na 2b: o gate é o que alguém lê ANTES de aprovar, tem trava de leitura, e
+trocar a evidência no meio da leitura é como se aprova o que não se leu. A regra
+foi aplicada a TODA tela de detalhe — e a tela de run não é desse tipo. Ela é a
+tela de ASSISTIR: a que se deixa aberta para ver o run andar. A surdez agora é
+por tipo de tela.
+
+**E o conserto trouxe um custo que não aparece no diff.** Passando a redesenhar
+por tempo, todo tique substituía todos os nós — inclusive o botão que alguém
+está a caminho de clicar. Apareceu como instabilidade no teste do retry: o clique
+achou o botão, a página atualizou, e o clique caiu num nó que não estava mais no
+documento. Uma pessoa faz a mesma coisa mais devagar e não tem como perceber.
+Então a tela de run só redesenha quando o run se moveu — assinatura do que ela
+mostra, comparada antes de tocar no DOM.
+
+**Meu primeiro teste desse guard passou contra o código quebrado.** Ele abria um
+run terminado e esperava; com a página parada o fingerprint nunca mudava, o
+`render` nunca era chamado, e não havia redesenho para medir. O teste agora
+dispara um SEGUNDO run: isso move o conjunto que o stream observa, a página
+atualiza com uma tela de run aberta cujo run não mudou, e é aí que o nó ou
+sobrevive ou não. Controle positivo confirmado depois disso — não antes.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.

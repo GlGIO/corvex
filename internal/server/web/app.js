@@ -66,7 +66,7 @@ const api = {
   },
 };
 
-const state = { view: 'inbox', detail: null, data: null, timer: null, stream: null, streamAt: 0, fingerprint: '' };
+const state = { view: 'inbox', detail: null, data: null, timer: null, stream: null, streamAt: 0, fingerprint: '', runSig: '' };
 
 function status(msg, kind = '') {
   const bar = $('#status');
@@ -560,11 +560,34 @@ function leaveDetail() {
 // ── run detail (2d/2f) ──────────────────────────────────────────────────────
 async function openRun(id) {
   state.detail = { kind: 'run', id };
+  state.runSig = ''; // arriving always draws, whatever was on screen before
   render();
+}
+
+// runSignature is everything this screen actually shows about a run. Two reads
+// with the same signature would draw the same pixels, so the second one must
+// not draw at all.
+//
+// It exists because making the run screen live had a cost nobody would have
+// predicted from the diff: the screen now redraws on a timer, and a redraw
+// replaces every node — including the button somebody is in the middle of
+// reaching for. MEASURED as a flake in the retry test, which found the button,
+// the page refreshed, and the click landed on a node no longer in the document.
+// A person does the same thing more slowly and has no way to tell it happened.
+function runSignature(r) {
+  return [
+    r.status, r.liveness, r.completed, r.total, r.cost_usd, r.human_wait_ms,
+    (r.per_phase || []).map((p) => `${p.phase}:${p.cost_usd}`).join(','),
+    (r.tasks || []).map((t) => `${t.id}:${t.status}:${t.duration_ms}:${t.cost_usd}:${t.retries}:${t.last_activity}`).join('|'),
+  ].join('·');
 }
 
 async function renderRunDetail(root, id) {
   const r = await api.get(`/api/runs/${encodeURIComponent(id)}`);
+  const sig = runSignature(r);
+  if (sig === state.runSig) return; // nothing moved: leave the DOM alone
+  state.runSig = sig;
+  root.replaceChildren();
   root.append(el('div', { class: 'row' },
     el('button', { class: 'ghost', onclick: leaveDetail }, '← back'),
     el('span', { class: 'mono-id', text: r.run_id || r.project }),
@@ -1071,7 +1094,7 @@ function startStream() {
     // person approves something they did not read. So the event is dropped —
     // and dropping it is only safe because leaveDetail() re-reads on the way
     // out, unconditionally. See the comment there.
-    if (state.detail) return;
+    if (deaf()) return;
     refresh();
   });
   // EventSource reconnects on its own, so there is nothing to retry here. What
@@ -1082,9 +1105,37 @@ function startStream() {
 }
 
 // ── shell ───────────────────────────────────────────────────────────────────
+
+// deaf reports whether the screen in front of the reader must NOT be redrawn
+// under their hands.
+//
+// The rule was written for 2b and is load-bearing there: the gate screen is
+// what someone reads BEFORE approving, it carries a reading lock, and swapping
+// the evidence mid-read is how a person approves something they did not read.
+// The log and the step screen hold the same kind of thing — text somebody is
+// part-way through, with a scroll position that a redraw throws away.
+//
+// It was applied to EVERY detail, and the run screen is not that kind of
+// screen. It is the WATCH screen: the one you leave open to see a run move.
+// MEASURED on the first real incident: the owner approved the gate, the run
+// walked on to S04, S05 and S06 over the next minutes, and their page went on
+// showing `3/9 · S04 RUNNING` — for 37 hours. The CLI said 5/9. Their reading
+// of it was "parece que parou de novo", which is exactly the wrong conclusion
+// and exactly the one the screen supported.
+//
+// So the deafness is scoped to the screens whose content is READ, and the one
+// whose content is WATCHED refreshes like the lists do.
+function deaf() {
+  return state.detail !== null && state.detail.kind !== 'run';
+}
+
 async function render() {
   const root = $('#view');
-  root.replaceChildren();
+  // The run screen clears ITSELF, after it has decided there is something new
+  // to draw. Everywhere else the clear happens here, before the fetch, which is
+  // right for a screen somebody navigated to and wrong for one that redraws on
+  // a timer under their hands — see runSignature.
+  if (state.detail?.kind !== 'run') root.replaceChildren();
   try {
     if (state.detail?.kind === 'run') return await renderRunDetail(root, state.detail.id);
     if (state.detail?.kind === 'gate') return await renderGateDetail(root, state.detail.id, state.detail.step);
@@ -1185,7 +1236,7 @@ function boot() {
   // polling — the screen would look current and be wrong, and the whole reason
   // this screen exists is that something is blocked on a person.
   state.timer = setInterval(() => {
-    if (state.detail) return;
+    if (deaf()) return;
     if (streamAlive()) return;
     refresh();
   }, POLL_MS);
