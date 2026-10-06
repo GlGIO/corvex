@@ -38,6 +38,9 @@ type aiTask struct {
 	// touches the attempt count: see waitOutProvider.
 	infraRetries int
 	redo         bool
+	// gateRepairs counts the times a refused after-gate sent the worker back;
+	// see repairAfterGate.
+	gateRepairs int
 }
 
 // runAITask drives the worker/review retry loop for a normal (AI) task.

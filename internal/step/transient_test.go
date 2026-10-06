@@ -109,3 +109,39 @@ func TestIsTransient_CancellationIsNeverWaitedOut(t *testing.T) {
 		t.Error("a cancelled run must not wait out an overload")
 	}
 }
+
+// TestRepairAfterGate_OnlyAChecksRefusalIsADiagnosis: a person's "no" and a
+// judge's "no" are not sent back to the worker; and the repair happens once.
+func TestRepairAfterGate_OnlyAChecksRefusalIsADiagnosis(t *testing.T) {
+	e := &Executor{}
+	tk := &types.Task{ID: "S01"}
+	for _, n := range []types.GateNature{types.GateHuman, types.GateInferential, types.GatePolicy} {
+		st := &aiTask{maxRetries: 2}
+		if e.repairAfterGate(tk, st, 0, &gateRefusal{nature: n, msg: "no"}) {
+			t.Errorf("a %s refusal was sent back to the worker", n)
+		}
+	}
+	st := &aiTask{maxRetries: 2}
+	if !e.repairAfterGate(tk, st, 0, &gateRefusal{nature: types.GateComputational, msg: "lint"}) {
+		t.Fatal("a check's refusal with attempts left must send the worker back")
+	}
+	if e.repairAfterGate(tk, st, 1, &gateRefusal{nature: types.GateComputational, msg: "lint"}) {
+		t.Error("a second repair in the same task: this must not become a second loop")
+	}
+	if e.repairAfterGate(tk, &aiTask{maxRetries: 1}, 1, &gateRefusal{nature: types.GateComputational, msg: "lint"}) {
+		t.Error("a repair with no attempt left would be an attempt nobody budgeted")
+	}
+}
+
+// TestEvidenceRewind_TheDiscardedAttemptsRefusalIsGone: the repaired work is
+// what a later human gate shows; the refusal of the attempt it replaced is not.
+func TestEvidenceRewind_TheDiscardedAttemptsRefusalIsGone(t *testing.T) {
+	acc := newEvidenceSet()
+	acc.add(types.Evidence{Label: "kept"})
+	m := acc.mark()
+	acc.add(types.Evidence{Label: "refused attempt"})
+	acc.rewind(m)
+	if len(acc.items) != 1 || acc.items[0].Label != "kept" {
+		t.Errorf("evidence after rewind = %+v, want only what came before the mark", acc.items)
+	}
+}

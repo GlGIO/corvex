@@ -120,3 +120,48 @@ func TestAfterGate_RefusalLeavesNoCheckpoint(t *testing.T) {
 		}
 	}
 }
+
+// TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce: a lint that fails after a
+// clean review is a diagnosis, not a verdict. The worker gets the check's output
+// and one more go; a worker that only fixes it when told is how this is seen.
+func TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	project := "test-after-gate"
+	setupProject(t, dir, project, afterGateTaskMD(`"test -f fixed.txt || { echo 'lint: fixed.txt missing'; exit 1; }"`))
+	gitCommitAll(t, dir, "add tasks")
+
+	var sawDiagnosis bool
+	mock := &mockProvider{
+		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+			if strings.Contains(req.Prompt, "code reviewer") {
+				return &types.ExecuteResult{Output: "Good.\nVERDICT: PASS"}, nil
+			}
+			if strings.Contains(req.Prompt, "lint: fixed.txt missing") {
+				sawDiagnosis = true
+				_ = os.WriteFile(filepath.Join(dir, "fixed.txt"), []byte("ok\n"), 0o644)
+			}
+			_ = os.WriteFile(filepath.Join(dir, "work.txt"), []byte("done\n"), 0o644)
+			return &types.ExecuteResult{Output: "wrote it" + taskReportBlock}, nil
+		},
+	}
+	cfg := config.Default()
+	cfg.Project.Name = project
+	cfg.Execution.AutoCommit = true
+	ch := make(chan Event, 200)
+	go func() {
+		for range ch {
+		}
+	}()
+	err := New(Options{Config: cfg, Provider: mock, WorkDir: dir, Events: ch}).Run(context.Background(), project)
+	close(ch)
+	if err != nil {
+		t.Fatalf("Run = %v; the worker should have been sent back with the check's output", err)
+	}
+	if !sawDiagnosis {
+		t.Error("the retry prompt never carried what the check printed")
+	}
+	if got := taskStatus(t, dir); got != types.StatusPassed {
+		t.Errorf("S01 = %s, want PASSED after the repair", got)
+	}
+}

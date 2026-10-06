@@ -45,6 +45,29 @@ func (s *evidenceSet) add(e types.Evidence) {
 	s.items = append(s.items, gate.Cap(e))
 }
 
+// mark and rewind bracket evidence that belongs to an attempt the step threw
+// away: a refused after-gate that sent the worker back must not leave its
+// refusal in front of the person who later approves the repaired work.
+func (s *evidenceSet) mark() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.items)
+}
+
+func (s *evidenceSet) rewind(n int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n < len(s.items) {
+		s.items = s.items[:n]
+	}
+}
+
 // setAnswer records the reply to this step's question gate, and what was asked.
 func (s *evidenceSet) setAnswer(question, a string) {
 	if s == nil {

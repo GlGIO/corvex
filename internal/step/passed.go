@@ -2,6 +2,7 @@ package step
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -71,7 +72,12 @@ func (e *Executor) finishPassedTask(
 	// after-gate looked at a tree whose `git diff` was empty — the reviewer's own
 	// prompt says to check it — and a refusal had to flip a step that was already
 	// committed and announced as passed.
+	mark := acc.mark()
 	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
+		if e.repairAfterGate(t, st, attempt, err) {
+			acc.rewind(mark)
+			return false, nil
+		}
 		e.markGateFailure(r, t, err)
 		return false, err
 	}
@@ -157,4 +163,28 @@ func (e *Executor) commitPassedTask(
 		}
 	}
 	r.Completed[t.ID] = true
+}
+
+// repairAfterGate decides whether a refused after-gate sends the worker back
+// in instead of failing the step. Only a computational gate qualifies — its
+// refusal is a command's output, which is a diagnosis; a person's rejection is
+// a decision, and a judge's has the review loop already. Once per task, and
+// only while attempts remain: the point is to turn "the lint failed" into one
+// informed retry, not to open a second loop next to the review one.
+func (e *Executor) repairAfterGate(t *types.Task, st *aiTask, attempt int, err error) bool {
+	var gr *gateRefusal
+	if !errors.As(err, &gr) || gr.nature != types.GateComputational {
+		return false
+	}
+	if st.gateRepairs >= 1 || attempt >= st.maxRetries {
+		return false
+	}
+	st.gateRepairs++
+	st.diagnosis = "your change passed review, but an after-gate check refused it: " + gr.msg +
+		"\n\nThe check printed:\n" + strings.TrimSpace(gr.output) +
+		"\n\nFix what the check reports, keeping the rest of the change."
+	// The retry line the next attempt opens with carries this reason; the
+	// refusal itself is already on the ledger as gate_failed.
+	st.reason = "after-gate refused; worker sent back once"
+	return true
 }

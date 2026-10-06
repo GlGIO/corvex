@@ -118,7 +118,11 @@ func (e *Executor) computationalGate(ctx context.Context, r *Run, t *types.Task,
 	out, err := e.runShellForTask(ctx, r, t, g.Command)
 	acc.add(gate.FromCommandOutput(gateLabel(g, "check"), out, err == nil))
 	if err != nil {
-		return e.gateRefused(t, g, fmt.Sprintf("`%s` exited non-zero: %v", g.Command, err))
+		refusal := e.gateRefused(t, g, fmt.Sprintf("`%s` exited non-zero: %v", g.Command, err))
+		if gr, ok := refusal.(*gateRefusal); ok {
+			gr.output = out
+		}
+		return refusal
 	}
 	return nil
 }
@@ -238,8 +242,21 @@ func (e *Executor) gateRefused(t *types.Task, g types.Gate, reason string) error
 		Message: g.Describe() + ": " + reason,
 	})
 	charmbraceletlog.Warn("gate refused", "task", t.ID, "gate", g.Describe(), "reason", reason)
-	return fmt.Errorf("task %s: gate %s refused: %s", t.ID, g.Describe(), reason)
+	return &gateRefusal{nature: g.Nature, msg: fmt.Sprintf("task %s: gate %s refused: %s", t.ID, g.Describe(), reason)}
 }
+
+// gateRefusal is a gate's "no", carrying which nature said it: a deterministic
+// check's refusal can be handed back to the worker as a diagnosis (see
+// repairAfterGate), and a person's cannot — that one is a decision.
+type gateRefusal struct {
+	nature types.GateNature
+	msg    string
+	// output is what a computational gate's command printed. Prompt-only: it
+	// is raw command output, so it never rides on a ledger line.
+	output string
+}
+
+func (g *gateRefusal) Error() string { return g.msg }
 
 // chargeGate bills a gate's LLM spend to the run, honouring the run ceiling and
 // any per-step ceiling the recipe declared.
