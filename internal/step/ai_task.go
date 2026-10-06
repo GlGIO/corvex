@@ -35,23 +35,6 @@ type aiTask struct {
 	maxRetries     int
 }
 
-// runAITaskGated drives the worker/review retry loop for a code task and, when
-// it passes, hands the result to the after-gates before the pass is recorded.
-//
-// The order matters: an after-gate that ran once the task was already PASSED and
-// checkpointed would have to flip a committed state back, which is a worse thing
-// to own than an extra branch here.
-func (e *Executor) runAITaskGated(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) error {
-	if err := e.runAITask(ctx, r, t, acc); err != nil {
-		return err
-	}
-	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
-		e.markGateFailure(r, t, err)
-		return err
-	}
-	return nil
-}
-
 // runAITask drives the worker/review retry loop for a normal (AI) task.
 func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *evidenceSet) error {
 	maxRetries := e.cfg.Execution.MaxRetries
@@ -211,7 +194,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 
 	if reviewResult.Verdict == VerdictPass {
 		e.addDiffEvidence(ctx, r, t, acc)
-		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, workerCost)
+		return e.finishPassedTask(ctx, r, t, st, attempt, hookEnv, result, reviewResult, workerCost, acc)
 	}
 
 	if reviewResult.Verdict != VerdictPass {

@@ -200,7 +200,7 @@ func (e *Executor) Execute(ctx context.Context, r *Run, t *types.Task) error {
 	case types.NormalizeKind(t.Kind).IsComputational():
 		return e.runComputationalStage(ctx, r, t, acc)
 	default:
-		return e.runAITaskGated(ctx, r, t, acc)
+		return e.runAITask(ctx, r, t, acc)
 	}
 }
 

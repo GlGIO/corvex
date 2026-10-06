@@ -28,6 +28,7 @@ func (e *Executor) finishPassedTask(
 	result *types.ExecuteResult,
 	reviewResult *ReviewResult,
 	workerCost float64,
+	acc *evidenceSet,
 ) (bool, error) {
 	// Determine the next task first — it decides whether a HANDOFF is required
 	// (the last task in the DAG has nothing to hand off to).
@@ -63,6 +64,16 @@ func (e *Executor) finishPassedTask(
 		}
 		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt + 1, Message: "missing TASK-REPORT/HANDOFF"})
 		return false, nil
+	}
+
+	// The after-gates judge the result while it is still a diff: before the
+	// success hooks, the PASSED status and the checkpoint. Run after them, every
+	// after-gate looked at a tree whose `git diff` was empty — the reviewer's own
+	// prompt says to check it — and a refusal had to flip a step that was already
+	// committed and announced as passed.
+	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
+		e.markGateFailure(r, t, err)
+		return false, err
 	}
 
 	hookEnv.Status = "passed"
