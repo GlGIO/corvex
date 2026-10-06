@@ -88,7 +88,11 @@ func TestUI_AFailedStepSaysWhatItPrinted(t *testing.T) {
 	c.waitFor(t, 15*time.Second, "the run to name the failed step",
 		`document.body.innerText.toLowerCase().includes('failed at') && document.body.innerText.includes('S02')`)
 
-	// And one click gets the sentence the step actually printed.
+	// And one click gets the sentence the step actually printed — aimed after
+	// the screen has stopped moving, for the reason `settled` explains: a run
+	// that just failed is still settling, every settling step is a legitimate
+	// redraw, and a redraw replaces the node the click is about to land on.
+	settled(t, c)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Why').click()`, nil)
 	c.waitFor(t, 15*time.Second, "the step output to appear", `document.querySelector('pre.log')`)
 	printed := c.evalString(t, "document.querySelector('pre.log').innerText")
@@ -140,6 +144,20 @@ func TestUI_RetryReExecutesOnlyTheFailedStep(t *testing.T) {
 
 	// `confirm` is a modal in a headless browser: answer it before clicking.
 	c.eval(t, `window.confirm = () => true`, nil)
+	// WAIT FOR THE SCREEN TO STOP MOVING before aiming at a button on it.
+	//
+	// The run screen redraws when the run moves, and a run that has just failed
+	// is still settling for a moment — the record's liveness goes from alive to
+	// finished, the ledger's last lines land. Each of those is a legitimate
+	// redraw, and a redraw replaces the node the click is about to land on.
+	// This was an intermittent failure under full-suite load, roughly one run
+	// in three, and reading it as flakiness would have been reading it wrong:
+	// the page was doing exactly what it should, and the test was clicking
+	// into the middle of it.
+	//
+	// `state.runSig` is the page's own answer to "has anything changed", so
+	// two equal reads of it are the screen saying it is done moving.
+	settled(t, c)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Retry step').click()`, nil)
 
 	// The step runs again and passes this time, and the step that had already
@@ -178,4 +196,26 @@ func completions(ledger, step string) int {
 		}
 	}
 	return n
+}
+
+// settled waits until the run screen reports the same signature twice in a row,
+// which is the page's own statement that it has stopped redrawing.
+func settled(t *testing.T, c *chrome) {
+	t.Helper()
+	last := ""
+	stable := 0
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		sig := c.evalString(t, `String(state.runSig || '')`)
+		if sig != "" && sig == last {
+			if stable++; stable >= 2 {
+				return
+			}
+		} else {
+			stable = 0
+		}
+		last = sig
+		time.Sleep(300 * time.Millisecond)
+	}
+	t.Fatal("the run screen never stopped redrawing")
 }
