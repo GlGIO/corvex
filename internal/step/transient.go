@@ -25,10 +25,13 @@ const maxInfraRetries = 3
 // deliberately short and literal. Anything else keeps the old behaviour — it
 // spends an attempt with the error as the diagnosis — so a wrong guess here can
 // only cost a wait, never repeat a fatal error on the house.
+//
+// Status codes are matched only in the shape the CLI prints them ("API Error:
+// 529"), never as a bare number: a bare "529" also matches "152900 tokens" in a
+// prompt-too-long error, which is as deterministic as failures get.
 var transientMarkers = []string{
-	"rate limit", "rate_limit", "429",
-	"overloaded", "529",
-	"503 service unavailable",
+	"api error: 429", "api error: 529", "api error: 503",
+	"rate_limit_error", "overloaded_error", "rate limit exceeded",
 	"connection reset", "econnreset", "etimedout", "socket hang up",
 }
 

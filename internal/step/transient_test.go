@@ -145,3 +145,87 @@ func TestEvidenceRewind_TheDiscardedAttemptsRefusalIsGone(t *testing.T) {
 		t.Errorf("evidence after rewind = %+v, want only what came before the mark", acc.items)
 	}
 }
+
+// TestIsTransient_ANumberInsideATokenCountIsNotAStatus: the review's finding,
+// pinned. "152900 tokens" contains 529 and is the most deterministic failure
+// there is; a task called S0429 is not a rate limit either.
+func TestIsTransient_ANumberInsideATokenCountIsNotAStatus(t *testing.T) {
+	for _, msg := range []string{
+		"reviewer execution for task S01: prompt is too long: 152900 tokens > 150000 maximum",
+		"worker execution for task S0429: claude cli: model is required",
+	} {
+		if isTransient(context.Background(), errors.New(msg)) {
+			t.Errorf("%q was classified as a provider outage", msg)
+		}
+	}
+}
+
+// TestInfraRetry_AReviewOutageRetriesTheReviewNotTheWorker: the worker's tree
+// is intact and paid for; an overloaded reviewer is no reason to redo it.
+func TestInfraRetry_AReviewOutageRetriesTheReviewNotTheWorker(t *testing.T) {
+	var mu sync.Mutex
+	workerCalls, reviewFails := 0, 1
+	p := &mockProvider{}
+	p.executeFn = func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if strings.Contains(req.Prompt, "VERDICT") {
+			if reviewFails > 0 {
+				reviewFails--
+				return &types.ExecuteResult{CostUSD: 0.01}, errors.New("API Error: 529 overloaded_error")
+			}
+			return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
+		}
+		workerCalls++
+		return &types.ExecuteResult{Output: passingWorkerOutput}, nil
+	}
+	e, r, rec, _ := noRetryExecutor(t, p)
+	if err := e.runAITask(context.Background(), r, oneShotTask(), newEvidenceSet()); err != nil {
+		t.Fatalf("one review outage must be waited out: %v", err)
+	}
+	if workerCalls != 1 {
+		t.Errorf("worker ran %d times; a review outage must not redo the work", workerCalls)
+	}
+	var sawReviewCost bool
+	for _, ev := range rec.evs {
+		if ev.Type == event.AttemptCost && ev.Phase == event.PhaseReview && ev.CostUSD == 0.01 {
+			sawReviewCost = true
+		}
+	}
+	if !sawReviewCost {
+		t.Error("the failed review call was paid and never reached the ledger")
+	}
+}
+
+// TestRepairAfterGate_NotWhenAPersonGuardsTheResult: a repair re-runs every
+// after-gate, and a human gate's file cannot be opened twice.
+func TestRepairAfterGate_NotWhenAPersonGuardsTheResult(t *testing.T) {
+	e := &Executor{}
+	tk := &types.Task{ID: "S01", Gates: []types.Gate{
+		{Nature: types.GateHuman, When: types.GateAfter},
+		{Nature: types.GateComputational, Command: "lint"},
+	}}
+	if e.repairAfterGate(tk, &aiTask{maxRetries: 2}, 0, &gateRefusal{nature: types.GateComputational, msg: "lint"}) {
+		t.Error("a repair with a human after-gate would reopen a decided gate")
+	}
+}
+
+// TestTail_KeepsTheEnd: where a runner prints what failed.
+func TestTail_KeepsTheEnd(t *testing.T) {
+	got := tail(strings.Repeat("x", 100)+"FAIL: TestFoo", 20)
+	if !strings.HasSuffix(got, "FAIL: TestFoo") || len(got) > 20+len("…") {
+		t.Errorf("tail = %q", got)
+	}
+}
+
+// TestReviewer_JudgesTheIsolatedItemsTree: the built-in reviewer followed the
+// run's checkout even when the worker wrote an item's worktree.
+func TestReviewer_JudgesTheIsolatedItemsTree(t *testing.T) {
+	r := NewReviewer(&mockProvider{}, "m", "/run", "")
+	if got := r.inDir("/item").workDir; got != "/item" {
+		t.Errorf("inDir workDir = %q, want /item", got)
+	}
+	if r.workDir != "/run" {
+		t.Error("inDir mutated the shared reviewer")
+	}
+}

@@ -38,6 +38,9 @@ type aiTask struct {
 	// touches the attempt count: see waitOutProvider.
 	infraRetries int
 	redo         bool
+	// keepTree tells the next attempt not to reset the tree: set by a repair,
+	// whose diagnosis is about the change as it stands.
+	keepTree bool
 	// gateRepairs counts the times a refused after-gate sent the worker back;
 	// see repairAfterGate.
 	gateRepairs int
@@ -107,7 +110,12 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		// diagnosis on it was written by the reviewer: what the next attempt
 		// costs is worker spend.
 		e.emit(event.Event{Type: event.Retry, TaskID: t.ID, Phase: event.PhaseWorker, Attempt: attempt, Message: st.publishableReason()})
-		if _, err := e.recovery.Check(); err != nil {
+		// A repair keeps the tree: the diagnosis is about THIS change ("the
+		// lint failed on line 12"), and resetting it would send the worker to
+		// fix code that no longer exists. Every other retry starts clean.
+		if st.keepTree {
+			st.keepTree = false
+		} else if _, err := e.recovery.Check(); err != nil {
 			charmbraceletlog.Warn("recovery check on retry", "task", t.ID, "err", err)
 		}
 	}
@@ -142,6 +150,11 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 			e.emitAttemptCost(st, t, attempt, result, "worker attempt not completed")
 		}
 		if e.waitOutProvider(ctx, t, st, event.PhaseWorker, err) {
+			// The redo starts from a clean tree like any retry: a call that
+			// died midway may have left half an edit behind.
+			if _, cerr := e.recovery.Check(); cerr != nil {
+				charmbraceletlog.Warn("recovery check on infra retry", "task", t.ID, "err", cerr)
+			}
 			st.redo = true
 			return false, nil
 		}
@@ -167,8 +180,27 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return false, nil
 	}
 
-	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview})
-	reviewResult, reviewErr := e.reviewer.Review(ctx, t)
+	// The judge reads the tree the worker wrote, which for an isolated item is
+	// that item's worktree — the same rule the inferential gate already follows.
+	reviewer := e.reviewer.inDir(e.taskDir(t))
+	var reviewResult *ReviewResult
+	var reviewErr error
+	for {
+		e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview})
+		reviewResult, reviewErr = reviewer.Review(ctx, t)
+		// A provider outage during the REVIEW is waited out on the review
+		// alone: the worker's tree is intact and was paid for, and redoing the
+		// whole attempt would throw it away to retry a call that never judged it.
+		if reviewErr == nil || !e.waitOutProvider(ctx, t, st, event.PhaseReview, reviewErr) {
+			break
+		}
+		if reviewResult != nil {
+			if ceilErr := e.charge(r, t, st, reviewResult.CostUSD, event.PhaseReview); ceilErr != nil {
+				return false, ceilErr
+			}
+			e.emitReviewCost(t, attempt, reviewResult, "review call not completed")
+		}
+	}
 	var reviewerCost float64
 	if reviewResult != nil {
 		reviewerCost = reviewResult.CostUSD
@@ -178,10 +210,9 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return false, ceilErr
 	}
 	if reviewErr != nil {
-		if e.waitOutProvider(ctx, t, st, event.PhaseReview, reviewErr) {
-			st.redo = true
-			return false, nil
-		}
+		// Both calls were paid; neither reached a line that carries cost.
+		e.emitAttemptCost(st, t, attempt, result, "worker attempt not judged")
+		e.emitReviewCost(t, attempt, reviewResult, "review call not completed")
 		if attempt == st.maxRetries {
 			if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
@@ -278,28 +309,7 @@ func (e *Executor) rejectAttempt(
 	return e.applyEscalation(ctx, r, t, st, attempt, reviewResult)
 }
 
-// emitAttemptCost records what one attempt spent, on the paths where the
-// attempt does not end in a task_complete. It is a method rather than two
-// inline literals so the two producers cannot drift into reporting different
-// things about the same event.
-//
-// A nil result means the provider returned nothing at all — there is no number
-// to report, and inventing a zero would be worse than the silence it replaces.
-func (e *Executor) emitAttemptCost(_ *aiTask, t *types.Task, attempt int, result *types.ExecuteResult, why string) {
-	if result == nil {
-		return
-	}
-	e.emit(event.Event{
-		Type:      event.AttemptCost,
-		TaskID:    t.ID,
-		Phase:     event.PhaseWorker,
-		Attempt:   attempt,
-		CostUSD:   result.CostUSD,
-		TokensIn:  result.TokensIn,
-		TokensOut: result.TokensOut,
-		Message:   why,
-	})
-}
+
 
 // publishableReason is what a ledger line may say about a failure. Empty falls
 // back to a fixed string rather than to the diagnosis: a missing reason must

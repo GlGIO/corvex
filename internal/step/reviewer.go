@@ -49,6 +49,17 @@ func NewReviewer(p provider.Provider, model, workDir, skill string) *Reviewer {
 	return &Reviewer{provider: p, model: model, workDir: workDir, skill: skill}
 }
 
+// inDir returns a Reviewer that judges dir instead; the receiver is untouched,
+// because one Reviewer serves every task of a parallel wave.
+func (r *Reviewer) inDir(dir string) *Reviewer {
+	if dir == "" || dir == r.workDir {
+		return r
+	}
+	c := *r
+	c.workDir = dir
+	return &c
+}
+
 // Review executes the AI reviewer for the given task and parses the verdict.
 func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, error) {
 	prompt := buildReviewerPrompt(t, r.skill)
@@ -71,7 +82,14 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		AllowedTools: allowedTools,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
+		// A failed call can still have been paid for (the CLI reports cost on
+		// its result line before it exits non-zero); that spend travels with
+		// the error, verdict empty.
+		var spent *ReviewResult
+		if result != nil {
+			spent = &ReviewResult{CostUSD: result.CostUSD, TokensIn: result.TokensIn, TokensOut: result.TokensOut, DurationMs: result.DurationMs}
+		}
+		return spent, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
 	}
 
 	rr := ParseVerdict(result.Output)
@@ -82,7 +100,9 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 	// The result rides along with the error: the call was made and paid for,
 	// and a caller that drops the spend because the verdict is void would make
 	// the ledger blind in exactly the case worth accounting for.
-	if before != "" && treeState(ctx, r.workDir) != before {
+	// An unreadable "after" is no evidence of an edit: the fingerprint failed,
+	// the judge did not.
+	if after := treeState(ctx, r.workDir); before != "" && after != "" && after != before {
 		return rr, fmt.Errorf("reviewer for task %s changed the working tree it was judging; its verdict (%s) is discarded", t.ID, rr.Verdict)
 	}
 	return rr, nil

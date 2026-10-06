@@ -74,11 +74,17 @@ func (e *Executor) finishPassedTask(
 	// committed and announced as passed.
 	mark := acc.mark()
 	if err := e.runGates(ctx, r, t, types.GateAfter, acc); err != nil {
+		// The worker's spend never reaches task_complete on this path, so it
+		// gets its own line — refused or repaired, the attempt was paid.
+		e.emitAttemptCost(st, t, attempt, result, "worker attempt refused by an after-gate")
 		if e.repairAfterGate(t, st, attempt, err) {
 			acc.rewind(mark)
 			return false, nil
 		}
 		e.markGateFailure(r, t, err)
+		hookEnv.Status = "failed"
+		e.runHook(ctx, hooks.OnFailure, hookEnv, t.ID)
+		e.runHook(ctx, hooks.PostTask, hookEnv, t.ID)
 		return false, err
 	}
 
@@ -179,12 +185,34 @@ func (e *Executor) repairAfterGate(t *types.Task, st *aiTask, attempt int, err e
 	if st.gateRepairs >= 1 || attempt >= st.maxRetries {
 		return false
 	}
+	// A repair re-runs every after-gate, and a gate that parks on a person
+	// cannot be run twice: its file exists, decided, and reopening it would
+	// either kill the run or ask the person to approve code they never saw.
+	for _, g := range gatesAt(t, types.GateAfter) {
+		if g.Nature == types.GateHuman || g.Nature == types.GateQuestion {
+			return false
+		}
+	}
 	st.gateRepairs++
 	st.diagnosis = "your change passed review, but an after-gate check refused it: " + gr.msg +
-		"\n\nThe check printed:\n" + strings.TrimSpace(gr.output) +
-		"\n\nFix what the check reports, keeping the rest of the change."
+		"\n\nThe check printed (tail):\n" + tail(strings.TrimSpace(gr.output), repairOutputMax) +
+		"\n\nYour change is still in the working tree. Fix what the check reports, keeping the rest of the change."
+	st.keepTree = true
 	// The retry line the next attempt opens with carries this reason; the
 	// refusal itself is already on the ledger as gate_failed.
 	st.reason = "after-gate refused; worker sent back once"
 	return true
+}
+
+// repairOutputMax bounds how much of a check's output reaches the worker's
+// prompt. The END is kept: that is where a test runner or a linter prints what
+// failed, and a check that prints megabytes would otherwise spend the repair
+// on a context overflow.
+const repairOutputMax = 8 << 10
+
+func tail(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return "…" + s[len(s)-max:]
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/giovannialves/corvex/internal/config"
+	"github.com/giovannialves/corvex/internal/event"
 	"github.com/giovannialves/corvex/internal/task"
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -44,7 +45,7 @@ func runAfterGateTask(t *testing.T, gateCmd string) (dir string, err error, even
 			if werr := os.WriteFile(filepath.Join(wd, "work.txt"), []byte("done\n"), 0o644); werr != nil {
 				t.Errorf("worker could not write: %v", werr)
 			}
-			return &types.ExecuteResult{Output: "wrote it" + taskReportBlock}, nil
+			return &types.ExecuteResult{Output: "wrote it" + taskReportBlock, CostUSD: 0.07}, nil
 		},
 	}
 	cfg := config.Default()
@@ -111,6 +112,15 @@ func TestAfterGate_RefusalLeavesNoCheckpoint(t *testing.T) {
 	if strings.Contains(committedFiles(t, dir), "work.txt") {
 		t.Error("the refused work was checkpointed: the commit happened before the gate")
 	}
+	var workerSpend float64
+	for _, ev := range events {
+		if ev.TaskID == "S01" && ev.Type == event.AttemptCost && ev.Phase == event.PhaseWorker {
+			workerSpend += ev.CostUSD
+		}
+	}
+	if workerSpend == 0 {
+		t.Error("the refused attempts' worker spend never reached the ledger")
+	}
 	for _, ev := range events {
 		if ev.TaskID == "S01" && ev.Type == EventTaskComplete && ev.Status == types.StatusPassed {
 			t.Error("S01 was announced PASSED before its after-gate refused it")
@@ -132,6 +142,7 @@ func TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce(t *testing.T) {
 	gitCommitAll(t, dir, "add tasks")
 
 	var sawDiagnosis bool
+	keptTree := true
 	mock := &mockProvider{
 		executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
 			if strings.Contains(req.Prompt, "code reviewer") {
@@ -139,6 +150,10 @@ func TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce(t *testing.T) {
 			}
 			if strings.Contains(req.Prompt, "lint: fixed.txt missing") {
 				sawDiagnosis = true
+				// The repair is about THIS change: the tree must still hold it.
+				if _, err := os.Stat(filepath.Join(dir, "work.txt")); err != nil {
+					keptTree = false
+				}
 				_ = os.WriteFile(filepath.Join(dir, "fixed.txt"), []byte("ok\n"), 0o644)
 			}
 			_ = os.WriteFile(filepath.Join(dir, "work.txt"), []byte("done\n"), 0o644)
@@ -160,6 +175,9 @@ func TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce(t *testing.T) {
 	}
 	if !sawDiagnosis {
 		t.Error("the retry prompt never carried what the check printed")
+	}
+	if !keptTree {
+		t.Error("the repair attempt started from a reset tree: the worker was told to fix a change that had been deleted")
 	}
 	if got := taskStatus(t, dir); got != types.StatusPassed {
 		t.Errorf("S01 = %s, want PASSED after the repair", got)
