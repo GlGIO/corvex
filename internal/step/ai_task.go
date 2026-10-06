@@ -33,6 +33,11 @@ type aiTask struct {
 	categoryCounts map[string]int
 	costUSD        float64
 	maxRetries     int
+	// infraRetries counts the provider outages this task has waited out, and
+	// redo asks the loop to run the same attempt again after one. Neither
+	// touches the attempt count: see waitOutProvider.
+	infraRetries int
+	redo         bool
 }
 
 // runAITask drives the worker/review retry loop for a normal (AI) task.
@@ -76,6 +81,10 @@ func (e *Executor) runAITask(ctx context.Context, r *Run, t *types.Task, acc *ev
 		}
 		if passed {
 			return nil
+		}
+		if st.redo {
+			st.redo = false
+			attempt--
 		}
 	}
 
@@ -129,6 +138,10 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		if workerCost > 0 {
 			e.emitAttemptCost(st, t, attempt, result, "worker attempt not completed")
 		}
+		if e.waitOutProvider(ctx, t, st, event.PhaseWorker, err) {
+			st.redo = true
+			return false, nil
+		}
 		if attempt == st.maxRetries {
 			if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)
@@ -162,6 +175,10 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		return false, ceilErr
 	}
 	if reviewErr != nil {
+		if e.waitOutProvider(ctx, t, st, event.PhaseReview, reviewErr) {
+			st.redo = true
+			return false, nil
+		}
 		if attempt == st.maxRetries {
 			if statusErr := e.book.SetStatus(r.TasksPath, t.ID, types.StatusFailed); statusErr != nil {
 				charmbraceletlog.Warn("updating task status to failed", "task", t.ID, "err", statusErr)

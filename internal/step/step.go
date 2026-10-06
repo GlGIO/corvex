@@ -84,6 +84,9 @@ type Executor struct {
 	gatePoll           time.Duration
 	nowFn              func() time.Time
 	branchFn           func(context.Context) (string, error)
+	// waitFn is how a provider outage is waited out (see waitOutProvider);
+	// nil is a real timer. Injected so the tests don't sleep for minutes.
+	waitFn func(context.Context, time.Duration) error
 
 	// parkedMu/parkedGates count how many human gates are holding this run.
 	//
