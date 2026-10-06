@@ -150,6 +150,11 @@ func (e *Executor) inferentialGate(ctx context.Context, r *Run, t *types.Task, g
 	reviewer := NewReviewer(e.provider, model, e.taskDir(t), skill)
 	res, err := reviewer.Review(ctx, t)
 	if err != nil {
+		if res != nil {
+			if ceilErr := e.chargeGate(r, t, res.CostUSD); ceilErr != nil {
+				return ceilErr
+			}
+		}
 		acc.add(gate.FromVerdict(gateLabel(g, "review"), "ERROR", "", err.Error(), false))
 		return e.gateRefused(t, g, fmt.Sprintf("independent review could not run: %v", err))
 	}

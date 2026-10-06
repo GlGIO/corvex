@@ -149,7 +149,7 @@ func (e *Executor) runABSide(
 	reviewer := NewReviewer(e.provider, e.cfg.Provider.Models.Reviewer, wt.Path, e.cfg.SkillRouting["review"])
 	reviewResult, err := reviewer.Review(ctx, t)
 	if err != nil {
-		return abRunResult{Model: model, Worktree: wt, Worker: workerResult, Err: fmt.Errorf("reviewer: %w", err)}
+		return abRunResult{Model: model, Worktree: wt, Worker: workerResult, Review: reviewResult, Err: fmt.Errorf("reviewer: %w", err)}
 	}
 
 	return abRunResult{

@@ -58,6 +58,12 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		allowedTools = append(allowedTools, "Skill")
 	}
 
+	// The reviewer has Bash so it can run the tests, which also means it can
+	// edit the work it is judging — and a verdict on a tree the judge itself
+	// changed is a verdict on nobody's work. So the tree is fingerprinted
+	// around the call, and a judge that moved it has its verdict discarded.
+	before := treeState(ctx, r.workDir)
+
 	result, err := r.RunStep(ctx, r.provider, types.ExecuteRequest{
 		Prompt:       prompt,
 		Model:        r.model,
@@ -73,6 +79,12 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 	rr.TokensIn = result.TokensIn
 	rr.TokensOut = result.TokensOut
 	rr.DurationMs = result.DurationMs
+	// The result rides along with the error: the call was made and paid for,
+	// and a caller that drops the spend because the verdict is void would make
+	// the ledger blind in exactly the case worth accounting for.
+	if before != "" && treeState(ctx, r.workDir) != before {
+		return rr, fmt.Errorf("reviewer for task %s changed the working tree it was judging; its verdict (%s) is discarded", t.ID, rr.Verdict)
+	}
 	return rr, nil
 }
 

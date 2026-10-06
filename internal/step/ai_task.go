@@ -154,7 +154,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 	e.emit(event.Event{Type: event.ReviewStart, TaskID: t.ID, Phase: event.PhaseReview})
 	reviewResult, reviewErr := e.reviewer.Review(ctx, t)
 	var reviewerCost float64
-	if reviewErr == nil && reviewResult != nil {
+	if reviewResult != nil {
 		reviewerCost = reviewResult.CostUSD
 	}
 	attemptCost := workerCost + reviewerCost
