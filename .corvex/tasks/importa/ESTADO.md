@@ -22,6 +22,7 @@
 | `go test ./e2e/` | `TestUI_PasteNeverOverwritesWhatWasTyped` (e, numa das duas execuções, `TestGate_ParksAndIsReleasedByASecondProcess`) |
 | `go test ./cmd/` | `TestCharacterizeStackEnvFileSourced` |
 | `go test ./internal/...` | verde |
+| `go test ./e2e/ -run TestUI_RetryReExecutesOnlyTheFailedStep` | intermitente sob carga (2/8 na branch, 0/5 na base isolada, 6/6 na branch isolada): `ui_step_test.go:138` clica em `Open` assim que "failed" aparece, sem esperar o botão. Corrida do teste, não do produto; o arquivo tem edição em voo no checkout principal, então NÃO foi tocado |
 
 ## O veredito por ferramenta, em uma linha
 
@@ -38,14 +39,38 @@
   Ordem certa: medir o primeiro run real contra o board ANTES de automatizar o
   despacho.
 
-## Lote 1 — em execução
+## Lote 1 — FECHADO (aguardando o dono para o lote 2)
 
 | # | Item | Origem | Evidência nesta base | Estado |
 |---|---|---|---|---|
-| 1 | Gate `after` roda ANTES do PASSED e do checkpoint | Bernstein (achado) | `step/ai_task.go:44-53` chama `runAITask`, que dentro de `attempt` já fez `commitPassedTask` (`step/passed.go:101-149`: status PASSED, anchor, `MarkCheckpoint`, `Completed=true`); só depois `runGates(GateAfter)`. O comentário em `ai_task.go:41-43` afirma o contrário. | pendente |
-| 2 | Reviewer não pode alterar a árvore | Archon `mutates_checkout: false` | `step/reviewer.go:56` dá `Bash` ao reviewer e nada confere a árvore depois | pendente |
-| 3 | Falha de infraestrutura não gasta o orçamento de retry semântico, e espera antes de repetir | Archon + Bernstein | `step/ai_task.go` — worker/reviewer que erra cai no mesmo `attempt++`, sem backoff | pendente |
-| 4 | Gate `after` de comando que recusa devolve o diagnóstico ao worker, uma vez | Bernstein (gate→tarefa de reparo) | hoje `markGateFailure` mata a tarefa | pendente (depende do 1) |
+| 1 | Gate `after` roda ANTES do PASSED e do checkpoint | Bernstein (achado) | `step/ai_task.go:44-53` chama `runAITask`, que dentro de `attempt` já fez `commitPassedTask` (`step/passed.go:101-149`: status PASSED, anchor, `MarkCheckpoint`, `Completed=true`); só depois `runGates(GateAfter)`. O comentário em `ai_task.go:41-43` afirma o contrário. **Pior que o relatado:** o prompt do revisor manda "check git diff", e depois do checkpoint o diff é vazio — todo gate inferencial after julgava nada. | **feito** `beb0d0f`. Controle: cegar → 1 vermelho (só o novo: nenhum teste antigo cobria gate after em passo de código) |
+| 2 | Reviewer não pode alterar a árvore | Archon `mutates_checkout: false` | `step/reviewer.go:56` dá `Bash` ao reviewer e nada confere a árvore depois | **feito** `2a00b5c`. Falso positivo MEDIDO e fechado: o runner escreve `.corvex/` (versionado) durante a revisão — 5 caracterizações de `cmd/` ficaram vermelhas até excluí-lo. Controles: 1/1/1 |
+| 3 | Falha de infraestrutura não gasta o orçamento de retry semântico, e espera antes de repetir | Archon + Bernstein | `step/ai_task.go` — worker/reviewer que erra cai no mesmo `attempt++`, sem backoff | **feito** `ffb7175`. 10s×2ⁿ até 2 min, máx. 3 por task, desconhecido segue o caminho antigo. Controles: 2/2 |
+| 4 | Gate `after` de comando que recusa devolve o diagnóstico ao worker, uma vez | Bernstein (gate→tarefa de reparo) | hoje `markGateFailure` mata a tarefa | **feito** `2c8cd7e`. Só gate computacional, 1×, só com tentativa sobrando; evidência da tentativa descartada é retirada. Controles: 2/1 |
+
+### Revisão independente do lote 1 — `688cf3c`
+
+Um revisor sem o contexto da implementação leu o diff e achou 8 defeitos reais,
+três deles de desenho: o repair consertava uma árvore que o retry já tinha
+apagado; repair com gate humano after reabriria um gate decidido (fatal); `529`
+solto casava com `152900 tokens`. Os 8 foram corrigidos. Seis têm teste +
+controle positivo.
+
+**Dívida (sem teste):** os hooks on-failure/post-task na recusa do gate after, e
+o "fingerprint depois ilegível não descarta". Ambos são uma linha de código
+cada, mas não há controle que fique vermelho se forem removidos.
+
+**Lição medida:** dois dos meus controles estavam quebrados — a mutação não
+compilava, e o script só procurava `--- FAIL`, então "nenhum vermelho" queria
+dizer "não rodou". Controle precisa provar que a mutação compilou.
+
+### Linha de chegada medida
+
+| comando | resultado |
+|---|---|
+| `go test ./internal/... ./cmd/ -count=1` | verde |
+| `go test ./e2e/ -count=1`, 2× cada | base `3d77a30`: FAIL 2/2 · esta branch: ok 2/2 — a intermitência é anterior ao lote |
+| invariante `internal/` ≤ 400 linhas | `ai_task.go` passou de 400 com as correções; os emissores de custo foram para `attempt_cost.go` (374) |
 
 ## Lote 2 — candidatos, NÃO iniciados (reavaliar com o dono)
 
