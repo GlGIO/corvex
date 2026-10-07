@@ -174,7 +174,10 @@ func (w *Worker) Execute(
 
 	result, err := w.provider.Execute(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("worker execution for task %s: %w", t.ID, err)
+		// The result travels with the error, as on the streaming path above: a
+		// failed call can still report what it cost and which API status ended
+		// it, and dropping it here made both invisible on this path only.
+		return result, fmt.Errorf("worker execution for task %s: %w", t.ID, err)
 	}
 
 	return result, nil

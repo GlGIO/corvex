@@ -105,7 +105,7 @@ func TestInfraRetry_AnythingElseStillSpendsTheAttempt(t *testing.T) {
 func TestIsTransient_CancellationIsNeverWaitedOut(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if isTransient(ctx, errors.New("529 overloaded")) {
+	if isTransient(ctx, errors.New("529 overloaded"), 529) {
 		t.Error("a cancelled run must not wait out an overload")
 	}
 }
@@ -154,7 +154,7 @@ func TestIsTransient_ANumberInsideATokenCountIsNotAStatus(t *testing.T) {
 		"reviewer execution for task S01: prompt is too long: 152900 tokens > 150000 maximum",
 		"worker execution for task S0429: claude cli: model is required",
 	} {
-		if isTransient(context.Background(), errors.New(msg)) {
+		if isTransient(context.Background(), errors.New(msg), 0) {
 			t.Errorf("%q was classified as a provider outage", msg)
 		}
 	}
@@ -227,5 +227,45 @@ func TestReviewer_JudgesTheIsolatedItemsTree(t *testing.T) {
 	}
 	if r.workDir != "/run" {
 		t.Error("inDir mutated the shared reviewer")
+	}
+}
+
+// TestIsTransient_TheProvidersStatusDecidesFirst: the field beats the text in
+// both directions — a 529 the provider reported is waited out whatever the
+// message says, and a 413 is never, even when its text mentions an overload.
+func TestIsTransient_TheProvidersStatusDecidesFirst(t *testing.T) {
+	ctx := context.Background()
+	if !isTransient(ctx, errors.New("claude cli exited with error: exit status 1"), 529) {
+		t.Error("status 529 with an uninformative message was not waited out")
+	}
+	if isTransient(ctx, errors.New("API Error: 529 overloaded_error"), 413) {
+		t.Error("a 413 was waited out because its text said 529")
+	}
+}
+
+// TestInfraRetry_TheWorkersReportedStatusReachesTheClassifier: through the
+// attempt loop, with a message that says nothing — only the field knows.
+func TestInfraRetry_TheWorkersReportedStatusReachesTheClassifier(t *testing.T) {
+	var mu sync.Mutex
+	fails := 1
+	p := &mockProvider{}
+	p.executeFn = func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		if strings.Contains(req.Prompt, "VERDICT") {
+			return &types.ExecuteResult{Output: "VERDICT: PASS"}, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if fails > 0 {
+			fails--
+			return &types.ExecuteResult{APIErrorStatus: 529}, errors.New("claude cli exited with error: exit status 1")
+		}
+		return &types.ExecuteResult{Output: passingWorkerOutput}, nil
+	}
+	e, r, _, waits := noRetryExecutor(t, p)
+	if err := e.runAITask(context.Background(), r, oneShotTask(), newEvidenceSet()); err != nil {
+		t.Fatalf("a reported 529 must be waited out: %v", err)
+	}
+	if len(*waits) != 1 {
+		t.Errorf("waits = %v, want one", *waits)
 	}
 }

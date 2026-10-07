@@ -149,7 +149,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		if workerCost > 0 {
 			e.emitAttemptCost(st, t, attempt, result, "worker attempt not completed")
 		}
-		if e.waitOutProvider(ctx, t, st, event.PhaseWorker, err) {
+		if e.waitOutProvider(ctx, t, st, event.PhaseWorker, err, apiStatus(result)) {
 			// The redo starts from a clean tree like any retry: a call that
 			// died midway may have left half an edit behind.
 			if _, cerr := e.recovery.Check(); cerr != nil {
@@ -191,7 +191,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		// A provider outage during the REVIEW is waited out on the review
 		// alone: the worker's tree is intact and was paid for, and redoing the
 		// whole attempt would throw it away to retry a call that never judged it.
-		if reviewErr == nil || !e.waitOutProvider(ctx, t, st, event.PhaseReview, reviewErr) {
+		if reviewErr == nil || !e.waitOutProvider(ctx, t, st, event.PhaseReview, reviewErr, reviewStatus(reviewResult)) {
 			break
 		}
 		if reviewResult != nil {

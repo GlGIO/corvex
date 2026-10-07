@@ -38,8 +38,22 @@ var transientMarkers = []string{
 // isTransient reports whether a provider call failed for a reason that says
 // nothing about the work. Cancellation is never transient: the person stopped
 // the run, and waiting would be disobeying them.
-func isTransient(ctx context.Context, err error) bool {
+//
+// status is the provider's own report of the API error (ExecuteResult.
+// APIErrorStatus), and it decides first: it is a number the provider put in a
+// field, where the text is a sentence that may contain any number at all.
+func isTransient(ctx context.Context, err error, status int) bool {
 	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	switch status {
+	case 429, 500, 502, 503, 504, 529:
+		return true
+	case 0:
+	default:
+		// A status the provider reported and that is not about availability
+		// (400, 401, 413…) is the request's fault: never waited out, whatever
+		// the text says.
 		return false
 	}
 	msg := strings.ToLower(err.Error())
@@ -67,8 +81,8 @@ func infraBackoff(n int) time.Duration {
 // waitOutProvider decides whether a failed provider call is waited out instead
 // of spending an attempt. It reports true when the caller must redo the SAME
 // attempt; false hands the failure to the ordinary retry path.
-func (e *Executor) waitOutProvider(ctx context.Context, t *types.Task, st *aiTask, phase string, err error) bool {
-	if !isTransient(ctx, err) || st.infraRetries >= maxInfraRetries {
+func (e *Executor) waitOutProvider(ctx context.Context, t *types.Task, st *aiTask, phase string, err error, status int) bool {
+	if !isTransient(ctx, err, status) || st.infraRetries >= maxInfraRetries {
 		return false
 	}
 	st.infraRetries++
@@ -94,4 +108,18 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-tm.C:
 		return nil
 	}
+}
+
+func apiStatus(r *types.ExecuteResult) int {
+	if r == nil {
+		return 0
+	}
+	return r.APIErrorStatus
+}
+
+func reviewStatus(r *ReviewResult) int {
+	if r == nil {
+		return 0
+	}
+	return r.apiStatus
 }
