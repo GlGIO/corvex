@@ -84,12 +84,7 @@ func (c *ClaudeCLI) ExecuteWithProgress(ctx context.Context, req types.ExecuteRe
 			sawResult = true
 			var res resultLine
 			if json.Unmarshal(line, &res) == nil {
-				result.TokensIn = res.TotalInputTokens
-				result.TokensOut = res.TotalOutputTokens
-				result.CostUSD = res.TotalCostUSD
-				if res.DurationMs > 0 {
-					result.DurationMs = res.DurationMs
-				}
+				applyResultLine(result, res)
 			}
 		}
 	}

@@ -42,13 +42,49 @@ type toolResultLine struct {
 }
 
 type resultLine struct {
-	Type              string  `json:"type"`
-	Subtype           string  `json:"subtype"`
-	Result            string  `json:"result"`
-	TotalCostUSD      float64 `json:"total_cost_usd"`
-	TotalInputTokens  int     `json:"total_input_tokens"`
-	TotalOutputTokens int     `json:"total_output_tokens"`
-	DurationMs        int64   `json:"duration_ms"`
+	Type         string  `json:"type"`
+	Subtype      string  `json:"subtype"`
+	Result       string  `json:"result"`
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	DurationMs   int64   `json:"duration_ms"`
+	// Usage is where the CLI actually reports tokens. Measured against
+	// claude 2.1.292: the result line has NO total_input_tokens /
+	// total_output_tokens — every fixture in this repo invented them, so
+	// every real run reached the ledger with 0 tokens.
+	Usage struct {
+		InputTokens              int `json:"input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+	} `json:"usage"`
+	// The legacy names stay readable, so a recorded stream in that shape
+	// keeps meaning what it meant.
+	TotalInputTokens  int             `json:"total_input_tokens"`
+	TotalOutputTokens int             `json:"total_output_tokens"`
+	StructuredOutput  json.RawMessage `json:"structured_output"`
+	APIErrorStatus    *int            `json:"api_error_status"`
+}
+
+// applyResultLine copies what the final result line reports onto result. One
+// function for the two readers (the streaming Execute and the sandbox's
+// ParseFullOutput), which used to be two copies of the same field list.
+func applyResultLine(result *types.ExecuteResult, res resultLine) {
+	result.CostUSD = res.TotalCostUSD
+	if res.DurationMs > 0 {
+		result.DurationMs = res.DurationMs
+	}
+	in := res.Usage.InputTokens + res.Usage.CacheCreationInputTokens + res.Usage.CacheReadInputTokens
+	out := res.Usage.OutputTokens
+	if in == 0 && out == 0 {
+		in, out = res.TotalInputTokens, res.TotalOutputTokens
+	}
+	result.TokensIn, result.TokensOut = in, out
+	if len(res.StructuredOutput) > 0 && string(res.StructuredOutput) != "null" {
+		result.Structured = []byte(res.StructuredOutput)
+	}
+	if res.APIErrorStatus != nil {
+		result.APIErrorStatus = *res.APIErrorStatus
+	}
 }
 
 // toolInput captures the most useful fields the assistant places in a
@@ -243,12 +279,7 @@ func (c *ClaudeCLI) ParseFullOutput(stdout string, exitCode int, elapsed time.Du
 			sawResult = true
 			var res resultLine
 			if json.Unmarshal([]byte(trimmed), &res) == nil {
-				result.TokensIn = res.TotalInputTokens
-				result.TokensOut = res.TotalOutputTokens
-				result.CostUSD = res.TotalCostUSD
-				if res.DurationMs > 0 {
-					result.DurationMs = res.DurationMs
-				}
+				applyResultLine(result, res)
 			}
 		}
 	}

@@ -45,6 +45,10 @@ func buildArgs(req types.ExecuteRequest) []string {
 		args = append(args, "--disallowedTools", tool)
 	}
 
+	if req.JSONSchema != "" {
+		args = append(args, "--json-schema", req.JSONSchema)
+	}
+
 	return args
 }
 

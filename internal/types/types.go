@@ -231,6 +231,10 @@ type ExecuteRequest struct {
 	// assembled, and the only place the difference between the two roles is
 	// still visible at that point.
 	AllowMCP bool
+	// JSONSchema, when set, asks the provider to return a structured answer
+	// validated against it, in ExecuteResult.Structured. A provider that cannot
+	// leaves Structured empty, and the caller falls back to reading the text.
+	JSONSchema string
 }
 
 type ExecuteResult struct {
@@ -240,6 +244,14 @@ type ExecuteResult struct {
 	TokensOut  int
 	CostUSD    float64
 	DurationMs int64
+	// Structured is the provider's schema-validated answer (see
+	// ExecuteRequest.JSONSchema); empty when none was asked for or produced.
+	Structured []byte
+	// APIErrorStatus is the HTTP status of the provider API error that ended
+	// the call, as the provider reported it; 0 when there was none. It is the
+	// classification signal for "the provider was unavailable" — the error
+	// TEXT is a fallback, because text carries numbers that are not statuses.
+	APIErrorStatus int
 }
 
 type StreamEvent struct {

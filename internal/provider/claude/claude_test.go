@@ -1322,3 +1322,44 @@ func TestArgsFor_AnUnwritableConfigStillHoldsTheCallToNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyResultLine_TheShapeTheRealCLIPrints is pinned to a result line
+// recorded from claude 2.1.292 (session ids redacted), not to a hand-written
+// one: every hand-written fixture in this repo used total_input_tokens /
+// total_output_tokens, which the real CLI does not print, and so every real run
+// reached the ledger with zero tokens while the tests were green.
+func TestApplyResultLine_TheShapeTheRealCLIPrints(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "result_line_2.1.292.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res resultLine
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatal(err)
+	}
+	got := &types.ExecuteResult{}
+	applyResultLine(got, res)
+	if got.TokensIn != 20+23110+22887 || got.TokensOut != 522 {
+		t.Errorf("tokens = %d in / %d out, want 46017 / 522 (input + cache creation + cache read)", got.TokensIn, got.TokensOut)
+	}
+	if !strings.Contains(string(got.Structured), `"verdict"`) {
+		t.Errorf("structured_output was not carried: %q", got.Structured)
+	}
+	if got.APIErrorStatus != 0 {
+		t.Errorf("api_error_status null must read as 0, got %d", got.APIErrorStatus)
+	}
+}
+
+func TestBuildArgs_JSONSchemaOnlyWhenAsked(t *testing.T) {
+	without := strings.Join(buildArgs(types.ExecuteRequest{Prompt: "p", Model: "m"}), " ")
+	if strings.Contains(without, "--json-schema") {
+		t.Error("--json-schema passed when no schema was asked for")
+	}
+	with := buildArgs(types.ExecuteRequest{Prompt: "p", Model: "m", JSONSchema: `{"type":"object"}`})
+	for i, a := range with {
+		if a == "--json-schema" && i+1 < len(with) && with[i+1] == `{"type":"object"}` {
+			return
+		}
+	}
+	t.Errorf("--json-schema missing or detached from its value: %v", with)
+}
