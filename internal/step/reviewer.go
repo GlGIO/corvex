@@ -80,6 +80,7 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		Model:        r.model,
 		WorkDir:      r.workDir,
 		AllowedTools: allowedTools,
+		JSONSchema:   reviewerSchema,
 	})
 	if err != nil {
 		// A failed call can still have been paid for (the CLI reports cost on
@@ -92,7 +93,7 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		return spent, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
 	}
 
-	rr := ParseVerdict(result.Output)
+	rr := verdictOf(result.Structured, result.Output)
 	rr.CostUSD = result.CostUSD
 	rr.TokensIn = result.TokensIn
 	rr.TokensOut = result.TokensOut
