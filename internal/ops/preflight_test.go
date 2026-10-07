@@ -406,3 +406,40 @@ func TestPreflight_MCPRequirementReadsTheResolvedConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestPreflight_APatternRefusesAValueOfTheWrongShape: set is not right. The
+// failure names the pattern and never the value.
+func TestPreflight_APatternRefusesAValueOfTheWrongShape(t *testing.T) {
+	workDir := t.TempDir()
+	writeRecipeFile(t, workDir, "inc", `name: inc
+requires:
+  - env: CORVEX_PREFLIGHT_INCIDENT
+    pattern: "[0-9]{5}"
+    why: the board id of the incident
+stages:
+  - id: S01
+    title: Build
+    kind: tool
+    command: "true"
+`)
+	for value, wantOK := range map[string]bool{
+		"73960":    true,
+		"7396":     false, // a digit missing: the incident next door
+		"x73960y":  false, // contains five digits, is not five digits
+		"739601":   false,
+	} {
+		t.Setenv("CORVEX_PREFLIGHT_INCIDENT", value)
+		checks, err := PreflightRequirements(workDir, "inc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := MissingRequirements(checks) == nil; got != wantOK {
+			t.Errorf("value %q: passed=%v, want %v", value, got, wantOK)
+		}
+		for _, c := range checks {
+			if !wantOK && strings.Contains(c.Detail, value) {
+				t.Errorf("the refusal echoed the value: %q", c.Detail)
+			}
+		}
+	}
+}

@@ -8,6 +8,7 @@ package recipe
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -111,10 +112,24 @@ type Requirement struct {
 	// would have refused a correctly configured repo and passed a misspelled
 	// one.
 	MCP string `yaml:"mcp"`
+	// Pattern, on an `env` requirement only, is what the VALUE must look like
+	// (a Go regexp, matched against the whole value). Being set is not being
+	// right: an INCIDENT_ID with a digit missing runs the whole recipe against
+	// another incident, and every token of it is spent on the wrong work.
+	// The check reads the value and never prints it — the failure names the
+	// pattern, which is the recipe's, not the value, which may be anything.
+	Pattern string `yaml:"pattern"`
 	// Why is the one-line reason, printed when the check fails. Optional, and
 	// worth writing: "az is how ship opens the PR" turns a missing binary from
 	// a puzzle into an instruction.
 	Why string `yaml:"why"`
+}
+
+// PatternRegexp compiles Pattern anchored at both ends: `[0-9]{5}` means "five
+// digits", not "contains five digits somewhere", which is what an unanchored
+// regexp would quietly accept.
+func (r Requirement) PatternRegexp() (*regexp.Regexp, error) {
+	return regexp.Compile(`^(?:` + r.Pattern + `)$`)
 }
 
 // Stage is one node of the recipe pipeline. Kind defaults to "task" (an AI
@@ -252,6 +267,14 @@ func (r *Recipe) Validate() error {
 		} {
 			if strings.TrimSpace(f.value) != "" {
 				named = append(named, "`"+f.key+"`")
+			}
+		}
+		if strings.TrimSpace(req.Pattern) != "" {
+			if strings.TrimSpace(req.Env) == "" {
+				return fmt.Errorf("recipe %q: requires[%d] has a `pattern` but no `env` — a pattern describes a value, and only an env requirement has one", r.Name, i)
+			}
+			if _, err := req.PatternRegexp(); err != nil {
+				return fmt.Errorf("recipe %q: requires[%d] (%s) has a pattern that does not compile: %v", r.Name, i, req.Env, err)
 			}
 		}
 		switch {

@@ -450,7 +450,10 @@ async function dispatchForm(preset) {
     inputFields.clear();
     if (!r || !(r.inputs || []).length) { inputsBox.replaceChildren(); return; }
     inputsBox.replaceChildren(...r.inputs.map((inp) => {
-      const field = el('input', { placeholder: inp.name });
+      // The pattern is the recipe's own (`requires: - env: … pattern:`), anchored
+      // the same way the preflight anchors it; the browser marks a value that
+      // does not fit, and the preflight still refuses it if it is sent anyway.
+      const field = el('input', { placeholder: inp.name, pattern: inp.pattern || null, title: inp.pattern ? 'must match ' + inp.pattern : null });
       inputFields.set(inp.name, field);
       return el('label', { class: 'field' },
         el('span', { text: inp.name }),

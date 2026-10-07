@@ -366,9 +366,16 @@ requires:
     why: "renaming it should fail here, not in the last stage"
   - env: FEATURE_ID              # set and non-empty in the runner's environment
     why: "which feature this run delivers"
+  - env: INCIDENT_ID             # set, AND shaped like this (whole value)
+    pattern: "[0-9]{5}"
+    why: "a digit missing runs the recipe against the incident next door"
   - mcp: prd                     # declared in sandbox.mcp_servers
     why: "the diagnosis reads production; without it the run burns tokens to conclude it cannot"
 ```
+
+A `pattern:` on an `env:` is matched against the whole value (it is anchored
+for you), before the first token. The refusal names the pattern and never the
+value; the dispatch form shows it beside the field.
 
 An `mcp:` requirement is checked against the config corvex RESOLVED, not by
 reading the file: a guard that greps for a key is a second spelling of the rule,

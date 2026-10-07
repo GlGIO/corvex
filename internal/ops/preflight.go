@@ -91,6 +91,12 @@ func checkRequirementsWithConfig(workDir string, reqs []recipe.Requirement, cfg 
 			c := RequirementCheck{Kind: "env", Name: req.Env, Why: req.Why, Detail: "missing"}
 			if v, ok := os.LookupEnv(req.Env); ok && strings.TrimSpace(v) != "" {
 				c.OK, c.Detail = true, "set"
+				if strings.TrimSpace(req.Pattern) != "" {
+					// The detail names the pattern and never the value.
+					if re, err := req.PatternRegexp(); err != nil || !re.MatchString(v) {
+						c.OK, c.Detail = false, "set, but does not match "+req.Pattern
+					}
+				}
 			}
 			out = append(out, c)
 		}

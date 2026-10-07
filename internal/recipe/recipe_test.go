@@ -147,3 +147,19 @@ func TestValidate_RefusesAnUnreadableStepTimeout(t *testing.T) {
 		t.Errorf("a readable timeout was refused: %v", err)
 	}
 }
+
+func TestValidate_PatternBelongsToAnEnvAndMustCompile(t *testing.T) {
+	base := "name: p\nstages:\n  - id: S01\n    title: t\n    kind: tool\n    command: \"true\"\n"
+	for name, c := range map[string]struct{ requires, want string }{
+		"pattern on a bin":  {"requires:\n  - bin: sh\n    pattern: x\n", "no `env`"},
+		"pattern not regex": {"requires:\n  - env: X\n    pattern: \"([\"\n", "does not compile"},
+	} {
+		r, err := Parse([]byte(base + c.requires))
+		if err == nil {
+			err = r.Validate()
+		}
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
+		}
+	}
+}

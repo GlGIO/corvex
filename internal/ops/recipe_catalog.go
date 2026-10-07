@@ -40,6 +40,9 @@ type RecipeSummary struct {
 type RecipeInput struct {
 	Name string `json:"name"`
 	Why  string `json:"why,omitempty"`
+	// Pattern is the shape the value must have, shown beside the field so the
+	// person sees it before the preflight refuses it.
+	Pattern string `json:"pattern,omitempty"`
 }
 
 // RecipeStageView is one stage as the catalogue shows it: the shape of the work
@@ -104,7 +107,7 @@ func ListRecipes(workDir string) []RecipeSummary {
 		}
 		for _, req := range r.Requires {
 			if name := strings.TrimSpace(req.Env); name != "" {
-				s.Inputs = append(s.Inputs, RecipeInput{Name: name, Why: req.Why})
+				s.Inputs = append(s.Inputs, RecipeInput{Name: name, Why: req.Why, Pattern: req.Pattern})
 			}
 		}
 		out = append(out, s)
