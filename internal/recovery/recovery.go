@@ -129,10 +129,23 @@ func (m *Manager) Check() (*CheckResult, error) {
 	}, nil
 }
 
+// neverCheckpointed are files corvex itself writes into the project on every
+// agent call (internal/provider/claude: mcpConfigRelPath, mcpNoneRelPath). The
+// worker's config holds the declared MCP servers with their env already
+// expanded, so it can carry credentials. Keeping them out of the commit is
+// corvex's job, not the repository's `.gitignore`: one written by an older
+// `corvex init` ignores `mcp.json` but not `mcp-none.json`, and that is how the
+// SmartCare hotfix for #75993 reached its PR with `.corvex/mcp-none.json` in it.
+var neverCheckpointed = []string{".corvex/mcp.json", ".corvex/mcp-none.json"}
+
 // MarkCheckpoint stages all changes and commits with a corvex checkpoint
 // message. If there are no staged changes the call is a no-op.
 func (m *Manager) MarkCheckpoint(taskID string) error {
-	if _, err := m.git("add", "-A"); err != nil {
+	args := []string{"add", "-A", "--", "."}
+	for _, p := range neverCheckpointed {
+		args = append(args, ":(exclude)"+p)
+	}
+	if _, err := m.git(args...); err != nil {
 		return fmt.Errorf("staging files: %w", err)
 	}
 

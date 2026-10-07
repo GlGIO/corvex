@@ -259,6 +259,42 @@ func TestMarkCheckpointCreatesCommit(t *testing.T) {
 	}
 }
 
+// The MCP configs are corvex's own files, written into the project on every
+// agent call, and the worker's one carries the declared servers with their env
+// ALREADY EXPANDED — credentials, in a file. Whether they stay out of the commit
+// used to depend on the repository's `.corvex/.gitignore`, and one written by an
+// older `corvex init` lists `mcp.json` but not `mcp-none.json`: the SmartCare
+// hotfix for #75993 reached its PR carrying `.corvex/mcp-none.json`. The repo
+// here has no ignore file at all, which is the case the checkpoint must survive.
+func TestMarkCheckpointNeverCommitsMCPConfigs(t *testing.T) {
+	dir := initGitRepo(t)
+	mgr := NewManager(dir)
+
+	if err := os.MkdirAll(filepath.Join(dir, ".corvex"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".corvex/mcp.json", ".corvex/mcp-none.json"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"mcpServers":{}}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "feature.go"), []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.MarkCheckpoint("S01"); err != nil {
+		t.Fatalf("MarkCheckpoint() error = %v", err)
+	}
+
+	committed := gitExec(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(committed, "feature.go") {
+		t.Errorf("checkpoint left out the worker's change; committed:\n%s", committed)
+	}
+	if strings.Contains(committed, "mcp") {
+		t.Errorf("checkpoint committed an MCP config; committed:\n%s", committed)
+	}
+}
+
 func TestMarkCheckpointNoChanges(t *testing.T) {
 	dir := initGitRepo(t)
 	mgr := NewManager(dir)
