@@ -40,6 +40,12 @@ func verdictOf(structured []byte, text string) *ReviewResult {
 			rr := &ReviewResult{Verdict: v, Summary: strings.TrimSpace(sv.Summary)}
 			if v == VerdictFail {
 				rr.Category = strings.TrimSpace(sv.Category)
+				// The schema cannot require a category only on FAIL, so a FAIL
+				// may come without one; the text line may still carry it, and
+				// the category is what makes an escalation policy fire.
+				if rr.Category == "" {
+					rr.Category = ParseVerdict(text).Category
+				}
 			}
 			if rr.Summary == "" {
 				rr.Summary = ParseVerdict(text).Summary

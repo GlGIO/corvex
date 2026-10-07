@@ -95,6 +95,11 @@ func checkRequirementsWithConfig(workDir string, reqs []recipe.Requirement, cfg 
 					// The detail names the pattern and never the value.
 					if re, err := req.PatternRegexp(); err != nil || !re.MatchString(v) {
 						c.OK, c.Detail = false, "set, but does not match "+req.Pattern
+						if err == nil && re.MatchString(strings.TrimSpace(v)) {
+							// The value is right and the spaces around it are not —
+							// say that, or the fix looks like a different number.
+							c.Detail = "set, but has leading or trailing whitespace"
+						}
 					}
 				}
 			}

@@ -343,6 +343,10 @@ func (e *Executor) charge(r *Run, t *types.Task, st *aiTask, cost float64, phase
 				TaskID:  t.ID,
 				Phase:   phase,
 				CostUSD: cost,
+				// Named only when one model was paid: on the review phase this
+				// line sums the worker's and the judge's spend, and naming either
+				// model would attribute both.
+				Model:   ceilingModel(st, phase),
 				Message: "spend recorded at the ceiling abort",
 			})
 		}

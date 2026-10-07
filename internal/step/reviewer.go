@@ -94,6 +94,17 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		var spent *ReviewResult
 		if result != nil {
 			spent = &ReviewResult{CostUSD: result.CostUSD, TokensIn: result.TokensIn, TokensOut: result.TokensOut, DurationMs: result.DurationMs, apiStatus: result.APIErrorStatus, model: r.model}
+			// A judge that WROTE its verdict and then failed to produce the
+			// structured answer (the CLI can exit non-zero when it gives up on
+			// the schema) has still judged. Without this, asking for a schema
+			// would turn a readable verdict into a spent attempt. Only when no
+			// API error was reported: an outage is waited out, not read.
+			if result.APIErrorStatus == 0 {
+				if rr := ParseVerdict(result.Output); rr.Verdict != VerdictIndeterminate {
+					rr.CostUSD, rr.TokensIn, rr.TokensOut, rr.DurationMs, rr.model = spent.CostUSD, spent.TokensIn, spent.TokensOut, spent.DurationMs, r.model
+					return rr, nil
+				}
+			}
 		}
 		return spent, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
 	}

@@ -3,7 +3,12 @@ package step
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/giovannialves/corvex/internal/event"
 
 	"github.com/giovannialves/corvex/internal/types"
 )
@@ -47,5 +52,63 @@ func TestReviewer_AsksForTheSchemaAndReadsIt(t *testing.T) {
 	rr, err := NewReviewer(p, "m", t.TempDir(), "").Review(context.Background(), &types.Task{ID: "S01"})
 	if err != nil || rr.Verdict != VerdictPass {
 		t.Fatalf("Review = %+v, %v; want PASS from the structured answer", rr, err)
+	}
+}
+
+// TestReviewer_AFailedCallThatWroteItsVerdictHasJudged: asking for a schema
+// must not turn a readable verdict into a spent attempt.
+func TestReviewer_AFailedCallThatWroteItsVerdictHasJudged(t *testing.T) {
+	for name, c := range map[string]struct {
+		status  int
+		wantErr bool
+	}{
+		"no api error: the text verdict stands": {0, false},
+		"an outage: waited out, not read":       {529, true},
+	} {
+		p := &mockProvider{executeFn: func(_ context.Context, _ types.ExecuteRequest) (*types.ExecuteResult, error) {
+			return &types.ExecuteResult{Output: "bad\nCATEGORY: incomplete\nVERDICT: FAIL", CostUSD: 0.05, APIErrorStatus: c.status}, errors.New("exit status 1")
+		}}
+		rr, err := NewReviewer(p, "m", t.TempDir(), "").Review(context.Background(), &types.Task{ID: "S01"})
+		if (err != nil) != c.wantErr {
+			t.Errorf("%s: err = %v", name, err)
+			continue
+		}
+		if !c.wantErr && (rr.Verdict != VerdictFail || rr.Category != "incomplete" || rr.CostUSD != 0.05) {
+			t.Errorf("%s: %+v", name, rr)
+		}
+	}
+}
+
+func TestVerdictOf_AStructuredFailWithoutCategoryTakesTheTextOne(t *testing.T) {
+	rr := verdictOf([]byte(`{"verdict":"FAIL","summary":"edge missing"}`), "x\nCATEGORY: missing-edge-case\nVERDICT: FAIL")
+	if rr.Category != "missing-edge-case" {
+		t.Errorf("category = %q: the escalation policy would not fire", rr.Category)
+	}
+}
+
+// TestRunAB_BothSidesSpendReachTheLedger: an A/B run read $0.00 everywhere.
+func TestRunAB_BothSidesSpendReachTheLedger(t *testing.T) {
+	p := &mockProvider{executeFn: func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		if strings.Contains(req.Prompt, "VERDICT") {
+			return &types.ExecuteResult{Output: "VERDICT: FAIL", CostUSD: 0.01}, nil
+		}
+		return &types.ExecuteResult{Output: "did it", CostUSD: 0.10}, nil
+	}}
+	rec := &recorder{}
+	e, r := aiExecutor(t, p, rec)
+	dir := filepath.Dir(r.TasksPath)
+	gitInitForRecovery(t, dir)
+	e.workDir = dir
+	_ = e.RunAB(context.Background(), &types.Task{ID: "S01", Title: "x"}, []string{"model-a", "model-b"})
+	paid := map[string]float64{}
+	for _, ev := range rec.evs {
+		if ev.Type == event.AttemptCost {
+			paid[ev.Phase+"/"+ev.Model] += ev.CostUSD
+		}
+	}
+	for _, k := range []string{"worker/model-a", "worker/model-b"} {
+		if paid[k] != 0.10 {
+			t.Errorf("%s spend on the ledger = %v, want 0.10 (all: %v)", k, paid[k], paid)
+		}
 	}
 }

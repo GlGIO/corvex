@@ -450,10 +450,11 @@ async function dispatchForm(preset) {
     inputFields.clear();
     if (!r || !(r.inputs || []).length) { inputsBox.replaceChildren(); return; }
     inputsBox.replaceChildren(...r.inputs.map((inp) => {
-      // The pattern is the recipe's own (`requires: - env: … pattern:`), anchored
-      // the same way the preflight anchors it; the browser marks a value that
-      // does not fit, and the preflight still refuses it if it is sent anyway.
-      const field = el('input', { placeholder: inp.name, pattern: inp.pattern || null, title: inp.pattern ? 'must match ' + inp.pattern : null });
+      // The pattern is shown, not enforced, here: it is a Go regexp and the
+      // browser's `pattern` attribute is a JavaScript one — `[[:digit:]]{5}`
+      // means five digits to the preflight and something else to the browser,
+      // which would mark a correct value red. The preflight is the check.
+      const field = el('input', { placeholder: inp.pattern ? inp.name + ' — ' + inp.pattern : inp.name, title: inp.pattern ? 'must match ' + inp.pattern : null });
       inputFields.set(inp.name, field);
       return el('label', { class: 'field' },
         el('span', { text: inp.name }),

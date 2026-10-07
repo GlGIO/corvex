@@ -58,3 +58,10 @@ func (st *aiTask) workerModel() string {
 	}
 	return st.worker.model
 }
+
+func ceilingModel(st *aiTask, phase string) string {
+	if phase == event.PhaseWorker {
+		return st.workerModel()
+	}
+	return ""
+}

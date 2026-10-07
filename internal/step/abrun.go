@@ -82,6 +82,19 @@ func (e *Executor) RunAB(ctx context.Context, t *types.Task, models []string) er
 
 	winner, reason := decideABWinner(results)
 
+	// Both sides were paid, the loser included, and until now neither reached
+	// the ledger: an A/B run read as $0.00 on every screen that sums cost.
+	for _, side := range results {
+		if side.Worker != nil && side.Worker.CostUSD > 0 {
+			e.emit(event.Event{Type: event.AttemptCost, TaskID: t.ID, Phase: event.PhaseWorker, Model: side.Model,
+				CostUSD: side.Worker.CostUSD, TokensIn: side.Worker.TokensIn, TokensOut: side.Worker.TokensOut, Message: "a/b side"})
+		}
+		if side.Review != nil && side.Review.CostUSD > 0 {
+			e.emit(event.Event{Type: event.AttemptCost, TaskID: t.ID, Phase: event.PhaseReview, Model: side.Review.model,
+				CostUSD: side.Review.CostUSD, TokensIn: side.Review.TokensIn, TokensOut: side.Review.TokensOut, Message: "a/b side review"})
+		}
+	}
+
 	// Two workers raced; whichever won, what was bought was worker output.
 	e.emit(event.Event{
 		Type:    event.TaskComplete,

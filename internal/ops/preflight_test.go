@@ -423,10 +423,10 @@ stages:
     command: "true"
 `)
 	for value, wantOK := range map[string]bool{
-		"73960":    true,
-		"7396":     false, // a digit missing: the incident next door
-		"x73960y":  false, // contains five digits, is not five digits
-		"739601":   false,
+		"73960":   true,
+		"7396":    false, // a digit missing: the incident next door
+		"x73960y": false, // contains five digits, is not five digits
+		"739601":  false,
 	} {
 		t.Setenv("CORVEX_PREFLIGHT_INCIDENT", value)
 		checks, err := PreflightRequirements(workDir, "inc")
@@ -441,5 +441,18 @@ stages:
 				t.Errorf("the refusal echoed the value: %q", c.Detail)
 			}
 		}
+	}
+}
+
+func TestPreflight_WhitespaceAroundARightValueIsNamed(t *testing.T) {
+	workDir := t.TempDir()
+	writeRecipeFile(t, workDir, "inc", "name: inc\nrequires:\n  - env: CORVEX_PREFLIGHT_WS\n    pattern: \"[0-9]{5}\"\nstages:\n  - id: S01\n    title: B\n    kind: tool\n    command: \"true\"\n")
+	t.Setenv("CORVEX_PREFLIGHT_WS", "73960 ")
+	checks, err := PreflightRequirements(workDir, "inc")
+	if err != nil || len(checks) != 1 {
+		t.Fatal(err)
+	}
+	if checks[0].OK || !strings.Contains(checks[0].Detail, "whitespace") {
+		t.Errorf("check = %+v, want a refusal that names the whitespace", checks[0])
 	}
 }
