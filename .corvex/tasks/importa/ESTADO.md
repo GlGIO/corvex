@@ -72,22 +72,28 @@ dizer "não rodou". Controle precisa provar que a mutação compilou.
 | `go test ./e2e/ -count=1`, 2× cada | base `3d77a30`: FAIL 2/2 · esta branch: ok 2/2 — a intermitência é anterior ao lote |
 | invariante `internal/` ≤ 400 linhas | `ai_task.go` passou de 400 com as correções; os emissores de custo foram para `attempt_cost.go` (374) |
 
-## Lote 2 — candidatos, NÃO iniciados (reavaliar com o dono)
+## Lote 2 — FECHADO (aguardando o dono)
 
-Em ordem de valor/custo. Detalhes, referências e riscos em `pesquisa/`.
+| # | Item | Estado |
+|---|---|---|
+| 0 | **Achado medido no caminho:** tokens sempre 0 em toda run real — o CLI 2.1.292 reporta em `usage.*`, e todas as fixtures inventaram `total_input_tokens`. Fixture nova = linha gravada de uma chamada real. | **feito** `9ab4ec1` |
+| 1 | Veredito do revisor por `--json-schema` (Archon `output_format`). Medido numa chamada real com Read+Bash: funciona; com categoria em texto livre o modelo inventou `correctness`, então a categoria é enum. | **feito** `9c21630` |
+| 1b | Queda do provedor lida de `api_error_status` (o campo existe — medido), não do texto. Fecha o "ponto menos seguro" do lote 1. No caminho: o worker SEM streaming devolvia `nil` no erro e perdia custo e status. | **feito** `92b7163` |
+| 2 | `pattern:` em `requires: env:` — forma, não só presença, antes do primeiro token (Archon `inputs:`). | **feito** `17acd19` |
+| 3 | "Congelar config na run" (Archon) **não sobreviveu à verificação**: aqui `run retry` é run nova e mudar a config entre runs costuma ser a intenção. O resíduo útil foi feito: cada linha paga do ledger diz o `model`. Golden `run_identity_inspect_task_json.txt` regravado DE PROPÓSITO (só ganha `model`). | **feito** `1ad6a30` |
+| — | Revisão independente: 0 graves, 5 reais, todos corrigidos com controle. O maior: **o A/B não gravava custo nenhum no ledger** (anterior ao lote). | **feito** `e9de411` |
 
-1. Saída estruturada do reviewer via `--json-schema` (Archon #4) — mata o
-   INDETERMINATE que vira retry. M.
-2. `inputs:` declarados na recipe, validados antes de gastar (Archon #5). P.
-3. Congelar a config de IA na run e reusar no resume (Archon #9). P.
-4. Board como fonte da caixa, adaptador `kind: command` reaproveitando
-   `az-feature-dag.sh` (Symphony 1-5). P — **bloqueado pelo GET real** que o
-   ESTADO do harness pede ao dono.
-5. Saídas entre stages + `when:`/`trigger_rule` (Archon #6-7). M cada; depende do 1.
-   Antes: `runShell` repassa `os.Environ()` inteiro (`step/step.go`) — achado do
-   Archon, a resolver antes de passar valor entre stages por env.
-6. Fixtures de recipe com stubs (Archon #11). M.
-7. Classificar vermelho em introduzido/herdado via merge-base (Archon #12). M.
+**Não medido:** o CLI saindo ≠ 0 quando desiste do schema (`error_max_structured_output_retries`). A correção lê o veredito de texto já pago nesse caso; se o CLI sair 0, ela é inerte.
+
+**e2e:** os testes de colagem da UI (`TestUI_Paste*`) falham sob a carga da suíte inteira e passam 3/3 isolados — mesmo comportamento da linha de base, onde `TestUI_PasteNeverOverwritesWhatWasTyped` já falhava.
+
+## Próximos candidatos (não iniciados)
+
+1. Board como fonte da caixa, `kind: command` reaproveitando `az-feature-dag.sh` (Symphony). **Bloqueado** pelo GET real numa Feature — identidade do dono no Azure.
+2. Saídas entre stages + `when:`/`trigger_rule` (Archon). M cada. Antes: `runShell` repassa `os.Environ()` inteiro (`step/step.go`).
+3. Fixtures de recipe com stubs (Archon). M.
+4. Vermelho introduzido × herdado via merge-base (Archon). M.
+5. Dívida: `activity/summary.go` — `TaskMetric.CostUSD` inclui o revisor e `TokensIn` não; e o `review_result` do gate inferencial não leva tokens. Invisível enquanto os tokens eram 0.
 
 ## Descartado por já existir nesta base
 
