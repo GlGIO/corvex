@@ -269,3 +269,40 @@ func TestInfraRetry_TheWorkersReportedStatusReachesTheClassifier(t *testing.T) {
 		t.Errorf("waits = %v, want one", *waits)
 	}
 }
+
+// TestLedger_PaidLinesNameTheirModel: the worker's pass line, the reviewer's
+// result line and an outage's cost line all say which model was paid for.
+func TestLedger_PaidLinesNameTheirModel(t *testing.T) {
+	var mu sync.Mutex
+	reviewFails := 1
+	p := &mockProvider{}
+	p.executeFn = func(_ context.Context, req types.ExecuteRequest) (*types.ExecuteResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if strings.Contains(req.Prompt, "VERDICT") {
+			if reviewFails > 0 {
+				reviewFails--
+				return &types.ExecuteResult{CostUSD: 0.01, APIErrorStatus: 529}, errors.New("exit 1")
+			}
+			return &types.ExecuteResult{Output: "VERDICT: PASS", CostUSD: 0.02}, nil
+		}
+		return &types.ExecuteResult{Output: passingWorkerOutput, CostUSD: 0.03}, nil
+	}
+	e, r, rec, _ := noRetryExecutor(t, p)
+	e.worker.model, e.reviewer.model = "worker-model", "judge-model"
+	if err := e.runAITask(context.Background(), r, oneShotTask(), newEvidenceSet()); err != nil {
+		t.Fatal(err)
+	}
+	want := map[event.Type]string{event.TaskComplete: "worker-model", event.ReviewResult: "judge-model", event.AttemptCost: "judge-model"}
+	for _, ev := range rec.evs {
+		if m, ok := want[ev.Type]; ok && ev.CostUSD > 0 {
+			if ev.Model != m {
+				t.Errorf("%s line (cost %v) names model %q, want %q", ev.Type, ev.CostUSD, ev.Model, m)
+			}
+			delete(want, ev.Type)
+		}
+	}
+	if len(want) > 0 {
+		t.Errorf("no paid line was seen for %v", want)
+	}
+}

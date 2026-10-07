@@ -12,7 +12,7 @@ import (
 //
 // A nil result means the provider returned nothing at all — there is no number
 // to report, and inventing a zero would be worse than the silence it replaces.
-func (e *Executor) emitAttemptCost(_ *aiTask, t *types.Task, attempt int, result *types.ExecuteResult, why string) {
+func (e *Executor) emitAttemptCost(st *aiTask, t *types.Task, attempt int, result *types.ExecuteResult, why string) {
 	if result == nil {
 		return
 	}
@@ -20,6 +20,7 @@ func (e *Executor) emitAttemptCost(_ *aiTask, t *types.Task, attempt int, result
 		Type:      event.AttemptCost,
 		TaskID:    t.ID,
 		Phase:     event.PhaseWorker,
+		Model:     st.workerModel(),
 		Attempt:   attempt,
 		CostUSD:   result.CostUSD,
 		TokensIn:  result.TokensIn,
@@ -39,10 +40,21 @@ func (e *Executor) emitReviewCost(t *types.Task, attempt int, rr *ReviewResult, 
 		Type:      event.AttemptCost,
 		TaskID:    t.ID,
 		Phase:     event.PhaseReview,
+		Model:     rr.model,
 		Attempt:   attempt,
 		CostUSD:   rr.CostUSD,
 		TokensIn:  rr.TokensIn,
 		TokensOut: rr.TokensOut,
 		Message:   why,
 	})
+}
+
+// workerModel is the model the task's worker runs on NOW — escalation may have
+// upgraded it since the task started, and the line must name the one that was
+// paid for.
+func (st *aiTask) workerModel() string {
+	if st == nil || st.worker == nil {
+		return ""
+	}
+	return st.worker.model
 }

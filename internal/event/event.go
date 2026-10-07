@@ -85,6 +85,8 @@ type Event struct {
 	// Tool is the name of the tool a worker invoked, for the tool_use and
 	// tool_result lines. Never its input: see activity.Entry.Tool.
 	Tool string
+	// Model is the model a paid call ran on; see activity.Entry.Model.
+	Model string
 
 	// Output is what a FAILED computational stage printed — the tail of its own
 	// stdout+stderr, already truncated by internal/stepout.

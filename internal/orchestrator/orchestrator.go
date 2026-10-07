@@ -262,6 +262,7 @@ func ledgerEntryFromEvent(ev Event) activity.Entry {
 		// to guess here.
 		Phase: ev.Phase,
 		Tool:  ev.Tool,
+		Model: ev.Model,
 	}
 	if ev.Status != "" {
 		e.Status = string(ev.Status)

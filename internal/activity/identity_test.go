@@ -370,6 +370,7 @@ func TestEntry_JSONKeysAreAnAllowlist(t *testing.T) {
 		"attempt":     "a retry counter",
 		"duration_ms": "a duration",
 		"cost_usd":    "money",
+		"model":       "a provider model id (\"claude-opus-5-5\"): names a product, not the machine",
 		"tokens_in":   "a token count",
 		"tokens_out":  "a token count",
 		"status":      "PASSED | FAILED | …",

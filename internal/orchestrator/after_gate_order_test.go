@@ -183,3 +183,9 @@ func TestAfterGate_ACheckRefusalSendsTheWorkerBackOnce(t *testing.T) {
 		t.Errorf("S01 = %s, want PASSED after the repair", got)
 	}
 }
+
+func TestLedgerEntryFromEvent_CarriesTheModel(t *testing.T) {
+	if got := ledgerEntryFromEvent(Event{Type: EventTaskComplete, Model: "claude-opus-5-5"}).Model; got != "claude-opus-5-5" {
+		t.Errorf("ledger entry model = %q: the hop dropped it", got)
+	}
+}

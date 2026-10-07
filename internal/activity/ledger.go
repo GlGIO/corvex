@@ -112,6 +112,12 @@ type Entry struct {
 	// what a screen can act on; the arguments belong to the terminal, where
 	// they already are.
 	Tool string `json:"tool,omitempty"`
+
+	// Model is the model id a paid call ran on, on the lines that carry its
+	// cost. Escalation upgrades the worker's model mid-task and A/B runs one
+	// task on two, so "what did this cost" without "on which model" cannot be
+	// compared with anything. A model id names a product, not the machine.
+	Model string `json:"model,omitempty"`
 }
 
 // Ledger is a serialised JSONL writer scoped to one project and one run.

@@ -167,7 +167,7 @@ func (e *Executor) inferentialGate(ctx context.Context, r *Run, t *types.Task, g
 	}
 	passed := res.Verdict == VerdictPass
 	acc.add(gate.FromVerdict(gateLabel(g, "review"), string(res.Verdict), res.Category, res.Summary, passed))
-	e.emit(event.Event{Type: event.ReviewResult, TaskID: t.ID, Phase: event.PhaseReview, Message: string(res.Verdict), CostUSD: res.CostUSD})
+	e.emit(event.Event{Type: event.ReviewResult, TaskID: t.ID, Phase: event.PhaseReview, Message: string(res.Verdict), CostUSD: res.CostUSD, Model: res.model})
 	if !passed {
 		return e.gateRefused(t, g, fmt.Sprintf("independent review returned %s: %s", res.Verdict, res.Summary))
 	}

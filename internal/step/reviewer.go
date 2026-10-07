@@ -34,6 +34,8 @@ type ReviewResult struct {
 	// apiStatus is the provider's API error status on a failed call; see
 	// ExecuteResult.APIErrorStatus.
 	apiStatus int
+	// model is the model this review ran on, for the ledger's cost lines.
+	model string
 }
 
 // Reviewer independently verifies that a task was completed correctly.
@@ -91,12 +93,13 @@ func (r *Reviewer) Review(ctx context.Context, t *types.Task) (*ReviewResult, er
 		// the error, verdict empty.
 		var spent *ReviewResult
 		if result != nil {
-			spent = &ReviewResult{CostUSD: result.CostUSD, TokensIn: result.TokensIn, TokensOut: result.TokensOut, DurationMs: result.DurationMs, apiStatus: result.APIErrorStatus}
+			spent = &ReviewResult{CostUSD: result.CostUSD, TokensIn: result.TokensIn, TokensOut: result.TokensOut, DurationMs: result.DurationMs, apiStatus: result.APIErrorStatus, model: r.model}
 		}
 		return spent, fmt.Errorf("reviewer execution for task %s: %w", t.ID, err)
 	}
 
 	rr := verdictOf(result.Structured, result.Output)
+	rr.model = r.model
 	rr.CostUSD = result.CostUSD
 	rr.TokensIn = result.TokensIn
 	rr.TokensOut = result.TokensOut

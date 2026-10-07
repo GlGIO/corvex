@@ -26,7 +26,8 @@ $ corvex inspect alpha --task S01 --json
     "cost_usd": 0.02,
     "tokens_in": 100,
     "tokens_out": 50,
-    "message": "PASS"
+    "message": "PASS",
+    "model": "sonnet"
   },
   {
     "ts": "<TS>",
@@ -45,7 +46,8 @@ $ corvex inspect alpha --task S01 --json
     "cost_usd": 0.02,
     "tokens_in": 100,
     "tokens_out": 50,
-    "status": "PASSED"
+    "status": "PASSED",
+    "model": "sonnet"
   }
 ]
 

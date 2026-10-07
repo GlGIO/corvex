@@ -105,6 +105,7 @@ func (e *Executor) finishPassedTask(
 		Phase:   event.PhaseWorker,
 		Status:  types.StatusPassed,
 		CostUSD: workerCost,
+		Model:   st.workerModel(),
 		// Tokens follow the cost: this line is the worker's share, and the
 		// reviewer's rides on review_result. Splitting one and not the other
 		// would leave a line whose cost and tokens describe different work.

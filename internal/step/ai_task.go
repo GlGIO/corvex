@@ -233,6 +233,7 @@ func (e *Executor) attempt(ctx context.Context, r *Run, t *types.Task, st *aiTas
 		TaskID:    t.ID,
 		Phase:     event.PhaseReview,
 		Message:   string(reviewResult.Verdict),
+		Model:     reviewResult.model,
 		CostUSD:   reviewerCost,
 		TokensIn:  reviewResult.TokensIn,
 		TokensOut: reviewResult.TokensOut,
