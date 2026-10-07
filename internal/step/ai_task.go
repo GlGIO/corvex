@@ -309,8 +309,6 @@ func (e *Executor) rejectAttempt(
 	return e.applyEscalation(ctx, r, t, st, attempt, reviewResult)
 }
 
-
-
 // publishableReason is what a ledger line may say about a failure. Empty falls
 // back to a fixed string rather than to the diagnosis: a missing reason must
 // degrade to less information, never to more.
