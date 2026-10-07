@@ -127,6 +127,11 @@ func (g GateLister) reposInScope(localRepo string) []string {
 	return out
 }
 
+func isDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
+}
+
 // Workspace is one repository this machine knows about, in the shape a screen
 // needs it.
 type Workspace struct {
@@ -152,6 +157,15 @@ func (g GateLister) Workspaces(localRepo string) []Workspace {
 	repos := g.reposInScope(localRepo)
 	out := make([]Workspace, 0, len(repos))
 	for _, repo := range repos {
+		// A repository that is gone has nowhere to dispatch into. The index
+		// never forgets one — most are a test's temp dir or a session's
+		// scratchpad — and MEASURED on a real machine the form offered 54 dead
+		// entries around 3 live ones. Filtered HERE and not in reposInScope:
+		// the gate audit counts a missing repository on purpose, so a shrunken
+		// population shows instead of passing silently.
+		if repo != local && !isDir(repo) {
+			continue
+		}
 		out = append(out, Workspace{Path: repo, Name: filepath.Base(repo), Current: repo == local})
 	}
 	return out

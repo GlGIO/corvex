@@ -84,7 +84,7 @@ func TestUI_CutsAWorktreeAndRunsInIt(t *testing.T) {
 		`[...document.querySelectorAll('button')].some(b => b.textContent === 'Dispatch a run')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Dispatch a run').click()`, nil)
 	c.waitFor(t, 15*time.Second, "the checkout list to fill",
-		`document.querySelectorAll('select')[1] && document.querySelectorAll('select')[1].options.length >= 1`)
+		`document.querySelector('.picker') && document.querySelector('.picker').dataset.value`)
 
 	// Cut the branch, from `fluxo` — where the recipe is. The name is the
 	// incident, the branch is the repository's own convention — the two are different on purpose, because a form that
@@ -93,7 +93,7 @@ func TestUI_CutsAWorktreeAndRunsInIt(t *testing.T) {
 	c.eval(t, `document.querySelector('input[placeholder^="paste"]').value = '73960'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder^="branch"]').value = 'hotfix/73960-carrinho'`, nil)
 	c.eval(t, `document.querySelector('input[placeholder="base"]').value = 'fluxo'`, nil)
-	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Create').click()`, nil)
+	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Create worktree').click()`, nil)
 
 	worktree := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"-73960")
 	waitOnDisk(t, worktree, "the worktree the browser asked for")
@@ -105,16 +105,19 @@ func TestUI_CutsAWorktreeAndRunsInIt(t *testing.T) {
 	// declared. Neither is a given: the list is re-read from the server after
 	// the create, and the fields are built from the recipe catalogue.
 	c.waitFor(t, 15*time.Second, "the new checkout to be selected",
-		`document.querySelectorAll('select')[1].value.endsWith('-73960')`)
-	c.eval(t, `(() => { const t = document.querySelector('input[list="recipe-list"]'); t.value = 'incidente'; t.dispatchEvent(new Event('input')); })()`, nil)
+		`document.querySelector('.picker').dataset.value.endsWith('-73960')`)
+	// The tiles are drawn once the checkout's catalogue arrives, which is after
+	// the checkout itself is selected.
+	c.waitFor(t, 15*time.Second, "the checkout's recipes", `document.querySelector('[data-recipe="incidente"]')`)
+	c.eval(t, `document.querySelector('[data-recipe="incidente"]').click()`, nil)
 	c.waitFor(t, 15*time.Second, "the recipe's own field",
-		`document.querySelector('input[placeholder="INCIDENT_ID"]')`)
-	if !c.evalBool(t, `document.body.innerText.includes('o id do work item no board')`) {
+		`document.querySelector('input[name="INCIDENT_ID"]')`)
+	if !c.evalBool(t, `document.querySelector('input[name="INCIDENT_ID"]').placeholder === 'o id do work item no board'`) {
 		t.Error("the field does not carry the recipe author's reason for asking")
 	}
 
-	c.eval(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value = '73960'`, nil)
-	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Run').click()`, nil)
+	c.eval(t, `document.querySelector('input[name="INCIDENT_ID"]').value = '73960'`, nil)
+	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.classList.contains('run')).click()`, nil)
 
 	// And the run happened IN the worktree, on that branch, knowing the id.
 	deadline := time.Now().Add(60 * time.Second)

@@ -54,10 +54,10 @@ func openMaker(t *testing.T, url string) *chrome {
 	c.waitFor(t, 15*time.Second, "the history screen",
 		`[...document.querySelectorAll('button')].some(b => b.textContent === 'Dispatch a run')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Dispatch a run').click()`, nil)
-	c.waitFor(t, 15*time.Second, "the form", `document.querySelector('input[list="recipe-list"]')`)
+	c.waitFor(t, 15*time.Second, "the form", `document.querySelector('[data-recipe="incident"]')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === '+ worktree').click()`, nil)
-	c.eval(t, `(() => { const t = document.querySelector('input[list="recipe-list"]'); t.value = 'incident'; t.dispatchEvent(new Event('input')); })()`, nil)
-	c.waitFor(t, 15*time.Second, "the recipe's own field", `document.querySelector('input[placeholder="INCIDENT_ID"]')`)
+	c.eval(t, `document.querySelector('[data-recipe="incident"]').click()`, nil)
+	c.waitFor(t, 15*time.Second, "the recipe's own field", `document.querySelector('input[name="INCIDENT_ID"]')`)
 	return c
 }
 
@@ -104,7 +104,7 @@ func TestUI_PastedBoardLineFillsTheForm(t *testing.T) {
 	}
 	// And the recipe's own field, which is the third thing that was being typed
 	// by hand.
-	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "73607" {
+	if got := c.evalString(t, `document.querySelector('input[name="INCIDENT_ID"]').value`); got != "73607" {
 		t.Errorf("INCIDENT_ID = %q, want 73607", got)
 	}
 }
@@ -132,13 +132,13 @@ func TestUI_PasteNeverOverwritesWhatWasTyped(t *testing.T) {
 	}
 	c := openMaker(t, startUI(t, setupPasteRepo(t)))
 	c.eval(t, `document.querySelector('input[placeholder^="branch"]').value = 'hotfix/73607-o-nome-que-eu-quero'`, nil)
-	c.eval(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value = '11111'`, nil)
+	c.eval(t, `document.querySelector('input[name="INCIDENT_ID"]').value = '11111'`, nil)
 	paste(t, c, `input[placeholder^="paste"]`, "Incident 73607: Pedido duplicado na aba Financeiro")
 
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "hotfix/73607-o-nome-que-eu-quero" {
 		t.Errorf("the branch typed by hand became %q", got)
 	}
-	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "11111" {
+	if got := c.evalString(t, `document.querySelector('input[name="INCIDENT_ID"]').value`); got != "11111" {
 		t.Errorf("the id typed by hand became %q", got)
 	}
 }
@@ -158,7 +158,7 @@ func TestUI_ABareIdIsLeftAlone(t *testing.T) {
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "" {
 		t.Errorf("a bare id invented the branch %q — there is no title to slug", got)
 	}
-	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "" {
+	if got := c.evalString(t, `document.querySelector('input[name="INCIDENT_ID"]').value`); got != "" {
 		t.Errorf("a bare id reached INCIDENT_ID as %q without anyone asking", got)
 	}
 }
@@ -178,16 +178,16 @@ func TestUI_PasteLandsAnywhereOnTheFormAndOpensThePanel(t *testing.T) {
 	c.waitFor(t, 15*time.Second, "the history screen",
 		`[...document.querySelectorAll('button')].some(b => b.textContent === 'Dispatch a run')`)
 	c.eval(t, `[...document.querySelectorAll('button')].find(b => b.textContent === 'Dispatch a run').click()`, nil)
-	c.waitFor(t, 15*time.Second, "the form", `document.querySelector('input[list="recipe-list"]')`)
-	c.eval(t, `(() => { const t = document.querySelector('input[list="recipe-list"]'); t.value = 'incident'; t.dispatchEvent(new Event('input')); })()`, nil)
-	c.waitFor(t, 15*time.Second, "the recipe's own field", `document.querySelector('input[placeholder="INCIDENT_ID"]')`)
+	c.waitFor(t, 15*time.Second, "the form", `document.querySelector('[data-recipe="incident"]')`)
+	c.eval(t, `document.querySelector('[data-recipe="incident"]').click()`, nil)
+	c.waitFor(t, 15*time.Second, "the recipe's own field", `document.querySelector('input[name="INCIDENT_ID"]')`)
 
 	// The worktree panel was never opened.
 	if !c.evalBool(t, `document.querySelector('.maker').classList.contains('hidden')`) {
 		t.Fatal("the worktree panel was already open — this test is about it opening itself")
 	}
 	// ⌘V over the recipe box, which is where the cursor happens to be.
-	paste(t, c, `input[list="recipe-list"]`, "Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)")
+	paste(t, c, `input[name="project"]`, "Incident 73607: Pedido duplicado na aba Financeiro (Visão 360°)")
 
 	if c.evalBool(t, `document.querySelector('.maker').classList.contains('hidden')`) {
 		t.Error("the worktree panel stayed closed, so the fields it filled are invisible")
@@ -195,13 +195,16 @@ func TestUI_PasteLandsAnywhereOnTheFormAndOpensThePanel(t *testing.T) {
 	if got := c.evalString(t, `document.querySelector('input[placeholder^="branch"]').value`); got != "hotfix/73607-pedido-duplicado-na-aba-financeiro-visao" {
 		t.Errorf("branch = %q", got)
 	}
-	if got := c.evalString(t, `document.querySelector('input[placeholder="INCIDENT_ID"]').value`); got != "73607" {
+	if got := c.evalString(t, `document.querySelector('input[name="INCIDENT_ID"]').value`); got != "73607" {
 		t.Errorf("INCIDENT_ID = %q", got)
 	}
-	// And the recipe box the paste landed on was NOT filled with the board
+	// And the project box the paste landed on was NOT filled with the board
 	// line: the default action is prevented, so the text does not also end up
-	// as the recipe name.
-	if got := c.evalString(t, `document.querySelector('input[list="recipe-list"]').value`); got != "incident" {
-		t.Errorf("the recipe box became %q — the pasted line was inserted as well as parsed", got)
+	// as a project name — which would also have unselected the recipe.
+	if got := c.evalString(t, `document.querySelector('input[name="project"]').value`); got != "" {
+		t.Errorf("the project box became %q — the pasted line was inserted as well as parsed", got)
+	}
+	if !c.evalBool(t, `document.querySelector('[data-recipe="incident"]').classList.contains('on')`) {
+		t.Error("the recipe chosen before the paste is no longer chosen")
 	}
 }

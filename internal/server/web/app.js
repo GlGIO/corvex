@@ -281,11 +281,12 @@ function renderRuns(root, data) {
   // The action belongs to the heading it acts on. As its own row it read as a
   // second, unrelated control floating above the list.
   root.append(el('h2', {}, 'history',
-    el('button', { class: 'primary', onclick: dispatchForm }, 'Dispatch a run')));
+    el('button', { class: 'primary open-dispatch', onclick: dispatchForm }, 'Dispatch a run')));
   renderDeadDispatches(root, data);
   const runs = data.runs || [];
   if (!runs.length) root.append(el('p', { class: 'empty', text: 'No runs in the last 7 days.' }));
   for (const r of runs) root.append(runCard(r));
+  paintDispatchButton();
 }
 
 // ── dispatches that never became runs ───────────────────────────────────────
@@ -385,94 +386,223 @@ function branchFor(item) {
   return `${prefix}/${item.id}-${slug(item.title)}`;
 }
 
-// ── dispatch (2c) ─────────────────────────────────────────────
-// The form is the whole flow, in the order a person does it: which repository,
-// which checkout (or make one), which recipe, what the recipe needs to know.
+// ── picker ──────────────────────────────────────────────────────────────────
+// A searchable list in place of a native <select>.
 //
-// The checkout half used to be missing, and its absence was the seam where the
-// tool stopped being usable from the screen: the operating model is one worktree
-// per piece of work, so every run started with `git worktree add -b … main` in a
-// terminal, and only then did the UI have anywhere to dispatch into.
+// The select it replaces could not be searched, could not say anything beyond
+// one line of text per option, and on a machine that had run corvex for a month
+// it held 57 repositories — 54 of them scratch directories that no longer
+// existed, the three real ones lost among them. Typing "759" is how a person
+// finds the incident they are working on; scrolling a native popup is not.
+//
+// Each item is { value, main, sub, group, haystack }. `main` is the machine text
+// the person is looking for (a branch, a recipe name), `sub` the line that tells
+// two similar ones apart.
+const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// mark wraps the first stretch of `text` that matches a search token, so the
+// eye lands on why a row is in the filtered list.
+function mark(text, tokens) {
+  const flat = fold(text);
+  for (const tok of tokens) {
+    const at = tok ? flat.indexOf(tok) : -1;
+    if (at >= 0) {
+      return [text.slice(0, at), el('mark', { text: text.slice(at, at + tok.length) }), text.slice(at + tok.length)];
+    }
+  }
+  return [text];
+}
+
+// branchText dims the routing prefix (`hotfix/`, `feature/`) so the part that
+// differs between two branches is the part that reads first.
+function branchText(branch, tokens = []) {
+  const b = branch || 'detached';
+  const cut = b.indexOf('/') + 1;
+  return cut > 0
+    ? [el('span', { class: 'pfx', text: b.slice(0, cut) }), ...mark(b.slice(cut), tokens)]
+    : mark(b, tokens);
+}
+
+function picker({ search: placeholder, empty, footer }) {
+  let items = [];
+  let value = '';
+  let shown = [];
+  let at = 0;
+  const listeners = [];
+
+  const trigger = el('button', { type: 'button', class: 'picker-trigger', 'aria-haspopup': 'listbox' });
+  const input = el('input', { class: 'picker-search', placeholder, autocomplete: 'off', spellcheck: 'false' });
+  const list = el('ul', { class: 'picker-list', role: 'listbox' });
+  const pop = el('div', { class: 'picker-pop hidden' }, input, list, footer ? el('div', { class: 'picker-foot' }, footer) : null);
+  const node = el('div', { class: 'picker' }, trigger, pop);
+
+  const current = () => items.find((i) => i.value === value);
+  function paintTrigger() {
+    const it = current();
+    node.dataset.value = value;
+    trigger.replaceChildren(
+      it ? el('span', { class: 't-main' }, ...it.main([])) : el('span', { class: 't-main dim', text: empty }),
+      it && (it.triggerSub || it.sub) ? el('span', { class: 't-sub', text: it.triggerSub || it.sub }) : null,
+      el('span', { class: 'picker-caret', 'aria-hidden': 'true', text: '⌄' }),
+    );
+  }
+  function paintList() {
+    const tokens = fold(input.value).split(/\s+/).filter(Boolean);
+    shown = items.filter((i) => tokens.every((t) => i.haystack.includes(t)));
+    at = Math.max(0, Math.min(at, shown.length - 1));
+    const rows = [];
+    let group = null;
+    shown.forEach((it, n) => {
+      if (it.group && it.group !== group) {
+        group = it.group;
+        rows.push(el('li', { class: 'picker-group', role: 'presentation', text: group }));
+      }
+      const row = el('li', {
+        class: `picker-item${n === at ? ' on' : ''}`, role: 'option',
+        'aria-selected': it.value === value ? 'true' : 'false', 'data-value': it.value,
+        onmousedown: (e) => { e.preventDefault(); choose(it); },
+        onmousemove: () => { if (at !== n) { at = n; paintActive(); } },
+      },
+      el('span', { class: 'tick', text: it.value === value ? '✓' : '' }),
+      el('span', { class: 'i-main' }, ...it.main(tokens)),
+      it.sub ? el('span', { class: 'i-sub' }, ...mark(it.sub, tokens)) : null);
+      rows.push(row);
+    });
+    if (!shown.length) rows.push(el('li', { class: 'picker-empty', text: items.length ? 'Nothing matches.' : 'Nothing here yet.' }));
+    list.replaceChildren(...rows);
+    paintActive();
+  }
+  function paintActive() {
+    const rows = list.querySelectorAll('.picker-item');
+    rows.forEach((r, n) => r.classList.toggle('on', n === at));
+    if (rows[at]) rows[at].scrollIntoView({ block: 'nearest' });
+  }
+  const outside = (e) => { if (!node.contains(e.target)) close(); };
+  function open() {
+    if (!pop.classList.contains('hidden')) return;
+    pop.classList.remove('hidden');
+    node.classList.add('open');
+    input.value = '';
+    at = Math.max(0, items.findIndex((i) => i.value === value));
+    paintList();
+    input.focus();
+    document.addEventListener('mousedown', outside);
+  }
+  function close() {
+    if (pop.classList.contains('hidden')) return;
+    pop.classList.add('hidden');
+    node.classList.remove('open');
+    document.removeEventListener('mousedown', outside);
+  }
+  function choose(it) {
+    const changed = it.value !== value;
+    value = it.value;
+    paintTrigger();
+    close();
+    trigger.focus();
+    if (changed) listeners.forEach((f) => f(it));
+  }
+
+  trigger.addEventListener('click', () => (pop.classList.contains('hidden') ? open() : close()));
+  // Typing on the closed trigger opens it already searching: the first key is
+  // the start of the query, not a keystroke that only opened a popup.
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) { open(); }
+  });
+  input.addEventListener('input', () => { at = 0; paintList(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); at = Math.min(at + 1, shown.length - 1); paintActive(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); at = Math.max(at - 1, 0); paintActive(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (shown[at]) choose(shown[at]); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); }
+    else if (e.key === 'Tab') close();
+  });
+
+  paintTrigger();
+  return {
+    node,
+    get value() { return value; },
+    get item() { return current(); },
+    set(v) { value = v; paintTrigger(); },
+    setItems(next) {
+      items = next;
+      if (!items.some((i) => i.value === value)) value = items[0] ? items[0].value : '';
+      paintTrigger();
+      if (!pop.classList.contains('hidden')) paintList();
+    },
+    onChange(f) { listeners.push(f); },
+    open, close,
+  };
+}
+
+// ── dispatch (2c) ─────────────────────────────────────────────
+// The form is the whole flow, in the order a person does it: where the run
+// happens (or make that place), which recipe, what the recipe needs to know.
+//
+// WHERE is one decision, not two. It used to be a repository select and then a
+// checkout select under it, which made the common case — "the worktree for the
+// incident I am on" — two popups and a guess about which repository it lives
+// in. Every checkout of every repository is one searchable list now, grouped by
+// repository, so "75993" finds it from anywhere.
+//
+// The form lives in its own slot, outside #view. #view is cleared on every
+// refresh, and a refresh fires whenever a run moves: the first version lost the
+// form — values, focus, the open popup — the moment any run in the history
+// advanced, which on a busy machine was every few seconds.
 async function dispatchForm(preset) {
   // `onclick: dispatchForm` calls this with an Event. Anything that is not a
   // string is not a recipe name.
   const wanted = typeof preset === 'string' ? preset : '';
-  // The repository comes FIRST, because everything under it depends on which one
-  // is meant: which recipes exist, which worktree a project has, which checkout
-  // the run writes into. The list is the one the inbox already aggregates —
-  // this repo plus the ones the run index knows — so the form can never offer a
-  // repository the screen would refuse to dispatch into.
-  const repos = await api.get('/api/repos').catch(() => []);
-  const current = (repos || []).find((r) => r.current) || { path: '' };
-  const repo = el('select', {}, ...(repos || []).map((r) =>
-    el('option', { value: r.path, selected: r.current ? 'selected' : null }, r.name)));
-  const repoPath = () => repo.value || current.path;
-
-  // The checkout the run happens in. It defaults to the repository itself, which
-  // keeps the old behaviour intact: a project with a `<repo>-<project>` worktree
-  // is still redirected into it by the server.
-  const worktree = el('select', {});
-  const loadWorktrees = async () => {
-    const list = await api.get(`/api/worktrees?repo=${encodeURIComponent(repoPath())}`).catch(() => []);
-    worktree.replaceChildren(...(list || []).map((w) =>
-      el('option', { value: w.path },
-        w.main ? `${w.branch || 'detached'} (main checkout)` : `${w.branch || 'detached'} — ${w.path.split('/').pop()}`)));
-  };
-
-  // The recipes are read from the CHECKOUT, not from the repository.
-  //
-  // A worktree is the repository on another branch, and `.corvex/recipes` is
-  // tracked: the checkout where the run happens can carry recipes the main one
-  // has never seen. Reading the catalogue from the repository would offer a list
-  // that does not match what will execute, and — because the declared inputs
-  // come from that same catalogue — would silently stop asking for the values
-  // the recipe needs.
-  const recipeList = el('datalist', { id: 'recipe-list' });
-  let recipes = [];
-  const loadRecipes = async () => {
-    const where = worktree.value || repoPath();
-    recipes = await api.get(`/api/recipes?repo=${encodeURIComponent(where)}`).catch(() => []) || [];
-    recipeList.replaceChildren(...recipes.map((r) => el('option', { value: r.name })));
-    syncInputs();
-  };
-  worktree.addEventListener('change', loadRecipes);
-  repo.addEventListener('change', async () => { await loadWorktrees(); loadRecipes(); });
-
-  const target = el('input', { placeholder: 'recipe or project', list: 'recipe-list', value: wanted || null });
-  // What the recipe says it needs (`requires: - env:`), asked for here instead of
-  // being discovered as a preflight failure in a log. The fields are rebuilt
-  // whenever the recipe changes, so switching recipes cannot leave the previous
-  // one's values behind to be posted with the next.
-  const inputsBox = el('div', { class: 'inputs' });
-  const inputFields = new Map();
-  function syncInputs() {
-    const r = recipes.find((x) => x.name === target.value.trim());
-    inputFields.clear();
-    if (!r || !(r.inputs || []).length) { inputsBox.replaceChildren(); return; }
-    inputsBox.replaceChildren(...r.inputs.map((inp) => {
-      const field = el('input', { placeholder: inp.name });
-      inputFields.set(inp.name, field);
-      return el('label', { class: 'field' },
-        el('span', { text: inp.name }),
-        field,
-        inp.why ? el('span', { class: 'dim', text: inp.why }) : null);
-    }));
+  const slot = $('#dispatch-slot');
+  if (slot.firstChild) {
+    // Already open: a second click focuses it instead of stacking a second form.
+    if (wanted) slot.firstChild.dispatchEvent(new CustomEvent('preset', { detail: wanted }));
+    slot.firstChild.scrollIntoView({ block: 'nearest' });
+    return;
   }
-  target.addEventListener('change', syncInputs);
-  target.addEventListener('input', syncInputs);
 
-  // "stack (database)" was a promise the option cannot keep: what `stack`
-  // brings up is whatever the repository's `validate:` block declares, and a
-  // repository with `database: {type: none}` gets an app server and no database
-  // at all. The label names the block instead of guessing its contents.
-  const env = el('select', { title: 'stack brings up this repository\'s validate: block for the life of the run' },
-    el('option', { value: 'simple' }, 'simple'),
-    el('option', { value: 'stack' }, 'stack (the validate: block)'));
-  // A project with a worktree runs IN its worktree (spawn.go), which is the
-  // whole point of one worktree per feature. The box is the way to say "no,
-  // this checkout" — the CLI's --here, on the surface where the person can see
-  // which directory they are about to write into.
-  const here = el('input', { type: 'checkbox' });
+  // ── where ──
+  const newWorktree = el('button', { type: 'button', class: 'ghost picker-new' }, '+ New worktree…');
+  const where = picker({ search: 'Search branches, folders, repositories…', empty: 'Choose a checkout', footer: newWorktree });
+  let repos = [];
+  // The checkout list is every repository's worktrees, read in parallel. The
+  // repository the UI was opened in comes first: it is where most runs go, and
+  // the only one whose recipes are certain to be readable.
+  const loadWhere = async (select) => {
+    repos = (await api.get('/api/repos').catch(() => [])) || [];
+    repos.sort((a, b) => (b.current - a.current) || a.name.localeCompare(b.name));
+    const lists = await Promise.all(repos.map((r) =>
+      api.get(`/api/worktrees?repo=${encodeURIComponent(r.path)}`).catch(() => [])));
+    // A worktree a run started in is in the index as a repository of its own,
+    // and listing it as one repeated every checkout of its repository under a
+    // second heading named after the worktree. MEASURED on a real machine: the
+    // incident worktree showed up as a "repository" holding all of its repository's
+    // checkouts again. So a repository is named by its MAIN checkout, and each
+    // main checkout is listed once, whichever of its worktrees led to it.
+    const items = [];
+    const seen = new Set();
+    repos.forEach((r, n) => {
+      const list = lists[n] || [];
+      const main = (list.find((w) => w.main) || { path: r.path }).path;
+      if (seen.has(main)) return;
+      seen.add(main);
+      const repoName = main.split('/').pop();
+      for (const w of list) {
+        const dir = w.path.split('/').pop();
+        const sub = w.main ? 'main checkout' : dir === (w.branch || '').replace(/\//g, '-') ? '' : dir;
+        items.push({
+          value: w.path, repo: main, repoName, branch: w.branch, isMain: w.main,
+          group: repoName, sub, triggerSub: `${repoName}${sub ? ' · ' + sub : ''}`,
+          main: (tokens) => branchText(w.branch, tokens),
+          haystack: fold(`${w.branch} ${dir} ${repoName}`),
+        });
+      }
+    });
+    where.setItems(items);
+    if (select) where.set(select);
+  };
+  const whereItem = () => where.item || {};
 
   // Making the checkout. Separate button, separate request: creating a branch is
   // cheap and reversible, starting a run spends money, and a person setting up
@@ -480,13 +610,21 @@ async function dispatchForm(preset) {
   const wtName = el('input', { placeholder: 'paste the board line, or a name' });
   const wtBranch = el('input', { placeholder: 'branch (feat/<name>)' });
   const wtBase = el('input', { placeholder: 'base', value: 'main' });
+  const makerRepo = el('span', { class: 'maker-repo' });
+  const paintMakerRepo = () => { makerRepo.textContent = `in ${whereItem().repoName || 'this repository'}`; };
+  const toggleMaker = (show) => {
+    maker.classList.toggle('hidden', show === undefined ? undefined : !show);
+    paintMakerRepo();
+    if (!maker.classList.contains('hidden')) wtName.focus();
+  };
+  newWorktree.addEventListener('click', () => { where.close(); toggleMaker(true); });
   // fill spreads one work item across the form. The fields are only ever
   // FILLED, never cleared, and never overwritten once something has been typed
   // into them — a parse that wipes a branch name somebody corrected by hand is
   // worse than no parse, because that correction is the one part of this the
   // machine cannot check.
   const fill = (item) => {
-    maker.classList.remove('hidden');
+    toggleMaker(true);
     wtName.value = item.id;
     const branch = branchFor(item);
     if (branch && !wtBranch.value.trim()) wtBranch.value = branch;
@@ -495,12 +633,11 @@ async function dispatchForm(preset) {
     });
     status(branch ? `${item.id} · ${branch}` : `${item.id} — this kind has no branch convention here, name the branch yourself`, branch ? 'ok' : 'warn');
   };
-
   // The paste is read from the CLIPBOARD, not from the field afterwards.
   //
   // Both halves of that matter. Reading `e.clipboardData` means the handler
   // works wherever the paste lands — the whole card listens, so a person who
-  // pressed ⌘V over the recipe box gets the same result as one who aimed at a
+  // pressed ⌘V anywhere on the form gets the same result as one who aimed at a
   // particular field, and the worktree panel opens itself if it was closed.
   // And it means the value is in hand immediately instead of being read back
   // after the browser inserts it, which is the part the first version got
@@ -517,68 +654,206 @@ async function dispatchForm(preset) {
   // `change` as well, for the id typed by hand or a line dragged in.
   wtName.addEventListener('change', () => { const item = workItem(wtName.value); if (item) fill(item); });
 
+  const create = el('button', {
+    type: 'button',
+    onclick: async () => {
+      try {
+        const res = await api.post('/api/worktrees', {
+          repo: whereItem().repo, name: wtName.value.trim(),
+          branch: wtBranch.value.trim(), base: wtBase.value.trim(),
+        });
+        await loadWhere(res.path);
+        await loadRecipes();
+        // The recipe's fields are rebuilt by loadRecipes, so the id is
+        // carried over AFTER them: a value put in before would have been
+        // replaced by the empty field that just took its place.
+        inputFields.forEach((field, name) => {
+          if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = wtName.value.trim();
+        });
+        toggleMaker(false);
+        status(`${res.branch} at ${res.path}${res.warning ? ' — ' + res.warning : ''} — ${res.command}`, res.warning ? 'warn' : 'ok');
+      } catch (e) { status(e.message, 'bad'); }
+    },
+  }, 'Create worktree');
   const maker = el('div', { class: 'maker hidden' },
-    el('label', { class: 'field' }, el('span', { text: 'work item' }), wtName),
-    el('label', { class: 'field' }, el('span', { text: 'branch' }), wtBranch),
-    el('label', { class: 'field' }, el('span', { text: 'from' }), wtBase),
-    el('button', {
-      onclick: async () => {
-        try {
-          const res = await api.post('/api/worktrees', {
-            repo: repo.value, name: wtName.value.trim(),
-            branch: wtBranch.value.trim(), base: wtBase.value.trim(),
-          });
-          await loadWorktrees();
-          worktree.value = res.path;
-          await loadRecipes();
-          // The recipe's fields are rebuilt by loadRecipes, so the id is
-          // carried over AFTER them: a value put in before would have been
-          // replaced by the empty field that just took its place.
-          inputFields.forEach((field, name) => {
-            if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = wtName.value.trim();
-          });
-          status(`${res.branch} at ${res.path}${res.warning ? ' — ' + res.warning : ''} — ${res.command}`, res.warning ? 'warn' : 'ok');
-        } catch (e) { status(e.message, 'bad'); }
-      },
-    }, 'Create'),
-  );
+    el('div', { class: 'maker-head' }, el('span', { class: 'label', text: 'new worktree' }), makerRepo,
+      el('button', { type: 'button', class: 'ghost close', title: 'Cancel', onclick: () => toggleMaker(false) }, '×')),
+    el('div', { class: 'maker-row' },
+      el('label', { class: 'field' }, el('span', { text: 'work item' }), wtName),
+      el('label', { class: 'field wide' }, el('span', { text: 'branch' }), wtBranch),
+      el('label', { class: 'field narrow' }, el('span', { text: 'from' }), wtBase),
+      create));
 
-  const box = el('div', { class: 'card dispatch', onpaste: onPaste },
-    el('div', { class: 'row' },
-      el('label', { class: 'field where' }, el('span', { text: 'repository' }), repo),
-      el('label', { class: 'field where grow' }, el('span', { text: 'checkout' }), worktree),
-      el('button', { onclick: () => maker.classList.toggle('hidden') }, '+ worktree'),
-    ),
-    maker,
-    el('div', { class: 'row' },
-      el('label', { class: 'field what' }, el('span', { text: 'recipe' }), target),
-      recipeList,
-      el('label', { class: 'field' }, el('span', { text: 'environment' }), env),
-      el('label', { class: 'check' }, here, ' run here'),
-      el('button', {
-        class: 'primary',
-        onclick: async () => {
-          const inputs = {};
-          inputFields.forEach((field, name) => { if (field.value.trim()) inputs[name] = field.value.trim(); });
-          try {
-            const res = await api.post('/api/runs', {
-              target: target.value.trim(), environment: env.value, here: here.checked,
-              repo: worktree.value || repo.value, inputs,
-            });
-            status(`started in ${res.dir} — ${res.command}`, 'ok');
-            refresh();
-          } catch (e) { status(e.message, 'bad'); }
-        },
-      }, 'Run'),
-    ),
-    inputsBox,
-    el('p', { class: 'note', text: 'The run is detached: closing this page does not stop it. It runs in the checkout selected above; "+ worktree" cuts a new branch from a base and adds it to that list.' }),
+  // ── what ──
+  // The recipes are read from the CHECKOUT, not from the repository.
+  //
+  // A worktree is the repository on another branch, and `.corvex/recipes` is
+  // tracked: the checkout where the run happens can carry recipes the main one
+  // has never seen. Reading the catalogue from the repository would offer a list
+  // that does not match what will execute, and — because the declared inputs
+  // come from that same catalogue — would silently stop asking for the values
+  // the recipe needs.
+  //
+  // They are tiles and not a list: a repository has a handful, each one is a
+  // different act, and the sentence under the name is what tells `ship` from
+  // `pilot` to somebody who did not write them.
+  let recipes = [];
+  let target = wanted;
+  const tiles = el('div', { class: 'recipes', role: 'radiogroup' });
+  const project = el('input', { class: 'project', name: 'project', placeholder: 'or a project name', autocomplete: 'off' });
+  const inputsBox = el('div', { class: 'inputs' });
+  const inputFields = new Map();
+  const pick = (name) => {
+    target = name;
+    if (recipes.some((r) => r.name === name)) project.value = '';
+    paintTiles();
+    syncInputs();
+    paintSummary();
+  };
+  function paintTiles() {
+    if (!recipes.length) {
+      tiles.replaceChildren(el('p', { class: 'dim', text: 'This checkout has no recipes. Name a project instead.' }));
+      return;
+    }
+    tiles.replaceChildren(...recipes.map((r) => el('button', {
+      type: 'button', role: 'radio', class: `tile${r.name === target ? ' on' : ''}${r.problem ? ' broken' : ''}`,
+      'aria-checked': r.name === target ? 'true' : 'false', 'data-recipe': r.name,
+      title: r.problem || r.description || '',
+      onclick: () => pick(r.name),
+    },
+    el('span', { class: 'n', text: r.name }),
+    el('span', { class: 'd', text: r.problem || (r.description || '').split('\n')[0] || `${r.stages} stages` }),
+    (r.inputs || []).length ? el('span', { class: 'needs', text: `needs ${r.inputs.map((i) => i.name).join(', ')}` }) : null)));
+  }
+  // What the recipe says it needs (`requires: - env:`), asked for here instead of
+  // being discovered as a preflight failure in a log. The fields are rebuilt
+  // whenever the recipe changes, so switching recipes cannot leave the previous
+  // one's values behind to be posted with the next.
+  function syncInputs() {
+    const r = recipes.find((x) => x.name === target);
+    inputFields.clear();
+    if (!r || !(r.inputs || []).length) { inputsBox.replaceChildren(); return; }
+    inputsBox.replaceChildren(...r.inputs.map((inp) => {
+      // The recipe's reason is the placeholder: it says what goes in the box
+      // where the eye already is, instead of a line under it repeating the name.
+      const field = el('input', { name: inp.name, placeholder: inp.why || inp.name, autocomplete: 'off' });
+      inputFields.set(inp.name, field);
+      return el('label', { class: 'field' }, el('span', { text: inp.name }), field);
+    }));
+    prefillIds();
+  }
+  // A checkout cut for a work item carries its id in the branch name
+  // (`hotfix/75993-…`), so an `*_ID` the recipe asks for is already known.
+  // Only an EMPTY field is filled: a value somebody typed is never replaced.
+  function prefillIds() {
+    const id = ((whereItem().branch || '').match(/(?:^|\/|-)(\d{4,})(?:-|$)/) || [])[1];
+    if (!id) return;
+    inputFields.forEach((field, name) => {
+      if (/(^|_)ID$/i.test(name) && !field.value.trim()) field.value = id;
+    });
+  }
+  // Two quick changes of checkout start two reads, and they can come back in
+  // either order: only the answer for the checkout still selected is drawn.
+  let recipeRead = 0;
+  const loadRecipes = async () => {
+    const at = where.value || (repos.find((r) => r.current) || {}).path || '';
+    const mine = ++recipeRead;
+    const got = await api.get(`/api/recipes?repo=${encodeURIComponent(at)}`).catch(() => []) || [];
+    if (mine !== recipeRead) return;
+    recipes = got;
+    paintTiles();
+    syncInputs();
+    paintSummary();
+  };
+  project.addEventListener('input', () => { target = project.value.trim(); paintTiles(); syncInputs(); paintSummary(); });
+
+  // ── how ──
+  // "stack (database)" was a promise the option cannot keep: what `stack`
+  // brings up is whatever the repository's `validate:` block declares, and a
+  // repository with `database: {type: none}` gets an app server and no database
+  // at all. The label names the block instead of guessing its contents.
+  let env = 'simple';
+  const seg = el('div', { class: 'seg', role: 'radiogroup', title: 'stack brings up this repository\'s validate: block for the life of the run' });
+  const paintSeg = () => seg.replaceChildren(...[['simple', 'simple'], ['stack', 'stack']].map(([v, label]) =>
+    el('button', { type: 'button', role: 'radio', class: env === v ? 'on' : '', 'aria-checked': env === v ? 'true' : 'false', onclick: () => { env = v; paintSeg(); } }, label)));
+  paintSeg();
+  // A project with a worktree runs IN its worktree (spawn.go), which is the
+  // whole point of one worktree per feature. The box is the way to say "no,
+  // this checkout" — the CLI's --here, on the surface where the person can see
+  // which directory they are about to write into.
+  const here = el('input', { type: 'checkbox' });
+
+  const summary = el('span', { class: 'summary' });
+  const runBtn = el('button', { type: 'button', class: 'primary run' }, 'Run', el('kbd', { text: '⌘↵' }));
+  function paintSummary() {
+    const w = whereItem();
+    summary.replaceChildren(...(target
+      ? [el('b', { text: target }), ' in ', ...branchText(w.branch), w.repoName ? el('span', { class: 'faint', text: ` · ${w.repoName}` }) : null]
+      : [el('span', { class: 'hint', text: 'Pick a recipe to run.' })]));
+    runBtn.disabled = !target || !where.value;
+  }
+  const start = async () => {
+    if (runBtn.disabled) return;
+    const inputs = {};
+    inputFields.forEach((field, name) => { if (field.value.trim()) inputs[name] = field.value.trim(); });
+    runBtn.disabled = true;
+    try {
+      const res = await api.post('/api/runs', {
+        target, environment: env, here: here.checked,
+        repo: where.value || whereItem().repo, inputs,
+      });
+      status(`started in ${res.dir} — ${res.command}`, 'ok');
+      closeForm();
+      refresh();
+    } catch (e) { status(e.message, 'bad'); paintSummary(); }
+  };
+  runBtn.addEventListener('click', start);
+
+  where.onChange(async () => { paintMakerRepo(); paintSummary(); await loadRecipes(); });
+
+  const closeForm = () => { box.remove(); paintDispatchButton(); };
+  const box = el('section', { class: 'card dispatch', onpaste: onPaste },
+    el('div', { class: 'dispatch-head' },
+      el('h3', { text: 'New run' }),
+      el('span', { class: 'dim', text: 'Detached: closing this page does not stop it.' }),
+      el('button', { type: 'button', class: 'ghost close', title: 'Close (Esc)', onclick: closeForm }, '×')),
+    el('div', { class: 'section' },
+      el('span', { class: 'label', text: 'where' }),
+      el('div', { class: 'where-row' }, where.node, el('button', { type: 'button', onclick: () => toggleMaker() }, '+ worktree')),
+      maker),
+    el('div', { class: 'section' },
+      el('div', { class: 'label-row' }, el('span', { class: 'label', text: 'recipe' }), project),
+      tiles,
+      inputsBox),
+    el('div', { class: 'dispatch-foot' },
+      seg,
+      el('label', { class: 'check', title: 'Run in the checkout above even when the project has its own worktree' }, here, ' run here'),
+      summary,
+      runBtn),
   );
-  const view = $('#view');
-  view.prepend(box);
+  box.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); start(); }
+    // Esc closes the form only from outside a text box: an Esc meant for a
+    // field must not throw away everything typed into the others.
+    else if (e.key === 'Escape' && !e.defaultPrevented && e.target.tagName !== 'INPUT') closeForm();
+  });
+  box.addEventListener('preset', (e) => pick(e.detail));
+  slot.append(box);
+  paintDispatchButton();
+  paintSummary();
   // The checkout list first: the recipes are read from whichever checkout it
   // settles on.
-  loadWorktrees().then(loadRecipes).then(() => { if (wanted) { syncInputs(); target.focus(); } });
+  await loadWhere();
+  await loadRecipes();
+  if (wanted) { pick(wanted); const first = inputsBox.querySelector('input'); if (first) first.focus(); }
+  else where.node.querySelector('.picker-trigger').focus();
+}
+
+// The history's button opens the form; while the form is open it would only
+// open the same form again, so it says so instead of offering a second one.
+function paintDispatchButton() {
+  const open = !!$('#dispatch-slot').firstChild;
+  for (const b of document.querySelectorAll('.open-dispatch')) b.classList.toggle('hidden', open);
 }
 
 // ── leaving a detail screen ─────────────────────────────────────────────────
@@ -1181,6 +1456,10 @@ async function render() {
   // right for a screen somebody navigated to and wrong for one that redraws on
   // a timer under their hands — see runSignature.
   if (state.detail?.kind !== 'run') root.replaceChildren();
+  // The dispatch form is not part of what is redrawn: it sits in its own slot
+  // and is only HIDDEN away from the history, so leaving and coming back finds
+  // it as it was left.
+  $('#dispatch-slot').classList.toggle('hidden', !(state.view === 'runs' && !state.detail));
   try {
     if (state.detail?.kind === 'run') return await renderRunDetail(root, state.detail.id);
     if (state.detail?.kind === 'gate') return await renderGateDetail(root, state.detail.id, state.detail.step);

@@ -92,6 +92,7 @@ type Worktree struct {
 	// worktree. It is the only one `git worktree remove` refuses, and the one a
 	// dispatch lands in when no feature worktree is chosen.
 	Main bool `json:"main"`
+	gone bool
 }
 
 // ListWorktrees enumerates the checkouts git itself knows for a repository.
@@ -122,7 +123,18 @@ func ListWorktrees(workDir string) ([]Worktree, error) {
 		case cur == nil:
 		case strings.HasPrefix(line, "branch "):
 			cur.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+		case strings.HasPrefix(line, "prunable"):
+			cur.gone = true
 		}
 	}
-	return list, nil
+	// A worktree whose directory was deleted stays in git's list, marked
+	// `prunable`, until somebody runs `git worktree prune`. Nothing can run in
+	// it, and offering it put a checkout in the picker that fails on dispatch.
+	live := list[:0]
+	for _, w := range list {
+		if !w.gone {
+			live = append(live, w)
+		}
+	}
+	return live, nil
 }
