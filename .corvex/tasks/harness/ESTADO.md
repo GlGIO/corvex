@@ -394,6 +394,30 @@ E um custo que eu ia deixar passar: a caixa é lida a cada refresh e essa varred
 cobre todo run terminado da janela — 64 na máquina do dono, contra quatro
 receitas. Uma leitura por receita, não por run.
 
+## Rodada 28 — dois testes que clicavam no meio de um redesenho
+
+Antes de publicar as 48 rodadas, rodei a suíte e o `TestUI_Retry…` falhou. Passa
+isolado, passa o pacote duas vezes, e cai cerca de uma vez em três com a máquina
+sob a carga do `./...`.
+
+Ler isso como instabilidade teria sido ler errado. A tela de run redesenha
+quando o run se move, e um run que ACABOU de falhar ainda está assentando: a
+liveness vai de `alive` para `finished`, as últimas linhas do ledger chegam.
+Cada uma dessas é um redesenho legítimo — e um redesenho substitui o nó em que o
+clique está prestes a cair. A página estava fazendo exatamente o que devia; os
+testes é que miravam no meio do movimento.
+
+Os dois (`TestUI_Retry…` e `TestUI_AFailedStepSaysWhatItPrinted`) agora esperam
+a tela parar antes de clicar, usando a resposta da própria página para "mudou
+alguma coisa" — duas leituras iguais de `state.runSig`. Três rodadas limpas do
+`./...` depois disso.
+
+**A limitação de produto fica anotada, não consertada:** uma pessoa clicando em
+`Retry step` nos segundos em que o run está assentando pode acertar um nó já
+substituído, e o clique não faz nada. É estreito e recuperável (clicar de novo
+funciona), e consertar de verdade significa atualizar o DOM por chave em vez de
+substituir a subárvore. Não é dívida escondida — está aqui.
+
 ## O que falta, na ordem em que eu pretendo atacar
 1. **A recipe `pilot.yaml`** — juntar o que já existe: stage que chama a tool,
    fan-out sobre os itens com `wave_by`, template por story, e o `ship` no fim.
